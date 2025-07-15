@@ -526,3 +526,4 @@ protected:
     virtual const std::vector<int64_t> GetSupportedDepthSwapchainFormats() = 0;
     bool debugAPI = false;
 };
+a
