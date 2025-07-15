@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.linkLibC();
-    // exe.linkSystemLibrary("vulkan"); Might be needed
+    exe.linkSystemLibrary("vulkan");
     exe.linkSystemLibrary("openxr_loader");
 
     b.installArtifact(exe);
