@@ -86,10 +86,7 @@ pub fn main() !void {
         .type = c.XR_TYPE_SYSTEM_GET_INFO,
     };
 
-    try xrCheck(
-        c.xrGetSystem(instance, &sytem_info, 0),
-        error.GetSystemInfo,
-    );
+
 
     sytem_info.formFactor = c.XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
 
@@ -99,7 +96,10 @@ pub fn main() !void {
         error.GetSystemId,
     );
 
-    var system_properties: c.XrSystemProperties = undefined;
+    var system_properties = c.XrSystemProperties{
+        .type = c.XR_TYPE_SYSTEM_PROPERTIES,
+        .next = null
+    };
     try xrCheck(
         c.xrGetSystemProperties(instance, system_id, &system_properties),
         error.GetSystemProperties,
