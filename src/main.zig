@@ -12,9 +12,9 @@ pub fn main() !void {
         "XR_KHR_vulkan_enable2",
     };
 
-    const xr_context = try xr.Context.init(allocator, extensions);
-    defer xr_context.deinit();
-
-    const vk_context = try vk.Context.init(try xr_context.getVulkanExtensions());
+    const vk_context = try vk.Context.init(try xr.Context.getVulkanExtensions());
     defer vk_context.deinit();
+
+    const xr_context = try xr.Context.init(allocator, extensions, vk_context);
+    defer xr_context.deinit();
 }

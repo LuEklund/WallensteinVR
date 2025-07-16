@@ -32,7 +32,7 @@ pub fn selectPhysical(instance: c.VkInstance) !c.VkPhysicalDevice {
 
     if (device_count == 0) return error.NoPhysicalDevicesFound;
 
-    var physical_devices: [8]?c.VkPhysicalDevice = null ** 8;
+    var physical_devices: [8]?c.VkPhysicalDevice = [_]?c.VkPhysicalDevice{null} ** 8;
 
     try c.check(
         c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast(&physical_devices)),
@@ -49,23 +49,23 @@ pub fn selectPhysical(instance: c.VkInstance) !c.VkPhysicalDevice {
         var features: c.VkPhysicalDeviceFeatures = undefined;
         c.vkGetPhysicalDeviceFeatures(device, &features);
 
-        log.info("\t{d}/{d}: {s}\n", .{ properties.deviceID, device_count, properties.deviceName });
+        log.info("\t{d}/{d}: {s}", .{ properties.deviceID, device_count, properties.deviceName });
 
         if (properties.deviceType == c.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU and features.geometryShader == c.VK_TRUE) {
-            log.info("\n\tSelected {s\n", .{ properties.deviceID, properties.deviceName });
+            log.info("\n\tSelected {s}\n", .{properties.deviceName});
             break;
         }
     }
 
-    return physical_devices[i];
+    return physical_devices[i] orelse return error.InvalidPhysicalDevicesSelected;
 }
 
 const QueueFamilyIndices = struct {
     graphics_family: ?u32 = null,
 };
 
-fn findQueueFamilies(physical_device: c.VkPhysicalDevice) ?u32 {
-    const indices: ?u32 = undefined;
+fn findQueueFamilies(physical_device: c.VkPhysicalDevice) QueueFamilyIndices {
+    const indices = QueueFamilyIndices{};
 
     var queue_family_count: u32 = 0;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, null);
@@ -75,7 +75,7 @@ fn findQueueFamilies(physical_device: c.VkPhysicalDevice) ?u32 {
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_family_count);
 
     for (queue_families, 0..) |queue_family, i| {
-        if (queue_family.queueFlags & c.VK_QUEUE_GRAPHICS_BIT) {
+        if (queue_family.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
             indices.graphics_family = i;
         }
         if (indices.graphics_family != null) break;
@@ -84,13 +84,13 @@ fn findQueueFamilies(physical_device: c.VkPhysicalDevice) ?u32 {
 }
 
 pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice) !struct { c.VkDevice, c.VkQueue } {
-    const indices: ?u32 = findQueueFamilies(physical_device);
+    const indices: QueueFamilyIndices = findQueueFamilies(physical_device);
 
     // NOTE: Not used currently
     var queue_priority: f32 = 1.0;
     var queue_create_info = c.VkDeviceQueueCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = indices.graphics_family,
+        .queueFamilyIndex = indices.graphics_family.?,
         .queueCount = 1,
         .pQueuePriorities = &queue_priority,
     };
@@ -107,12 +107,12 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice) !struct { c.VkDe
 
     var logical_device: c.VkDevice = undefined;
     try c.check(
-        c.vkCreateDevice(&physical_device, &create_info, null, &logical_device),
+        c.vkCreateDevice(physical_device, &create_info, null, &logical_device),
         error.CreateDevice,
     );
 
     var graphics_queue: c.VkQueue = undefined;
-    c.vkGetDeviceQueue(logical_device, indices.graphics_family, 0, &graphics_queue);
+    c.vkGetDeviceQueue(logical_device, indices.graphics_family.?, 0, &graphics_queue);
 
     return .{ logical_device, graphics_queue };
 }
