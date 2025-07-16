@@ -15,7 +15,8 @@ pub usingnamespace c;
 pub inline fn check(result: c_int, err: anyerror) !void { // nice
     wrapXR(result) catch |e| @import("std").log.err("{}: {}", .{ err, e });
     return switch (result) {
-        0 => err,
+        0 => {},
+        1 => err, // For if its just failure and doesnt say the error code, k
         else => wrapXR(result),
     };
 }

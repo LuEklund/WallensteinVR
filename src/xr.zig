@@ -16,10 +16,11 @@ pub const Context = struct {
     },
     space: c.XrSpace,
 
-    pub fn init(allocator: std.mem.Allocator, extensions: []const [:0]const u8, layers: []const [*:0]const u8, vk_context: vk.Context) !Self {
-        _ = vk_context;
-        try validateLayers(allocator, layers);
+    pub fn init(allocator: std.mem.Allocator, extensions: []const [*:0]const u8, layers: []const [*:0]const u8, vk_context: vk.Context) !Self {
         try validateExtensions(allocator, extensions);
+        try validateLayers(allocator, layers);
+
+        std.debug.print("extensions {any}\n", .{extensions});
 
         var create_info = c.XrInstanceCreateInfo{
             .type = c.XR_TYPE_INSTANCE_CREATE_INFO,
@@ -67,9 +68,9 @@ pub const Context = struct {
 
         const graphics_binding = c.XrGraphicsBindingVulkanKHR{
             .type = c.XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR,
-            //.instance = vk_context.instance,
-            //.physicalDevice = vk_context.device.physical,
-            //.device = vk_context.device.logical,
+            .instance = vk_context.instance,
+            .physicalDevice = vk_context.device.physical,
+            .device = vk_context.device.logical,
             .queueFamilyIndex = 0, // The default one
             .queueIndex = 0, // Zero because its the first and so far only queue we have
         };
@@ -239,7 +240,7 @@ pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT 
     return debug_messenger;
 }
 
-fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [:0]const u8) !void {
+fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]const u8) !void {
     var extension_count: u32 = 0;
 
     try c.check(
@@ -258,7 +259,8 @@ fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [:0]cons
     );
 
     for (extentions) |extention| {
-        for (extension_propertieextention), std.mem.sliceTo(&extension_property.layerName, 0))) break;
+        for (extension_properties) |extension_property| {
+            if (std.mem.eql(u8, std.mem.span(extention), std.mem.sliceTo(&extension_property.extensionName, 0))) break;
         } else {
             log.err("Failed to find OpenXR extension: {s}\n", .{extention});
             return error.MissingLayers;
