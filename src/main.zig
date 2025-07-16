@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = @import("std").log;
 const c = @cImport({
     @cInclude("vulkan/vulkan.h");
     @cDefine("XR_USE_GRAPHICS_API_VULKAN", "1");
@@ -13,16 +14,10 @@ pub inline fn xrCheck(result: c.XrResult, err: anyerror) !void {
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    //TODO: Must USE char** for .enabledExtensionNames = requested_instance_extensions2,
     const requested_instance_extensions = &[_][:0]const u8{
         "XR_KHR_vulkan_enable",
         "XR_EXT_debug_utils",
         "XR_KHR_vulkan_enable2",
-    };
-    const requested_instance_extensions2 = &[_][*:0]const u8{
-        "XR_KHR_vulkan_enable".ptr,
-        "XR_EXT_debug_utils".ptr,
-        "XR_KHR_vulkan_enable2".ptr,
     };
 
     const available_extensions = try getAvailableExtensions(allocator);
@@ -44,7 +39,8 @@ pub fn main() !void {
             }
 
             if (!found) {
-                std.debug.print("Failed to find OpenXR instance extension: {s}\n", .{requested});
+                log.err("Failed to find OpenXR extension: {s}\n", .{requested});
+                return error.MissingExtension;
             }
         }
     }
@@ -71,8 +67,8 @@ pub fn main() !void {
             .apiVersion = c.XR_CURRENT_API_VERSION,
         },
         //TODO: MUST BE C char** AND remove hardcoded size
-        .enabledExtensionNames = requested_instance_extensions2,
-        .enabledExtensionCount = @intCast(3),
+        .enabledExtensionNames = @ptrCast(&requested_instance_extensions),
+        .enabledExtensionCount = @intCast(requested_instance_extensions.len),
     };
 
     var instance: c.XrInstance = undefined;
@@ -86,8 +82,6 @@ pub fn main() !void {
         .type = c.XR_TYPE_SYSTEM_GET_INFO,
     };
 
-
-
     sytem_info.formFactor = c.XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
 
     var system_id: c.XrSystemId = undefined;
@@ -96,10 +90,7 @@ pub fn main() !void {
         error.GetSystemId,
     );
 
-    var system_properties = c.XrSystemProperties{
-        .type = c.XR_TYPE_SYSTEM_PROPERTIES,
-        .next = null
-    };
+    var system_properties = c.XrSystemProperties{ .type = c.XR_TYPE_SYSTEM_PROPERTIES, .next = null };
     try xrCheck(
         c.xrGetSystemProperties(instance, system_id, &system_properties),
         error.GetSystemProperties,
