@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const log = @import("std").log;
 const c = @import("c.zig");
+const vk = @import("vulkan/context.zig");
 
 pub const Context = struct {
     const Self = @This();
@@ -14,7 +15,7 @@ pub const Context = struct {
     },
     space: c.XrSpace,
 
-    pub fn init(allocator: std.mem.Allocator, extensions: []const [:0]const u8) !Self {
+    pub fn init(allocator: std.mem.Allocator, extensions: []const [:0]const u8, vk_context: vk.Context) !Self {
         const available_extensions = try getAvailableExtensions(allocator);
 
         {
@@ -92,9 +93,11 @@ pub const Context = struct {
 
         const graphics_binding = c.XrGraphicsBindingVulkanKHR{
             .type = c.XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR,
-            .device = null, // We need vulkan
-            .instance = null, // More vulkan
-            .physicalDevice = null, // AAAAAAAAAAa,
+            .instance = vk_context.instance,
+            .physicalDevice = vk_context.device.physical,
+            .device = vk_context.device.logical,
+            .queueFamilyIndex = vk_context.device.graphics_queue orelse return error.DeviceGraphicsQueueWasNull,
+            .queueIndex = 0, // Zero because its the first and so far only queue we have
         };
 
         const session_info = c.XrSessionCreateInfo{
