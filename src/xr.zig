@@ -8,6 +8,7 @@ pub const Context = struct {
     const Self = @This();
 
     instance: c.XrInstance,
+    debug_messenger: ?*c.XrDebugUtilsLabelEXT,
     system: struct {
         id: c.XrSystemId,
         info: c.XrSystemGetInfo,
@@ -15,31 +16,11 @@ pub const Context = struct {
     },
     space: c.XrSpace,
 
-    pub fn init(allocator: std.mem.Allocator, extensions: []const [:0]const u8, vk_context: vk.Context) !Self {
-        const available_extensions = try getAvailableExtensions(allocator);
-
-        {
-            var active_extensions = try std.ArrayList([]const u8).initCapacity(allocator, extensions.len);
-            defer active_extensions.deinit();
-
-            for (extensions) |requested| {
-                var found = false;
-
-                for (available_extensions) |*prop| {
-                    const name = std.mem.span(@as([*:0]const u8, @ptrCast(&prop.extensionName)));
-                    if (std.mem.eql(u8, name, requested)) {
-                        try active_extensions.append(requested);
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    log.err("Failed to find OpenXR extension: {s}\n", .{requested});
-                    return error.MissingExtension;
-                }
-            }
-        }
+    pub fn init(allocator: std.mem.Allocator, extensions: []const [:0]const u8, layers: []const [:0]const u8, vk_context: vk.Context) !Self {
+        _ = vk_context;
+        _ = extensions;
+        //const available_extensions = try getAvailableExtensions(allocator, extensions);
+        const available_layers = try getAvailableLayers(allocator, layers);
 
         var create_info = c.XrInstanceCreateInfo{
             .type = c.XR_TYPE_INSTANCE_CREATE_INFO,
@@ -63,8 +44,10 @@ pub const Context = struct {
                 .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
             },
             //TODO: MUST BE C char** AND remove hardcoded size
-            .enabledExtensionNames = @ptrCast(&extensions),
-            .enabledExtensionCount = @intCast(extensions.len),
+            // .enabledExtensionNames = @ptrCast(available_extensions.ptr),
+            // .enabledExtensionCount = @intCast(available_extensions.len),
+            .enabledApiLayerCount = @intCast(available_layers.len),
+            .enabledApiLayerNames = @ptrCast(available_layers.ptr),
         };
 
         var instance: c.XrInstance = undefined;
@@ -72,6 +55,8 @@ pub const Context = struct {
             c.xrCreateInstance(&create_info, &instance),
             error.CreateInstance,
         );
+
+        const debug_messenger: *c.XrDebugUtilsLabelEXT = @ptrCast(@alignCast(try createDebugMessenger(instance)));
 
         var system_info = c.XrSystemGetInfo{
             .type = c.XR_TYPE_SYSTEM_GET_INFO,
@@ -93,9 +78,9 @@ pub const Context = struct {
 
         const graphics_binding = c.XrGraphicsBindingVulkanKHR{
             .type = c.XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR,
-            .instance = vk_context.instance,
-            .physicalDevice = vk_context.device.physical,
-            .device = vk_context.device.logical,
+            //.instance = vk_context.instance,
+            //.physicalDevice = vk_context.device.physical,
+            //.device = vk_context.device.logical,
             .queueFamilyIndex = 0, // The default one
             .queueIndex = 0, // Zero because its the first and so far only queue we have
         };
@@ -129,6 +114,7 @@ pub const Context = struct {
 
         return .{
             .instance = instance,
+            .debug_messenger = debug_messenger,
             .system = .{
                 .id = system_id,
                 .info = system_info,
@@ -139,35 +125,10 @@ pub const Context = struct {
     }
 
     pub fn deinit(self: Self) void {
+        const destroy_fn_ptr = getXRFunction(self.instance, "xrDestroyDebugUtilsMessengerEXT") catch unreachable;
+        const xrDestroyDebugUtilsMessengerEXT: @typeInfo(c.PFN_xrDestroyDebugUtilsMessengerEXT).optional.child = @ptrCast(destroy_fn_ptr);
+        _ = xrDestroyDebugUtilsMessengerEXT(@ptrCast(self.debug_messenger));
         _ = c.xrDestroyInstance(self.instance);
-    }
-
-    fn getAvailableExtensions(allocator: std.mem.Allocator) ![]c.XrExtensionProperties {
-        var count: u32 = 0;
-
-        try c.check(
-            c.xrEnumerateInstanceExtensionProperties(null, 0, &count, null),
-            error.EnumerateInstanceExtensionProperties,
-        );
-
-        var extensions = try std.ArrayList(c.XrExtensionProperties).initCapacity(allocator, count);
-
-        for (0..count) |i| {
-            try extensions.append(std.mem.zeroes(c.XrExtensionProperties));
-            extensions.items[i].type = c.XR_TYPE_EXTENSION_PROPERTIES;
-        }
-
-        try c.check(
-            c.xrEnumerateInstanceExtensionProperties(
-                null,
-                count,
-                &count,
-                @ptrCast(extensions.items.ptr),
-            ),
-            error.EnumerateInstanceExtensionProperties,
-        );
-
-        return try extensions.toOwnedSlice();
     }
 
     pub fn getVulkanExtensions() ![]const [:0]const u8 {
@@ -223,24 +184,142 @@ pub const Context = struct {
     }
 };
 
-// Used for later
-// pub fn getLayers() {
-//     var layer_count: u32 = 0;
-//     var layer_properties = std.ArrayList(c.XrApiLayerProperties).init(allocator);
-//     defer layer_properties.deinit();
-//     try c.check(c.xrEnumerateApiLayerProperties(0, &layer_count, null), error.EnumerateApiLayerProperties,);
-//     try layer_properties.append(c.XR_TYPE_API_LAYER_PROPERTIES);
-//     try c.check(c.xrEnumerateApiLayerProperties(layer_count, &layer_count, @ptrCast(&layer_properties.items)), error.EnumerateApiLayerProperties,);
+pub fn getXRFunction(instance: c.XrInstance, name: [*c]const u8) !*const anyopaque {
+    var func: c.PFN_xrVoidFunction = null;
+    try c.check(
+        c.xrGetInstanceProcAddr(instance, name, &func),
+        error.GetInstanceProcAddr,
+    );
 
-//         for (&requestLayer : m_apiLayers)  {
-//         for (auto &layerProperty : apiLayerProperties) {
-//             // strcmp returns 0 if the strings match.
-//             if (strcmp(requestLayer.c_str(), layerProperty.layerName) != 0) {
-//                 continue;
-//             } else {
-//                 m_activeAPILayers.push_back(requestLayer.c_str());
-//                 break;
-//             }
-//         }
-//     }
-// }
+    return @ptrCast(func);
+}
+
+fn handleXRError(severity: c.XrDebugUtilsMessageSeverityFlagsEXT, @"type": c.XrDebugUtilsMessageTypeFlagsEXT, callback_data: *const c.XrDebugUtilsMessengerCallbackDataEXT, _: *anyopaque) c.XrBool32 {
+    const type_str: []const u8 = switch (@"type") {
+        c.XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT => "general ",
+        c.XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT => "validation ",
+        c.XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT => "performance ",
+        c.XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT => "conformance ",
+        else => "other",
+    };
+
+    const severity_str = switch (severity) {
+        c.XR_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT => "(verbose): ",
+        c.XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT => "(info): ",
+        c.XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT => "(warning): ",
+        c.XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT => "(error): ",
+        else => "(other)",
+    };
+
+    log.err("XR: {s}: {s}: {s}\n", .{ type_str, severity_str, callback_data.message });
+
+    return c.XR_FALSE;
+}
+
+pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT {
+    var debug_messenger: c.XrDebugUtilsMessengerEXT = undefined;
+
+    var debug_messenger_create_info = c.XrDebugUtilsMessengerCreateInfoEXT{
+        .type = c.XR_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .next = null,
+        .messageSeverities = c.XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+            c.XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+            c.XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageTypes = c.XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+            c.XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+            c.XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
+            c.XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT,
+        .userCallback = @ptrCast(&handleXRError),
+        .userData = null,
+    };
+
+    const PFN_xrCreateDebugUtilsMessengerEXT = *const fn (
+        instance: c.XrInstance,
+        createInfo: *const c.XrDebugUtilsMessengerCreateInfoEXT,
+        messenger: *c.XrDebugUtilsMessengerEXT,
+    ) callconv(.C) c.XrResult;
+
+    const raw_fn = try getXRFunction(instance, "xrCreateDebugUtilsMessengerEXT");
+    const xrCreateDebugUtilsMessengerEXT: PFN_xrCreateDebugUtilsMessengerEXT = @ptrCast(raw_fn);
+
+    try c.check(
+        xrCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, &debug_messenger),
+        error.CreateDebugUtilsMessengerEXT,
+    );
+
+    return debug_messenger;
+}
+
+fn getAvailableExtensions(allocator: std.mem.Allocator, extentions: []const [:0]const u8) ![]const [*:0]const u8 {
+    var extension_count: u32 = 0;
+
+    try c.check(
+        c.xrEnumerateInstanceExtensionProperties(null, 0, &extension_count, null),
+        error.EnumerateApiLayerPropertiesCount,
+    );
+
+    const extension_properties = try allocator.alloc(c.XrExtensionProperties, @intCast(extension_count));
+    defer allocator.free(extension_properties);
+
+    @memset(extension_properties, .{ .type = c.XR_TYPE_EXTENSION_PROPERTIES });
+
+    // std.debug.print("RAW DATA {any}\n", .{extension_properties});
+    try c.check(
+        c.xrEnumerateInstanceExtensionProperties(null, extension_count, &extension_count, @ptrCast(extension_properties.ptr)),
+        error.EnumerateApiLayerProperties,
+    );
+
+    std.debug.print("hello111\n", .{});
+    var active_api_layers = std.ArrayList([*:0]const u8).init(allocator);
+
+    for (extentions) |extension| {
+        var found: bool = false;
+        for (extension_properties) |extension_property| {
+            if (!std.mem.eql(u8, extension, @ptrCast(&extension_property.extensionName))) {
+                continue;
+            } else {
+                try active_api_layers.append(@ptrCast(&extension_property.extensionName));
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            log.err("Failed to find OpenXR layer: {s}\n", .{extension});
+            return error.MissingExtension;
+        }
+    }
+    return try active_api_layers.toOwnedSlice();
+}
+
+pub fn getAvailableLayers(allocator: std.mem.Allocator, layers: []const [:0]const u8) ![]const [*:0]const u8 {
+    var layer_count: u32 = 0;
+
+    try c.check(
+        c.xrEnumerateApiLayerProperties(0, &layer_count, null),
+        error.EnumerateApiLayerPropertiesCount,
+    );
+    const layer_properties = try allocator.alloc(c.XrApiLayerProperties, @intCast(layer_count));
+    defer allocator.free(layer_properties);
+
+    @memset(layer_properties, .{ .type = c.XR_TYPE_API_LAYER_PROPERTIES });
+    //try layer_properties.append(c.XR_TYPE_API_LAYER_PROPERTIES);
+    try c.check(
+        c.xrEnumerateApiLayerProperties(layer_count, &layer_count, @ptrCast(layer_properties.ptr)),
+        error.EnumerateApiLayerProperties,
+    );
+
+    // this copy is prob useless cuz it just returns whatever is in `layers`
+
+    // can u try this \/ \/ \/ \/ \/
+    // this instead: no copying + no alloc
+    for (layers) |layer| {
+        for (layer_properties) |layer_property| {
+            if (std.mem.eql(u8, layer, std.mem.sliceTo(&layer_property.layerName, 0))) break;
+        } else {
+            log.err("Failed to find OpenXR layer: {s}\n", .{layer});
+            return error.MissingExtension;
+        }
+    }
+
+    return layers;
+}
