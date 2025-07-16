@@ -6,11 +6,23 @@ pub const Context = struct {
     const Self = @This();
 
     instance: c.VkInstance,
+    device: struct {
+        physical: c.VkPhysicalDevice,
+        logical: c.VkDevice,
+    },
 
     pub fn init(extensions: []const [:0]const u8) !Self {
         const instance = try createInstance(extensions);
+        const physical_device = try createPhysicalDevice(instance);
+        // const logical_device = try createLogicalDevice(instance);
 
-        return .{ .instance = instance };
+        return .{
+            .instance = instance,
+            .device = .{
+                .physical = physical_device,
+                // .logical = logical_device,
+            },
+        };
     }
 
     pub fn deinit(_: Self) void {}
