@@ -1,32 +1,21 @@
 const std = @import("std");
 const c = @import("../c.zig");
+const xr = @import("../xr.zig");
 
 pub const Context = struct {
     const Self = @This();
 
     instance: c.VkInstance,
 
-    pub fn init() !Self {
-        const instance = createInstance();
+    pub fn init(extensions: []const [:0]const u8) !Self {
+        const instance = try createInstance(extensions);
 
         return .{ .instance = instance };
     }
 
     pub fn deinit(_: Self) void {}
 
-    fn createInstance(xr_instance: c.XrInstance) !c.VkInstance {
-        var ext_str_len: u32 = 0;
-        _ = c.xrGetVulkanInstanceExtensionsKHR(xr_instance, null, &ext_str_len, null);
-
-        var buffer: [512]u8 = undefined;
-        const ext_slice = buffer[0..ext_str_len];
-        _ = c.xrGetVulkanInstanceExtensionsKHR(xr_instance, null, &ext_str_len, ext_slice.ptr);
-
-        var extensions: [16][:0]const u8 = undefined;
-        var count: usize = 0;
-        var it = std.mem.splitAny(u8, ext_slice[0..ext_str_len], " ");
-        while (it.next()) |ext| : (count += 1) extensions[count] = std.mem.span(ext);
-
+    fn createInstance(extensions: []const [:0]const u8) !c.VkInstance {
         const app_info = c.VkApplicationInfo{
             .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pNext = null,
@@ -42,7 +31,7 @@ pub const Context = struct {
             .pNext = null,
             .flags = 0,
             .pApplicationInfo = &app_info,
-            .enabledExtensionCount = @intCast(count),
+            .enabledExtensionCount = @intCast(extensions.len),
             .ppEnabledExtensionNames = @ptrCast(&extensions),
             .enabledLayerCount = 0,
             .ppEnabledLayerNames = null,
@@ -54,5 +43,25 @@ pub const Context = struct {
             error.CreateInstance,
         );
         return instance;
+    }
+
+    fn createPhysicalDevice(instance: c.VkInstance) !c.VkPhysicalDevice {
+        var device_count: u32 = 0;
+
+        c.vkEnumeratePhysicalDevices(instance, &device_count, null);
+
+        if (device_count == 0) {
+            std.debug.print("Num physical devices in 0\n");
+            return error.InvalidDeviceCount;
+        }
+
+        var physical_devices: [8]?c.VkPhysicalDevice = null ** 8;
+
+        c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast(&physical_devices));
+
+        // debug
+        std.debug.print("Found {d} num of GPUs!\n", .{device_count});
+
+        return physical_devices[0];
     }
 };

@@ -1,6 +1,7 @@
-pub const c = @cImport({
-    @cInclude("vulkan/vulkan.h");
+const c = @cImport({
     @cDefine("XR_USE_GRAPHICS_API_VULKAN", "1");
+    @cDefine("XR_EXTENSION_PROTOTYPES", "1");
+    @cInclude("vulkan/vulkan.h");
     @cInclude("openxr/openxr.h");
     @cInclude("openxr/openxr_platform.h");
 });

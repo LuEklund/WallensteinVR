@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const log = @import("std").log;
 const c = @import("c.zig");
 
@@ -14,12 +15,6 @@ pub const Context = struct {
     space: c.XrSpace,
 
     pub fn init(allocator: std.mem.Allocator, extensions: []const [:0]const u8) !Self {
-        // const extensions = &[_][:0]const u8{
-        // "XR_KHR_vulkan_enable",
-        // "XR_EXT_debug_utils",
-        // "XR_KHR_vulkan_enable2",
-        // };
-
         const available_extensions = try getAvailableExtensions(allocator);
 
         {
@@ -170,6 +165,59 @@ pub const Context = struct {
         );
 
         return try extensions.toOwnedSlice();
+    }
+
+    pub fn getVulkanExtensions(self: Self) ![]const [:0]const u8 {
+        // var extension_str_len: u32 = 0;
+
+        // try c.check(
+        //     c.xrGetVulkanInstanceExtensionsKHR(self.instance, self.system.id, 0, &extension_str_len, null),
+        //     error.GetVulkanInstanceExtensionsKHR,
+        // );
+
+        // var buffer: [512]u8 = undefined;
+        // const extension_slice = buffer[0..@intCast(extension_str_len)];
+
+        // try c.check(
+        //     c.xrGetVulkanInstanceExtensionsKHR(
+        //         self.instance,
+        //         self.system.id,
+        //         extension_str_len,
+        //         &extension_str_len,
+        //         extension_slice.ptr,
+        //     ),
+        //     error.GetVulkanInstanceExtensionsKHR,
+        // );
+
+        // var static_extensions: [16][:0]const u8 = undefined;
+        // var count: usize = 0;
+
+        // var it = std.mem.splitAny(u8, extension_slice, " ");
+        // while (it.next()) |*ext| {
+        //     if (count >= static_extensions.len) break;
+        //     static_extensions[count] = @ptrCast(ext);
+        //     count += 1;
+        // }
+
+        // return static_extensions[0..count];
+        _ = self;
+
+        //TODO: Make this not hard coded
+
+        const extensions = [_][:0]const u8{
+            "VK_KHR_surface",
+            "VK_KHR_get_physical_device_properties2",
+            "VK_EXT_debug_utils",
+            "VK_KHR_external_memory_capabilities",
+            switch (builtin.os.tag) {
+                .windows => "VK_KHR_win32_surface",
+                .linux, .freebsd, .dragonfly => "VK_KHR_wayland_surface", // "VK_KHR_xcb_surface" <-- Xorg;
+                .macos => "VK_EXT_metal_surface",
+                else => @compileError("Unsupported OS for Vulkan surface extension"),
+            },
+        };
+
+        return &extensions;
     }
 };
 
