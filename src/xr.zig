@@ -60,7 +60,7 @@ pub const Context = struct {
                     break :blk buffer;
                 },
                 .engineVersion = 1,
-                .apiVersion = c.XR_CURRENT_API_VERSION,
+                .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
             },
             //TODO: MUST BE C char** AND remove hardcoded size
             .enabledExtensionNames = @ptrCast(&extensions),
@@ -96,7 +96,7 @@ pub const Context = struct {
             .instance = vk_context.instance,
             .physicalDevice = vk_context.device.physical,
             .device = vk_context.device.logical,
-            .queueFamilyIndex = vk_context.device.graphics_queue orelse return error.DeviceGraphicsQueueWasNull,
+            .queueFamilyIndex = 0, // The default one
             .queueIndex = 0, // Zero because its the first and so far only queue we have
         };
 
@@ -170,7 +170,7 @@ pub const Context = struct {
         return try extensions.toOwnedSlice();
     }
 
-    pub fn getVulkanExtensions(self: Self) ![]const [:0]const u8 {
+    pub fn getVulkanExtensions() ![]const [:0]const u8 {
         // var extension_str_len: u32 = 0;
 
         // try c.check(
@@ -203,7 +203,6 @@ pub const Context = struct {
         // }
 
         // return static_extensions[0..count];
-        _ = self;
 
         //TODO: Make this not hard coded
 
