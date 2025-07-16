@@ -11,7 +11,7 @@ pub fn main() !void {
         "XR_EXT_debug_utils",
         "XR_KHR_vulkan_enable2",
     };
-    const xr_layers = &[_][:0]const u8{
+    const xr_layers = &[_][*:0]const u8{
         "XR_APILAYER_LUNARG_api_dump",
         "XR_APILAYER_LUNARG_core_validation",
         // "XR_APILAYER_LUNARG_core_validation",

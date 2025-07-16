@@ -1,4 +1,4 @@
-// Lucas, dont read this please <-- facts
+// !!!!!!Lucas, dont read this please <-- facts
 // NOTE: If you read this, DONT edit this file, its for our own safety, trust me,
 // -im an engineer
 // -NOOOOOOOOOOOOOOO
@@ -12,12 +12,16 @@ const c = @cImport({
 });
 pub usingnamespace c;
 
-pub inline fn check(result: c_int, err: anyerror) !void {
-    _ = err;
-    if (result != 0) return wrap(result);
+pub inline fn check(result: c_int, err: anyerror) !void { // nice
+    wrapXR(result) catch |e| @import("std").log.err("{}: {}", .{ err, e });
+    return switch (result) {
+        0 => err,
+        else => wrapXR(result),
+    };
 }
 
-pub fn wrap(code: c_int) !void {
+// Not needed for now, but usefull!
+pub fn wrapXR(code: c_int) !void {
     return switch (code) {
         c.XR_ERROR_VALIDATION_FAILURE => error.ValidationFailure,
         c.XR_ERROR_RUNTIME_FAILURE => error.RuntimeFailure,
@@ -135,8 +139,8 @@ pub fn wrap(code: c_int) !void {
         c.XR_ERROR_COLOCATION_DISCOVERY_NETWORK_FAILED_META => error.ColocationDiscoveryNetworkFailedMeta,
         c.XR_ERROR_COLOCATION_DISCOVERY_NO_DISCOVERY_METHOD_META => error.ColocationDiscoveryNoDiscoveryMethodMeta,
         c.XR_ERROR_SPACE_GROUP_NOT_FOUND_META => error.SpaceGroupNotFoundMeta,
-        c.XR_ERROR_EXTENSION_DEPENDENCY_NOT_ENABLED_KHR => error.ExtensionDependencyNotEnabledKhr,
-        c.XR_ERROR_PERMISSION_INSUFFICIENT_KHR => error.PermissionInsufficientKhr,
+        // c.XR_ERROR_EXTENSION_DEPENDENCY_NOT_ENABLED_KHR => error.ExtensionDependencyNotEnabledKhr,
+        // c.XR_ERROR_PERMISSION_INSUFFICIENT_KHR => error.PermissionInsufficientKhr,
         else => {},
     };
 }

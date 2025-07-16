@@ -16,38 +16,27 @@ pub const Context = struct {
     },
     space: c.XrSpace,
 
-    pub fn init(allocator: std.mem.Allocator, extensions: []const [:0]const u8, layers: []const [:0]const u8, vk_context: vk.Context) !Self {
+    pub fn init(allocator: std.mem.Allocator, extensions: []const [:0]const u8, layers: []const [*:0]const u8, vk_context: vk.Context) !Self {
         _ = vk_context;
-        _ = extensions;
-        //const available_extensions = try getAvailableExtensions(allocator, extensions);
-        const available_layers = try getAvailableLayers(allocator, layers);
+        try validateLayers(allocator, layers);
+        try validateExtensions(allocator, extensions);
 
         var create_info = c.XrInstanceCreateInfo{
             .type = c.XR_TYPE_INSTANCE_CREATE_INFO,
             .next = null,
             .createFlags = 0,
             .applicationInfo = .{
-                .applicationName = blk: {
-                    var buffer: [128]u8 = undefined;
-                    const name = "WallensteinVR";
-                    @memcpy(buffer[0..name.len], name[0..]);
-                    break :blk buffer;
-                },
+                .applicationName = ("WallensteinVR\x00" ++ [1]u8{0} ** (128 - "WallensteinVR\x00".len)).*, //mafs
                 .applicationVersion = 1,
-                .engineName = blk: {
-                    var buffer: [128]u8 = undefined;
-                    const name = "WallensteinVR_Engine";
-                    @memcpy(buffer[0..name.len], name[0..]);
-                    break :blk buffer;
-                },
+                .engineName = ("WallensteinVR_Engine\x00" ++ [1]u8{0} ** (128 - "WallensteinVR_Engine\x00".len)).*,
                 .engineVersion = 1,
                 .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
             },
             //TODO: MUST BE C char** AND remove hardcoded size
-            // .enabledExtensionNames = @ptrCast(available_extensions.ptr),
-            // .enabledExtensionCount = @intCast(available_extensions.len),
-            .enabledApiLayerCount = @intCast(available_layers.len),
-            .enabledApiLayerNames = @ptrCast(available_layers.ptr),
+            .enabledExtensionNames = @ptrCast(extensions.ptr),
+            .enabledExtensionCount = @intCast(extensions.len),
+            .enabledApiLayerCount = @intCast(layers.len),
+            .enabledApiLayerNames = @ptrCast(layers.ptr),
         };
 
         var instance: c.XrInstance = undefined;
@@ -250,12 +239,12 @@ pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT 
     return debug_messenger;
 }
 
-fn getAvailableExtensions(allocator: std.mem.Allocator, extentions: []const [:0]const u8) ![]const [*:0]const u8 {
+fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [:0]const u8) !void {
     var extension_count: u32 = 0;
 
     try c.check(
         c.xrEnumerateInstanceExtensionProperties(null, 0, &extension_count, null),
-        error.EnumerateApiLayerPropertiesCount,
+        error.EnumerateExtentionsPropertiesCount,
     );
 
     const extension_properties = try allocator.alloc(c.XrExtensionProperties, @intCast(extension_count));
@@ -263,35 +252,21 @@ fn getAvailableExtensions(allocator: std.mem.Allocator, extentions: []const [:0]
 
     @memset(extension_properties, .{ .type = c.XR_TYPE_EXTENSION_PROPERTIES });
 
-    // std.debug.print("RAW DATA {any}\n", .{extension_properties});
     try c.check(
         c.xrEnumerateInstanceExtensionProperties(null, extension_count, &extension_count, @ptrCast(extension_properties.ptr)),
-        error.EnumerateApiLayerProperties,
+        error.EnumerateExtensionsProperties,
     );
 
-    std.debug.print("hello111\n", .{});
-    var active_api_layers = std.ArrayList([*:0]const u8).init(allocator);
-
-    for (extentions) |extension| {
-        var found: bool = false;
-        for (extension_properties) |extension_property| {
-            if (!std.mem.eql(u8, extension, @ptrCast(&extension_property.extensionName))) {
-                continue;
-            } else {
-                try active_api_layers.append(@ptrCast(&extension_property.extensionName));
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            log.err("Failed to find OpenXR layer: {s}\n", .{extension});
-            return error.MissingExtension;
+    for (extentions) |extention| {
+        for (extension_propertieextention), std.mem.sliceTo(&extension_property.layerName, 0))) break;
+        } else {
+            log.err("Failed to find OpenXR extension: {s}\n", .{extention});
+            return error.MissingLayers;
         }
     }
-    return try active_api_layers.toOwnedSlice();
 }
 
-pub fn getAvailableLayers(allocator: std.mem.Allocator, layers: []const [:0]const u8) ![]const [*:0]const u8 {
+pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u8) !void {
     var layer_count: u32 = 0;
 
     try c.check(
@@ -312,14 +287,13 @@ pub fn getAvailableLayers(allocator: std.mem.Allocator, layers: []const [:0]cons
 
     // can u try this \/ \/ \/ \/ \/
     // this instead: no copying + no alloc
+    // BIG FAT JUICY DONKEY MEAT
     for (layers) |layer| {
         for (layer_properties) |layer_property| {
-            if (std.mem.eql(u8, layer, std.mem.sliceTo(&layer_property.layerName, 0))) break;
+            if (std.mem.eql(u8, std.mem.span(layer), std.mem.sliceTo(&layer_property.layerName, 0))) break;
         } else {
             log.err("Failed to find OpenXR layer: {s}\n", .{layer});
-            return error.MissingExtension;
+            return error.MissingLayers;
         }
     }
-
-    return layers;
 }
