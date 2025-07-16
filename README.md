@@ -1,15 +1,16 @@
 # WallensteinVR
 
-
 ## Installation
 
-Windows
+### Windows 🪟
 
 ```sh
 Idk, use linux tbh
 ```
 
-Debian/Ubuntu
+### Linux 🐧
+
+#### Debian/Ubuntu
 
 ```sh
 sudo apt update
@@ -17,10 +18,16 @@ sudo apt install libopenxr-loader1
 sudo apt install libopenxr-dev
 ```
 
-Arch
+#### Arch
 
 ```sh
 sudo pacman -S openxr
 ```
 
 NOTE: might require the vulkan SDK
+
+### Runtimes
+
+[Monado](https://github.com/mateosss/monado)
+
+[Steam VR](https://store.steampowered.com/app/250820/SteamVR/)
