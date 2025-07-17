@@ -32,10 +32,11 @@ pub fn selectPhysical(instance: c.VkInstance) !c.VkPhysicalDevice {
 
     if (device_count == 0) return error.NoPhysicalDevicesFound;
 
-    var physical_devices: [8]?c.VkPhysicalDevice = [_]?c.VkPhysicalDevice{null} ** 8;
+    // double optional, yet another ptrCast footgun
+    var physical_devices: [8]c.VkPhysicalDevice = [_]c.VkPhysicalDevice{null} ** 8;
 
     try c.check(
-        c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast(&physical_devices)),
+        c.vkEnumeratePhysicalDevices(instance, &device_count, &physical_devices),
         error.EnumeratePhysicalDevices,
     );
 
