@@ -7,7 +7,7 @@
 #pragma once
 #include <GraphicsAPI.h>
 
-#if defined(XR_USE_GRAPHICS_API_VULKAN)
+#if defined(XR_USE_GRAPHICS_API_VULKAN)i
 class GraphicsAPI_Vulkan : public GraphicsAPI {
 public:
     GraphicsAPI_Vulkan();
