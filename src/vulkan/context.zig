@@ -30,7 +30,7 @@ pub const Context = struct {
     instance: c.VkInstance,
     device: Device,
 
-    pub fn init(extensions: []const [:0]const u8) !Self {
+    pub fn init(extensions: []const [*:0]const u8) !Self {
         const instance = try createInstance(extensions);
         const device = try Device.init(instance);
 
@@ -44,8 +44,8 @@ pub const Context = struct {
         c.vkDestroyInstance(self.instance, null);
     }
 
-    fn createInstance(extensions: []const [:0]const u8) !c.VkInstance {
-        const validation_layers = &[_][:0]const u8{
+    fn createInstance(extensions: []const [*:0]const u8) !c.VkInstance {
+        const validation_layers: []const [*:0]const u8 = &.{
             "VK_LAYER_KHRONOS_validation",
         };
 
@@ -64,9 +64,9 @@ pub const Context = struct {
             .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pNext = &debug_info,
             .flags = 0,
-            .ppEnabledExtensionNames = @ptrCast(&extensions),
+            .ppEnabledExtensionNames = extensions.ptr,
             .enabledExtensionCount = @intCast(extensions.len),
-            .ppEnabledLayerNames = @ptrCast(&validation_layers),
+            .ppEnabledLayerNames = validation_layers.ptr,
             .enabledLayerCount = @intCast(validation_layers.len),
 
             .pApplicationInfo = &.{
