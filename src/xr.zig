@@ -20,8 +20,6 @@ pub const Context = struct {
         try validateExtensions(allocator, extensions);
         try validateLayers(allocator, layers);
 
-        std.debug.print("extensions {any}\n", .{extensions});
-
         var create_info = c.XrInstanceCreateInfo{
             .type = c.XR_TYPE_INSTANCE_CREATE_INFO,
             .next = null,
@@ -35,9 +33,9 @@ pub const Context = struct {
             },
 
             .enabledExtensionNames = extensions.ptr,
-            .enabledExtensionCount = @intCast(extensions.len),
-            .enabledApiLayerCount = @intCast(layers.len),
+            .enabledExtensionCount = @intCast(extensions.len + 1),
             .enabledApiLayerNames = layers.ptr,
+            .enabledApiLayerCount = @intCast(layers.len),
         };
 
         var instance: c.XrInstance = undefined;
@@ -254,7 +252,6 @@ fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]con
 
     @memset(extension_properties, .{ .type = c.XR_TYPE_EXTENSION_PROPERTIES });
 
-
     try c.xrCheck(
         c.xrEnumerateInstanceExtensionProperties(null, extension_count, &extension_count, extension_properties.ptr),
         error.EnumerateExtensionsProperties,
@@ -262,7 +259,10 @@ fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]con
 
     for (extentions) |extention| {
         for (extension_properties) |extension_property| {
-            if (std.mem.eql(u8, std.mem.span(extention), std.mem.sliceTo(&extension_property.extensionName, 0))) break;
+            if (std.mem.eql(u8, std.mem.span(extention), std.mem.sliceTo(&extension_property.extensionName, 0))) {
+                std.debug.print("found {s}\n", .{extention});
+                break;
+            }
         } else {
             log.err("Failed to find OpenXR extension: {s}\n", .{extention});
             return error.MissingLayers;

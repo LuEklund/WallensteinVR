@@ -11,13 +11,27 @@ pub fn build(b: *std.Build) void {
     });
 
     const exe = b.addExecutable(.{
-        .name = "wallenstein_vr", // <-- Name of the project
+        .name = "WallensteinVr",
         .root_module = exe_mod,
     });
 
     exe.linkLibC();
-    exe.linkSystemLibrary("vulkan");
+    // exe.linkSystemLibrary("vulkan");
     exe.linkSystemLibrary("openxr_loader");
+
+    const registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml");
+    const vk_gen = b.dependency("vulkan_zig", .{}).artifact("vulkan-zig-generator");
+
+    const vk_generate_cmd = b.addRunArtifact(vk_gen);
+    vk_generate_cmd.addFileArg(registry);
+
+    const generated_vk_zig = vk_generate_cmd.addOutputFileArg("vk.zig");
+
+    const vk_module = b.createModule(.{
+        .root_source_file = generated_vk_zig,
+    });
+
+    exe.root_module.addImport("vk", vk_module);
 
     b.installArtifact(exe);
 
