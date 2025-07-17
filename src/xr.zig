@@ -27,13 +27,12 @@ pub const Context = struct {
             .next = null,
             .createFlags = 0,
             .applicationInfo = .{
-                .applicationName = ("WallensteinVR\x00" ++ [1]u8{0} ** (128 - "WallensteinVR\x00".len)).*, //mafs
+                .applicationName = ("WallensteinVR\x00" ++ [1]u8{0} ** (128 - "WallensteinVR\x00".len)).*,
                 .applicationVersion = 1,
                 .engineName = ("WallensteinVR_Engine\x00" ++ [1]u8{0} ** (128 - "WallensteinVR_Engine\x00".len)).*,
                 .engineVersion = 1,
                 .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
             },
-            //TODO: MUST BE C char** AND remove hardcoded size
             .enabledExtensionNames = @ptrCast(extensions.ptr),
             .enabledExtensionCount = @intCast(extensions.len),
             .enabledApiLayerCount = @intCast(layers.len),
@@ -41,7 +40,7 @@ pub const Context = struct {
         };
 
         var instance: c.XrInstance = undefined;
-        try c.check(
+        try c.xrCheck(
             c.xrCreateInstance(&create_info, &instance),
             error.CreateInstance,
         );
@@ -55,13 +54,13 @@ pub const Context = struct {
         system_info.formFactor = c.XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
 
         var system_id: c.XrSystemId = undefined;
-        try c.check(
+        try c.xrCheck(
             c.xrGetSystem(instance, &system_info, &system_id),
             error.GetSystemId,
         );
 
         var system_properties = c.XrSystemProperties{ .type = c.XR_TYPE_SYSTEM_PROPERTIES, .next = null };
-        try c.check(
+        try c.xrCheck(
             c.xrGetSystemProperties(instance, system_id, &system_properties),
             error.GetSystemProperties,
         );
@@ -71,8 +70,6 @@ pub const Context = struct {
             .instance = vk_context.instance,
             .physicalDevice = vk_context.device.physical,
             .device = vk_context.device.logical,
-            .queueFamilyIndex = 0, // The default one
-            .queueIndex = 0, // Zero because its the first and so far only queue we have
         };
 
         const session_info = c.XrSessionCreateInfo{
@@ -82,7 +79,7 @@ pub const Context = struct {
         };
 
         var session: c.XrSession = undefined;
-        try c.check(
+        try c.xrCheck(
             c.xrCreateSession(instance, &session_info, &session),
             error.CreateSession,
         );
@@ -97,7 +94,7 @@ pub const Context = struct {
         };
 
         var space: c.XrSpace = undefined;
-        try c.check(
+        try c.xrCheck(
             c.xrCreateReferenceSpace(session, &space_create_info, &space),
             error.CreateReferenceSpace,
         );
@@ -124,7 +121,7 @@ pub const Context = struct {
     pub fn getVulkanExtensions() ![]const [:0]const u8 {
         // var extension_str_len: u32 = 0;
 
-        // try c.check(
+        // try c.xrCheck(
         //     c.xrGetVulkanInstanceExtensionsKHR(self.instance, self.system.id, 0, &extension_str_len, null),
         //     error.GetVulkanInstanceExtensionsKHR,
         // );
@@ -132,7 +129,7 @@ pub const Context = struct {
         // var buffer: [512]u8 = undefined;
         // const extension_slice = buffer[0..@intCast(extension_str_len)];
 
-        // try c.check(
+        // try c.xrCheck(
         //     c.xrGetVulkanInstanceExtensionsKHR(
         //         self.instance,
         //         self.system.id,
@@ -176,7 +173,7 @@ pub const Context = struct {
 
 pub fn getXRFunction(instance: c.XrInstance, name: [*c]const u8) !*const anyopaque {
     var func: c.PFN_xrVoidFunction = null;
-    try c.check(
+    try c.xrCheck(
         c.xrGetInstanceProcAddr(instance, name, &func),
         error.GetInstanceProcAddr,
     );
@@ -232,7 +229,7 @@ pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT 
     const raw_fn = try getXRFunction(instance, "xrCreateDebugUtilsMessengerEXT");
     const xrCreateDebugUtilsMessengerEXT: PFN_xrCreateDebugUtilsMessengerEXT = @ptrCast(raw_fn);
 
-    try c.check(
+    try c.xrCheck(
         xrCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, &debug_messenger),
         error.CreateDebugUtilsMessengerEXT,
     );
@@ -243,7 +240,7 @@ pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT 
 fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]const u8) !void {
     var extension_count: u32 = 0;
 
-    try c.check(
+    try c.xrCheck(
         c.xrEnumerateInstanceExtensionProperties(null, 0, &extension_count, null),
         error.EnumerateExtentionsPropertiesCount,
     );
@@ -253,7 +250,7 @@ fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]con
 
     @memset(extension_properties, .{ .type = c.XR_TYPE_EXTENSION_PROPERTIES });
 
-    try c.check(
+    try c.xrCheck(
         c.xrEnumerateInstanceExtensionProperties(null, extension_count, &extension_count, @ptrCast(extension_properties.ptr)),
         error.EnumerateExtensionsProperties,
     );
@@ -271,7 +268,7 @@ fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]con
 pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u8) !void {
     var layer_count: u32 = 0;
 
-    try c.check(
+    try c.xrCheck(
         c.xrEnumerateApiLayerProperties(0, &layer_count, null),
         error.EnumerateApiLayerPropertiesCount,
     );
@@ -279,17 +276,12 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
     defer allocator.free(layer_properties);
 
     @memset(layer_properties, .{ .type = c.XR_TYPE_API_LAYER_PROPERTIES });
-    //try layer_properties.append(c.XR_TYPE_API_LAYER_PROPERTIES);
-    try c.check(
+
+    try c.xrCheck(
         c.xrEnumerateApiLayerProperties(layer_count, &layer_count, @ptrCast(layer_properties.ptr)),
         error.EnumerateApiLayerProperties,
     );
 
-    // this copy is prob useless cuz it just returns whatever is in `layers`
-
-    // can u try this \/ \/ \/ \/ \/
-    // this instead: no copying + no alloc
-    // BIG FAT JUICY DONKEY MEAT
     for (layers) |layer| {
         for (layer_properties) |layer_property| {
             if (std.mem.eql(u8, std.mem.span(layer), std.mem.sliceTo(&layer_property.layerName, 0))) break;

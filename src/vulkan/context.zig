@@ -81,7 +81,7 @@ pub const Context = struct {
         };
 
         var instance: c.VkInstance = undefined;
-        try c.check(
+        try c.vkCheck(
             c.vkCreateInstance(&create_info, null, &instance),
             error.CreateInstance,
         );
