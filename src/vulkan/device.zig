@@ -25,7 +25,7 @@ pub fn deinit(self: Self) void {
 
 pub fn selectPhysical(instance: c.VkInstance) !c.VkPhysicalDevice {
     var device_count: u32 = 0;
-    try c.check(
+    try c.vkCheck(
         c.vkEnumeratePhysicalDevices(instance, &device_count, null),
         error.EnumeratePhysicalDevicesCount,
     );
@@ -35,7 +35,8 @@ pub fn selectPhysical(instance: c.VkInstance) !c.VkPhysicalDevice {
     // double optional, yet another ptrCast footgun
     var physical_devices: [8]c.VkPhysicalDevice = [_]c.VkPhysicalDevice{null} ** 8;
 
-    try c.check(
+
+    try c.vkCheck(
         c.vkEnumeratePhysicalDevices(instance, &device_count, &physical_devices),
         error.EnumeratePhysicalDevices,
     );
@@ -107,7 +108,7 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice) !struct { c.VkDe
     };
 
     var logical_device: c.VkDevice = undefined;
-    try c.check(
+    try c.vkCheck(
         c.vkCreateDevice(physical_device, &create_info, null, &logical_device),
         error.CreateDevice,
     );
