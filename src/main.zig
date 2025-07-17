@@ -1,7 +1,6 @@
 const std = @import("std");
 const log = @import("std").log;
 const xr = @import("xr.zig");
-const vk = @import("vulkan/context.zig");
 const c = @import("c.zig");
 
 pub fn main() !void {
@@ -20,6 +19,6 @@ pub fn main() !void {
     // const vk_context = try vk.Context.init(try xr.Context.getVulkanExtensions());
     // defer vk_context.deinit();
 
-    const xr_context = try xr.Context.init(allocator, xr_extensions, xr_layers, std.mem.zeroes(vk.Context));
+    const xr_context = try xr.Context.init(allocator, xr_extensions, xr_layers);
     defer xr_context.deinit();
 }
