@@ -36,7 +36,6 @@ pub const Context = struct {
                 .engineVersion = 1,
                 .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
             },
-            //TODO: MUST BE C char** AND remove hardcoded size
             .enabledExtensionNames = @ptrCast(extensions.ptr),
             .enabledExtensionCount = @intCast(extensions.len),
             .enabledApiLayerCount = @intCast(layers.len),
@@ -69,7 +68,7 @@ pub const Context = struct {
             error.GetSystemProperties,
         );
 
-        _ = getVulkanInstanceRequirements(allocator, instance, system_id);
+        _ = try getVulkanInstanceRequirements(allocator, instance, system_id);
 
         return .{
             .allocator = allocator,
@@ -122,66 +121,71 @@ pub const Context = struct {
     }
 };
 
-// pub const Session = struct {
-//     const Self = @This();
+pub const Session = struct {
+    const Self = @This();
 
-//     session: c.XrSession,
-//     space: c.XrSpace,
+    session: c.XrSession,
+    space: c.XrSpace,
 
-//     pub fn init(xr_context: Context, vk_context: vk.Context) !Self {
-//         const graphics_binding = c.XrGraphicsBindingVulkanKHR{
-//             .type = c.XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR,
-//             .instance = vk_context.instance,
-//             .physicalDevice = vk_context.device.physical,
-//             .device = vk_context.device.logical,
-//             .queueFamilyIndex = 0, // The default one
-//             .queueIndex = 0, // Zero because its the first and so far only queue we have
-//         };
+    pub fn init(xr_context: Context, vk_instance: c.VkInstance, physical_device: c.VkPhysicalDevice, logical_device: c.VkDevice, queue_family_index: u32) !Self {
+        const graphics_binding = c.XrGraphicsBindingVulkanKHR{
+            .type = c.XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR,
+            .instance = vk_instance,
+            .physicalDevice = physical_device,
+            .device = logical_device,
+            .queueFamilyIndex = queue_family_index,
+            .queueIndex = 0, // Zero because its the first and so far only queue we have
+        };
 
-//         const session_info = c.XrSessionCreateInfo{
-//             .type = c.XR_TYPE_SESSION_CREATE_INFO,
-//             .next = &graphics_binding,
-//             .systemId = xr_context.system_id,
-//         };
+        const session_info = c.XrSessionCreateInfo{
+            .type = c.XR_TYPE_SESSION_CREATE_INFO,
+            .next = &graphics_binding,
+            .systemId = xr_context.system_id,
+        };
 
-//         var session: c.XrSession = undefined;
-//         try c.xrCheck(
-//             c.xrCreateSession(xr_context.instance, &session_info, &session),
-//             error.CreateSession,
-//         );
+        var session: c.XrSession = undefined;
+        try c.xrCheck(
+            c.xrCreateSession(xr_context.instance, &session_info, &session),
+            error.CreateSession,
+        );
 
-//         var space_create_info = c.XrReferenceSpaceCreateInfo{
-//             .type = c.XR_TYPE_REFERENCE_SPACE_CREATE_INFO,
-//             .referenceSpaceType = c.XR_REFERENCE_SPACE_TYPE_LOCAL,
-//             .poseInReferenceSpace = .{
-//                 .orientation = c.XrQuaternionf{ .x = 0, .y = 0, .z = 0, .w = 1 },
-//                 .position = c.XrVector3f{ .x = 0, .y = 0, .z = 0 },
-//             },
-//         };
+        var space_create_info = c.XrReferenceSpaceCreateInfo{
+            .type = c.XR_TYPE_REFERENCE_SPACE_CREATE_INFO,
+            .referenceSpaceType = c.XR_REFERENCE_SPACE_TYPE_LOCAL,
+            .poseInReferenceSpace = .{
+                .orientation = c.XrQuaternionf{ .x = 0, .y = 0, .z = 0, .w = 1 },
+                .position = c.XrVector3f{ .x = 0, .y = 0, .z = 0 },
+            },
+        };
 
-//         var space: c.XrSpace = undefined;
-//         try c.xrCheck(
-//             c.xrCreateReferenceSpace(session, &space_create_info, &space),
-//             error.CreateReferenceSpace,
-//         );
+        var space: c.XrSpace = undefined;
+        try c.xrCheck(
+            c.xrCreateReferenceSpace(session, &space_create_info, &space),
+            error.CreateReferenceSpace,
+        );
 
-//         return .{ .session = session, .space = space };
-//     }
+        return .{ .session = session, .space = space };
+    }
 
-//     pub fn deinit(self: Self) void {
-//         _ = c.xrDestroySpace(self.space);
-//         _ = c.xrDestroySession(self.session);
-//     }
-// };
+    pub fn deinit(self: Self) void {
+        _ = c.xrDestroySpace(self.space);
+        _ = c.xrDestroySession(self.session);
+    }
+};
 
 pub fn getXRFunction(instance: c.XrInstance, name: [*c]const u8) !*const anyopaque {
     var func: c.PFN_xrVoidFunction = null;
+    // c.PFN_xrVoidFunction
     try c.xrCheck(
         c.xrGetInstanceProcAddr(instance, name, &func),
         error.GetInstanceProcAddr,
     );
 
-    return @ptrCast(func);
+    if (func == null) return error.InvalidXrFunctionPtr;
+
+    log.info("\n\nXR Func PTR {}\n\n", .{func.?});
+
+    return func.?;
 }
 
 fn handleXRError(severity: c.XrDebugUtilsMessageSeverityFlagsEXT, @"type": c.XrDebugUtilsMessageTypeFlagsEXT, callback_data: *const c.XrDebugUtilsMessengerCallbackDataEXT, _: *anyopaque) c.XrBool32 {
@@ -248,7 +252,7 @@ fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]con
         error.EnumerateExtentionsPropertiesCount,
     );
 
-    const extension_properties = try allocator.alloc(c.XrExtensionProperties, @intCast(extension_count));
+    const extension_properties = try allocator.alloc(c.XrExtensionProperties, extension_count);
     defer allocator.free(extension_properties);
 
     @memset(extension_properties, .{ .type = c.XR_TYPE_EXTENSION_PROPERTIES });
@@ -275,10 +279,16 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
         c.xrEnumerateApiLayerProperties(0, &layer_count, null),
         error.EnumerateApiLayerPropertiesCount,
     );
-    const layer_properties = try allocator.alloc(c.XrApiLayerProperties, @intCast(layer_count));
+    const layer_properties = try allocator.alloc(c.XrApiLayerProperties, layer_count);
     defer allocator.free(layer_properties);
 
     @memset(layer_properties, .{ .type = c.XR_TYPE_API_LAYER_PROPERTIES });
+
+    try c.xrCheck(
+        c.xrEnumerateApiLayerProperties(layer_count, &layer_count, layer_properties.ptr),
+        error.EnumerateApiLayerProperties,
+    );
+
     for (layers) |layer| {
         for (layer_properties) |layer_property| {
             if (std.mem.eql(u8, std.mem.span(layer), std.mem.sliceTo(&layer_property.layerName, 0))) break;
@@ -289,7 +299,7 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
     }
 }
 
-pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.XrInstance, system: c.XrSystemId) struct { graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, extensions: []const [*:0]const u8 } {
+pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.XrInstance, system: c.XrSystemId) !struct { graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, extensions: []const [*:0]const u8 } {
     const PFN_xrGetVulkanGraphicsRequirementsKHR = *const fn (
         instance: c.XrInstance,
         system_id: c.XrSystemId,
@@ -299,12 +309,15 @@ pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.X
     const raw_fn_graphics = try getXRFunction(instance, "xrGetVulkanGraphicsRequirementsKHR");
     const xrGetVulkanGraphicsRequirementsKHR: PFN_xrGetVulkanGraphicsRequirementsKHR = @ptrCast(raw_fn_graphics);
 
+    // @breakpoint();
+
+    log.info("\n\nXR Func PTR 2 {}\n\n", .{&xrGetVulkanGraphicsRequirementsKHR});
     const PFN_xrGetVulkanInstanceExtensionsKHR = *const fn (
         instance: c.XrInstance,
         system_id: c.XrSystemId,
         buffer_capacity_input: u32,
         buffer_count_output: *u32,
-        buffer: [*]u8, // 🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼🧼
+        buffer: ?[*]u8,
     ) callconv(.c) c.XrResult;
 
     const raw_fn_extensions = try getXRFunction(instance, "xrGetVulkanInstanceExtensionsKHR");
@@ -325,34 +338,44 @@ pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.X
         error.GetVulkanInstanceExtensionsCount,
     );
 
-    var instance_extensions_data = try allocator.alloc(u8, instance_extensions_size);
+    var instance_extensions_data = try allocator.alloc(u8, instance_extensions_size + 1);
     defer allocator.free(instance_extensions_data);
     try c.xrCheck(
         xrGetVulkanInstanceExtensionsKHR(instance, system, instance_extensions_size, &instance_extensions_size, instance_extensions_data.ptr),
         error.GetVulkanInstanceExtensionsData,
     );
 
-    std.debug.print("Instance Extenstion: {s}\n", .{instance_extensions_data.ptr});
-    const extensions = try std.ArrayList([*:0]const u8).initCapacity(allocator, instance_extensions_size * 2);
+    std.debug.print("\n\n\nInstance Extenstion: {s}\n\n", .{instance_extensions_data});
+    var extensions = try std.ArrayList([*:0]const u8).initCapacity(allocator, instance_extensions_size + 1);
 
-    var i: usize = 0;
-    var last: usize = 0;
-    while (i <= instance_extensions_size) : (i += 1) {
-        if (i == @as(usize, @intCast(instance_extensions_size)) or instance_extensions_data[i] == ' ') {
-            try extensions.append(instance_extensions_data[last .. i - last]);
-            last = i + 1;
-        }
+    instance_extensions_data[instance_extensions_size] = ' ';
+    var iter = std.mem.splitScalar(u8, instance_extensions_data, ' ');
+    while (iter.next()) |slice| {
+        const null_terminated_slice = try allocator.dupeZ(u8, slice);
+        try extensions.append(null_terminated_slice);
     }
 
     return .{ .graphics_requirements = graphics_requirements, .extensions = try extensions.toOwnedSlice() };
 }
 
-pub fn getVulkanDeviceRequirements(allocator: std.mem.Allocator, instance: c.XrInstance, system: c.XrSystemId, vk_instance: c.VkInstance) struct { physical_device: c.VkPhysicalDevice, extensions: []const [*:0]const u8 } {
+pub fn getVulkanDeviceRequirements(allocator: std.mem.Allocator, instance: c.XrInstance, system: c.XrSystemId, vk_instance: c.VkInstance) !struct { physical_device: c.VkPhysicalDevice, extensions: []const [*:0]const u8 } {
+    const PFN_xrGetVulkanGraphicsDeviceKHR = *const fn (
+        instance: c.XrInstance,
+        system_id: c.XrSystemId,
+        physical_device: *c.VkPhysicalDevice,
+    ) callconv(.c) c.XrResult;
     const raw_fn_graphics_device = try getXRFunction(instance, "xrGetVulkanGraphicsDeviceKHR");
-    const xrGetVulkanGraphicsDeviceKHR: c.PFN_xrGetVulkanGraphicsRequirementsKHR = @ptrCast(raw_fn_graphics_device);
+    const xrGetVulkanGraphicsDeviceKHR: PFN_xrGetVulkanGraphicsDeviceKHR = @ptrCast(raw_fn_graphics_device);
 
+    const PFN_xrGetVulkanDeviceExtensionsKHR = *const fn (
+        instance: c.XrInstance,
+        system_id: c.XrSystemId,
+        buffer_capacity_input: u32,
+        buffer_count_output: *u32,
+        buffer: ?[*]u8,
+    ) callconv(.c) c.XrResult;
     const raw_fn_device_extensions = try getXRFunction(instance, "xrGetVulkanDeviceExtensionsKHR");
-    const xrGetVulkanDeviceExtensionsKHR: c.PFN_xrGetVulPFN_xrGetVulkanInstanceExtensionsKHRkanGraphicsRequirementsKHR = @ptrCast(raw_fn_device_extensions);
+    const xrGetVulkanDeviceExtensionsKHR: PFN_xrGetVulkanDeviceExtensionsKHR = @ptrCast(raw_fn_device_extensions);
 
     var physical_device: c.VkPhysicalDevice = undefined;
     try c.xrCheck(
@@ -367,7 +390,7 @@ pub fn getVulkanDeviceRequirements(allocator: std.mem.Allocator, instance: c.XrI
     );
 
     var device_extensions_data = try allocator.alloc(u8, device_extensions_size);
-    std.debug.print("Instance Extenstion: {s}\n", .{device_extensions_data.ptr});
+    std.debug.print("Instance Extenstion: {s}\n", .{device_extensions_data});
     defer allocator.free(device_extensions_data);
     try c.xrCheck(
         xrGetVulkanDeviceExtensionsKHR(instance, system, device_extensions_size, &device_extensions_size, device_extensions_data.ptr),
@@ -375,13 +398,13 @@ pub fn getVulkanDeviceRequirements(allocator: std.mem.Allocator, instance: c.XrI
     );
 
     var extensions = try std.ArrayList([*:0]const u8).initCapacity(allocator, device_extensions_size);
-    var i: usize = 0;
-    var last: usize = 0;
-    while (i <= device_extensions_size) : (i += 1) {
-        if (i == @as(usize, @intCast(device_extensions_size)) or device_extensions_data[i] == ' ') {
-            try extensions.append(device_extensions_data[last .. i - last]);
-            last = i + 1;
-        }
+
+    device_extensions_data[device_extensions_size] = ' ';
+    var iter = std.mem.splitScalar(u8, device_extensions_data, ' ');
+    while (iter.next()) |slice| {
+        const null_terminated_slice = try allocator.dupeZ(u8, slice);
+        try extensions.append(null_terminated_slice);
     }
+
     return .{ .physical_device = physical_device, .extensions = try extensions.toOwnedSlice() };
 }
