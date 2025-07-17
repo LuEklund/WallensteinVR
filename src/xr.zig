@@ -33,7 +33,7 @@ pub const Context = struct {
             },
 
             .enabledExtensionNames = extensions.ptr,
-            .enabledExtensionCount = @intCast(extensions.len + 1),
+            .enabledExtensionCount = @intCast(extensions.len),
             .enabledApiLayerNames = layers.ptr,
             .enabledApiLayerCount = @intCast(layers.len),
         };
