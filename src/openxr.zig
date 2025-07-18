@@ -23,10 +23,7 @@ pub fn createInstance(extensions: []const [*:0]const u8, layers: []const [*:0]co
     };
 
     var instance: c.XrInstance = undefined;
-    try loader.xrCheck(
-        c.xrCreateInstance(&create_info, &instance),
-        error.CreateInstance,
-    );
+    try loader.xrCheck(c.xrCreateInstance(&create_info, &instance));
 
     return instance;
 }
@@ -41,10 +38,7 @@ pub fn getXRFunction(
 } {
     var func: c.PFN_xrVoidFunction = undefined;
 
-    try loader.xrCheck(
-        c.xrGetInstanceProcAddr(instance, name, &func),
-        error.GetInstanceProcAddr,
-    );
+    try loader.xrCheck(c.xrGetInstanceProcAddr(instance, name, &func));
 
     return @ptrCast(func);
 }
@@ -96,10 +90,7 @@ pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT 
 
     const xrCreateDebugUtilsMessengerEXT = try getXRFunction(c.PFN_xrCreateDebugUtilsMessengerEXT, instance, "xrCreateDebugUtilsMessengerEXT");
 
-    try loader.xrCheck(
-        xrCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, &debug_messenger),
-        error.CreateDebugUtilsMessengerEXT,
-    );
+    try loader.xrCheck(xrCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, &debug_messenger));
 
     return debug_messenger;
 }
@@ -117,10 +108,7 @@ pub fn getSystem(instance: c.XrInstance) !c.XrSystemId {
     };
 
     var system_id: c.XrSystemId = undefined;
-    try loader.xrCheck(
-        c.xrGetSystem(instance, &system_get_info, &system_id),
-        error.getSystem,
-    );
+    try loader.xrCheck(c.xrGetSystem(instance, &system_get_info, &system_id));
 
     return system_id;
 }
@@ -134,10 +122,7 @@ pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.X
         .type = c.XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR,
     };
 
-    try loader.xrCheck(
-        xrGetVulkanGraphicsRequirementsKHR(instance, system_id, &graphics_requirements),
-        error.GetVulkanGraphicsRequirement,
-    );
+    try loader.xrCheck(xrGetVulkanGraphicsRequirementsKHR(instance, system_id, &graphics_requirements));
 
     _ = allocator;
 
@@ -202,10 +187,7 @@ pub fn getVulkanDeviceRequirements(allocator: std.mem.Allocator, instance: c.XrI
     // const xrGetVulkanDeviceExtensionsKHR = try getXRFunction(c.PFN_xrGetVulkanDeviceExtensionsKHR, instance, "xrGetVulkanDeviceExtensionsKHR");
 
     var physical_device: c.VkPhysicalDevice = undefined;
-    try loader.xrCheck(
-        xrGetVulkanGraphicsDeviceKHR(instance, system, vk_instance, &physical_device),
-        error.xrGetVulkanGraphicsDevice,
-    );
+    try loader.xrCheck(xrGetVulkanGraphicsDeviceKHR(instance, system, vk_instance, &physical_device));
 
     _ = allocator;
 

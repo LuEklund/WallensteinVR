@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const c = @cImport({
     @cDefine("XR_USE_GRAPHICS_API_VULKAN", "1");
     @cDefine("XR_EXTENSION_PROTOTYPES", "1");
@@ -12,10 +14,9 @@ pub const LoadError = error{
     LoadFailed,
 };
 
-pub inline fn xrCheck(result: c.XrResult, err: anytype) (XrError || @TypeOf(err))!void {
+pub inline fn xrCheck(result: c.XrResult) XrError!void {
     if (result == c.XR_SUCCESS) return;
-
-    return wrapXrError(result) orelse err;
+    return wrapXrError(result);
 }
 
 pub const XrError = error{
@@ -67,9 +68,10 @@ pub const XrError = error{
     LocalizedNameInvalid,
     GraphicsRequirementsCallMissing,
     RuntimeUnavailable,
+    UnknownError,
 };
 
-inline fn wrapXrError(code: c.XrResult) ?XrError {
+pub inline fn wrapXrError(code: c.XrResult) XrError {
     return switch (code) {
         c.XR_ERROR_VALIDATION_FAILURE => error.ValidationFailure,
         c.XR_ERROR_RUNTIME_FAILURE => error.RuntimeFailure,
@@ -119,14 +121,13 @@ inline fn wrapXrError(code: c.XrResult) ?XrError {
         c.XR_ERROR_LOCALIZED_NAME_INVALID => error.LocalizedNameInvalid,
         c.XR_ERROR_GRAPHICS_REQUIREMENTS_CALL_MISSING => error.GraphicsRequirementsCallMissing,
         c.XR_ERROR_RUNTIME_UNAVAILABLE => error.RuntimeUnavailable,
-        else => null,
+        else => error.UnknownError,
     };
 }
 
-pub inline fn vkCheck(result: c_int, err: anytype) (VkError || @TypeOf(err))!void {
+pub inline fn vkCheck(result: c_int) VkError!void {
     if (result == c.XR_SUCCESS) return;
-
-    return wrapVkError(result) orelse err;
+    return wrapVkError(result);
 }
 
 pub const VkError = error{
@@ -185,9 +186,10 @@ pub const VkError = error{
     PipelineCompileRequiredExt,
     ErrorPipelineCompileRequiredExt,
     ErrorIncompatibleShaderBinaryExt,
+    UnknownError,
 };
 
-inline fn wrapVkError(code: c.VkResult) ?VkError {
+pub inline fn wrapVkError(code: c.VkResult) VkError {
     return switch (code) {
         c.VK_NOT_READY => error.NotReady,
         c.VK_TIMEOUT => error.Timeout,
@@ -235,6 +237,6 @@ inline fn wrapVkError(code: c.VkResult) ?VkError {
         c.VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR => error.ErrorInvalidVideoStdParametersKhr,
         c.VK_ERROR_COMPRESSION_EXHAUSTED_EXT => error.ErrorCompressionExhaustedExt,
         c.VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT => error.ErrorIncompatibleShaderBinaryExt,
-        else => null,
+        else => error.UnknownError,
     };
 }

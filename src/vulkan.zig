@@ -47,10 +47,7 @@ pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, 
     };
 
     var instance: c.VkInstance = undefined;
-    try loader.vkCheck(
-        c.vkCreateInstance(&create_info, null, &instance),
-        error.CreateInstance,
-    );
+    try loader.vkCheck(c.vkCreateInstance(&create_info, null, &instance));
     return instance;
 }
 
@@ -82,10 +79,7 @@ pub fn createDebugMessenger(instance: c.VkInstance) !c.VkDebugUtilsMessengerEXT 
 
     var debug_messenger: c.VkDebugUtilsMessengerEXT = undefined;
     const vkCreateDebugUtilsMessengerEXT = try loader.loadVkCreateDebugUtilsMessengerEXT(instance);
-    try loader.vkCheck(
-        vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, null, &debug_messenger),
-        error.CreateDebugUtilsMessenger,
-    );
+    try loader.vkCheck(vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, null, &debug_messenger));
 
     return debug_messenger;
 }
@@ -125,10 +119,7 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []co
     };
 
     var logical_device: c.VkDevice = undefined;
-    try loader.vkCheck(
-        c.vkCreateDevice(physical_device, &device_info, null, &logical_device),
-        error.CreateDevice,
-    );
+    try loader.vkCheck(c.vkCreateDevice(physical_device, &device_info, null, &logical_device));
     defer c.vkDestroyDevice(logical_device, null);
 
     return logical_device;

@@ -44,10 +44,7 @@ pub const Context = struct {
         };
 
         var instance: c.XrInstance = undefined;
-        try loader.xrCheck(
-            c.xrCreateInstance(&create_info, &instance),
-            error.CreateInstance,
-        );
+        try loader.xrCheck(c.xrCreateInstance(&create_info, &instance));
 
         const debug_messenger: *c.XrDebugUtilsLabelEXT = @ptrCast(@alignCast(try createDebugMessenger(instance)));
 
@@ -58,16 +55,10 @@ pub const Context = struct {
         system_info.formFactor = c.XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
 
         var system_id: c.XrSystemId = undefined;
-        try loader.xrCheck(
-            c.xrGetSystem(instance, &system_info, &system_id),
-            error.GetSystemId,
-        );
+        try loader.xrCheck(c.xrGetSystem(instance, &system_info, &system_id));
 
         var system_properties = c.XrSystemProperties{ .type = c.XR_TYPE_SYSTEM_PROPERTIES, .next = null };
-        try loader.xrCheck(
-            c.xrGetSystemProperties(instance, system_id, &system_properties),
-            error.GetSystemProperties,
-        );
+        try loader.xrCheck(c.xrGetSystemProperties(instance, system_id, &system_properties));
 
         const graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const instance_extensions: []const [*:0]const u8 = try getVulkanInstanceRequirements(allocator, instance, system_id);
         defer allocator.free(instance_extensions);
@@ -219,10 +210,7 @@ pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT 
     const xrCreateDebugUtilsMessengerEXT =
         try loader.loadXrCreateDebugUtilsMessengerEXT(instance);
 
-    try loader.xrCheck(
-        xrCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, &debug_messenger),
-        error.CreateDebugUtilsMessengerEXT,
-    );
+    try loader.xrCheck(xrCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, &debug_messenger));
 
     return debug_messenger;
 }
@@ -230,20 +218,14 @@ pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT 
 fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]const u8) !void {
     var extension_count: u32 = 0;
 
-    try loader.xrCheck(
-        c.xrEnumerateInstanceExtensionProperties(null, 0, &extension_count, null),
-        error.EnumerateExtentionsPropertiesCount,
-    );
+    try loader.xrCheck(c.xrEnumerateInstanceExtensionProperties(null, 0, &extension_count, null));
 
     const extension_properties = try allocator.alloc(c.XrExtensionProperties, extension_count);
     defer allocator.free(extension_properties);
 
     @memset(extension_properties, .{ .type = c.XR_TYPE_EXTENSION_PROPERTIES });
 
-    try loader.xrCheck(
-        c.xrEnumerateInstanceExtensionProperties(null, extension_count, &extension_count, @ptrCast(extension_properties.ptr)),
-        error.EnumerateExtensionsProperties,
-    );
+    try loader.xrCheck(c.xrEnumerateInstanceExtensionProperties(null, extension_count, &extension_count, @ptrCast(extension_properties.ptr)));
 
     for (extentions) |extention| {
         for (extension_properties) |extension_property| {
@@ -258,19 +240,13 @@ fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]con
 pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u8) !void {
     var layer_count: u32 = 0;
 
-    try loader.xrCheck(
-        c.xrEnumerateApiLayerProperties(0, &layer_count, null),
-        error.EnumerateApiLayerPropertiesCount,
-    );
+    try loader.xrCheck(c.xrEnumerateApiLayerProperties(0, &layer_count, null));
     const layer_properties = try allocator.alloc(c.XrApiLayerProperties, layer_count);
     defer allocator.free(layer_properties);
 
     @memset(layer_properties, .{ .type = c.XR_TYPE_API_LAYER_PROPERTIES });
 
-    try loader.xrCheck(
-        c.xrEnumerateApiLayerProperties(layer_count, &layer_count, layer_properties.ptr),
-        error.EnumerateApiLayerProperties,
-    );
+    try loader.xrCheck(c.xrEnumerateApiLayerProperties(layer_count, &layer_count, layer_properties.ptr));
 
     for (layers) |layer| {
         for (layer_properties) |layer_property| {
@@ -296,23 +272,14 @@ pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.X
         .type = c.XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR,
     };
 
-    try loader.xrCheck(
-        xrGetVulkanGraphicsRequirementsKHR(instance, system, &graphics_requirements),
-        error.GetVulkanGraphicsRequirement,
-    );
+    try loader.xrCheck(xrGetVulkanGraphicsRequirementsKHR(instance, system, &graphics_requirements));
 
     var instance_extensions_size: u32 = 0;
-    try loader.xrCheck(
-        xrGetVulkanInstanceExtensionsKHR(instance, system, 0, &instance_extensions_size, null),
-        error.GetVulkanInstanceExtensionsCount,
-    );
+    try loader.xrCheck(xrGetVulkanInstanceExtensionsKHR(instance, system, 0, &instance_extensions_size, null));
 
     var instance_extensions_data = try allocator.alloc(u8, instance_extensions_size + 1);
     defer allocator.free(instance_extensions_data);
-    try loader.xrCheck(
-        xrGetVulkanInstanceExtensionsKHR(instance, system, instance_extensions_size, &instance_extensions_size, instance_extensions_data.ptr),
-        error.GetVulkanInstanceExtensionsData,
-    );
+    try loader.xrCheck(xrGetVulkanInstanceExtensionsKHR(instance, system, instance_extensions_size, &instance_extensions_size, instance_extensions_data.ptr));
 
     std.debug.print("\n\n\nInstance Extenstion: {s}\n\n", .{instance_extensions_data});
     var extensions = try std.ArrayList([*:0]const u8).initCapacity(allocator, instance_extensions_size + 1);

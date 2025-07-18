@@ -2,7 +2,8 @@ const std = @import("std");
 const log = @import("std").log;
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
-const c = @import("loader").c;
+const loader = @import("loader");
+const c = loader.c;
 
 pub const Engine = struct {
     const Self = @This();
@@ -61,9 +62,9 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const xr_extensions = &[_][*:0]const u8{
-        c.XR_KHR_VULKAN_ENABLE_EXTENSION_NAME,
-        c.XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME,
-        c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME,
+        loader.c.XR_KHR_VULKAN_ENABLE_EXTENSION_NAME,
+        loader.c.XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME,
+        loader.c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME,
     };
     const xr_layers = &[_][*:0]const u8{
         "XR_APILAYER_LUNARG_core_validation",
