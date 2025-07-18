@@ -22,11 +22,12 @@ export fn debugCallback(
 }
 
 pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, extensions: []const [*:0]const u8, layers: []const [*:0]const u8) !c.VkInstance {
+    log.info("\n\n\n\nLEN {d}\n", .{extensions.len});
     var create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .ppEnabledExtensionNames = @ptrCast(&extensions),
+        .ppEnabledExtensionNames = if (extensions.len > 0) extensions.ptr else null,
         .enabledExtensionCount = @intCast(extensions.len),
-        .ppEnabledLayerNames = @ptrCast(&layers),
+        .ppEnabledLayerNames = if (layers.len > 0) layers.ptr else null,
         .enabledLayerCount = @intCast(layers.len),
 
         .pApplicationInfo = &.{
@@ -37,7 +38,7 @@ pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, 
             .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
             .apiVersion = c.VK_MAKE_API_VERSION(
                 0,
-                c.XR_VERSION_MAJOR(graphics_requirements.minApiVersionSupported),
+                c.XR_VERSION_MAJOR(graphics_requirements.maxApiVersionSupported),
                 c.XR_VERSION_MINOR(graphics_requirements.minApiVersionSupported),
                 0,
             ),
@@ -52,6 +53,21 @@ pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, 
     return instance;
 }
 
+pub fn getVkFunction(
+    comptime T: type,
+    instance: c.VkInstance,
+    name: [*:0]const u8,
+) !switch (@typeInfo(T)) {
+    .optional => |O| O.child,
+    else => T,
+} {
+    const func = c.vkGetInstanceProcAddr(instance, name);
+
+    if (func == null) return error.GetInstanceProcAddr;
+
+    return @ptrCast(func.?);
+}
+
 pub fn createDebugMessenger(instance: c.VkInstance) !c.VkDebugUtilsMessengerEXT {
     var debug_messenger_create_info = c.VkDebugUtilsMessengerCreateInfoEXT{
         .sType = c.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -63,15 +79,20 @@ pub fn createDebugMessenger(instance: c.VkInstance) !c.VkDebugUtilsMessengerEXT 
         .pfnUserCallback = debugCallback,
     };
 
-    // const vkCreateDebugUtilsMessengerEXT = undefined; // Waiting for Xorbits loader
+    const vkCreateDebugUtilsMessengerEXT = try getVkFunction(c.PFN_vkCreateDebugUtilsMessengerEXT, instance, "vkCreateDebugUtilsMessengerEXT");
 
     var debug_messenger: c.VkDebugUtilsMessengerEXT = undefined;
     try c.vkCheck(
-        c.vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, null, &debug_messenger),
+        vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, null, &debug_messenger),
         error.CreateDebugUtilsMessenger,
     );
 
     return debug_messenger;
+}
+pub fn destroyDebugMessenger(instance: c.VkInstance, debug_messenger: c.VkDebugUtilsMessengerEXT) void {
+    const vkDestroyDebugUtilsMessengerEXT = getVkFunction(c.PFN_vkDestroyDebugUtilsMessengerEXT, instance, "vkDestroyDebugUtilsMessengerEXT") catch unreachable;
+
+    _ = vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, null);
 }
 
 pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []const [*:0]const u8) !c.VkDevice {
@@ -96,7 +117,7 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []co
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_info,
         .pEnabledFeatures = &features,
-        .enabledExtensionCount = 0,
+        .enabledExtensionCount = @intCast(extensions.len),
         .ppEnabledExtensionNames = extensions.ptr,
         .enabledLayerCount = @intCast(extensions.len),
         .ppEnabledLayerNames = null,
@@ -108,6 +129,7 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []co
         c.vkCreateDevice(physical_device, &device_info, null, &logical_device),
         error.CreateDevice,
     );
+    defer c.vkDestroyDevice(logical_device, null);
 
     return logical_device;
 }

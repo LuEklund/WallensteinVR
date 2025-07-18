@@ -7,8 +7,12 @@ const c = @import("c.zig");
 pub const Engine = struct {
     const Self = @This();
 
+    allocator: std.mem.Allocator,
+
     xr_instance: c.XrInstance,
+    xr_instance_extensions: []const [*:0]const u8,
     xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
+    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
     vk_instance: c.VkInstance,
 
     pub const Config = struct {
@@ -22,27 +26,29 @@ pub const Engine = struct {
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xr_instance);
         const xr_system_id: c.XrSystemId = try xr.getSystem(xr_instance);
         const xr_graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const xr_instance_extensions: []const [*:0]const u8 = try xr.getVulkanInstanceRequirements(allocator, xr_instance, xr_system_id);
-        defer allocator.free(xr_instance_extensions);
 
         const vk_instance: c.VkInstance = try vk.createInstance(xr_graphics_requirements, xr_instance_extensions, config.vk_layers);
         const vk_debug_messenger: c.VkDebugUtilsMessengerEXT = try vk.createDebugMessenger(vk_instance);
-        _ = vk_debug_messenger;
 
         const physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(allocator, xr_instance, xr_system_id, vk_instance);
         const logical_device: c.VkDevice = try vk.createLogicalDevice(physical_device, vk_device_extensions);
         _ = logical_device;
 
         return .{
+            .allocator = allocator,
             .xr_instance = xr_instance,
+            .xr_instance_extensions = xr_instance_extensions,
             .xr_debug_messenger = xr_debug_messenger,
+            .vk_debug_messenger = vk_debug_messenger,
             .vk_instance = vk_instance,
         };
     }
 
     pub fn deinit(self: Self) void {
-        // defer vk.destroyDebugMessenger(vk_instance, vk_debug_messenger);  Can prob be replaced with xorbits loader
-        _ = c.vkDestroyInstance(self.vk_instance, null);
+        vk.destroyDebugMessenger(self.vk_instance, self.vk_debug_messenger);
         xr.destroyDebugMessenger(self.xr_instance, self.xr_debug_messenger); // Can prob be replaced with xorbits loader
+        // self.allocator.free(self.xr_instance_extensions);
+        _ = c.vkDestroyInstance(self.vk_instance, null);
         _ = c.xrDestroyInstance(self.xr_instance);
     }
 };

@@ -125,17 +125,9 @@ pub fn getSystem(instance: c.XrInstance) !c.XrSystemId {
 }
 
 pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.XrInstance, system_id: c.XrSystemId) !struct { c.XrGraphicsRequirementsVulkanKHR, []const [*:0]const u8 } {
-    // const PFN_xrGetVulkanGraphicsRequirementsKHR = *const fn (
-    //     instance: c.XrInstance,
-    //     system_id: c.XrSystemId,
-    //     graphics_requirements: *c.XrGraphicsRequirementsVulkanKHR,
-    // ) callconv(.c) c.XrResult;
-
     const xrGetVulkanGraphicsRequirementsKHR = try getXRFunction(c.PFN_xrGetVulkanGraphicsRequirementsKHR, instance, "xrGetVulkanGraphicsRequirementsKHR");
 
-    log.info("\n\nXR Func PTR 2 {}\n\n", .{&xrGetVulkanGraphicsRequirementsKHR});
-
-    const xrGetVulkanInstanceExtensionsKHR = try getXRFunction(c.PFN_xrGetVulkanInstanceExtensionsKHR, instance, "xrGetVulkanInstanceExtensionsKHR");
+    // const xrGetVulkanInstanceExtensionsKHR = try getXRFunction(c.PFN_xrGetVulkanInstanceExtensionsKHR, instance, "xrGetVulkanInstanceExtensionsKHR");
 
     var graphics_requirements = c.XrGraphicsRequirementsVulkanKHR{
         .type = c.XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR,
@@ -146,36 +138,67 @@ pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.X
         error.GetVulkanGraphicsRequirement,
     );
 
-    var instance_extensions_size: u32 = 0;
-    try c.xrCheck(
-        xrGetVulkanInstanceExtensionsKHR(instance, system_id, 0, &instance_extensions_size, null),
-        error.GetVulkanInstanceExtensionsCount,
-    );
+    _ = allocator;
 
-    var instance_extensions_data = try allocator.alloc(u8, instance_extensions_size + 1);
-    defer allocator.free(instance_extensions_data);
-    try c.xrCheck(
-        xrGetVulkanInstanceExtensionsKHR(instance, system_id, instance_extensions_size, &instance_extensions_size, instance_extensions_data.ptr),
-        error.GetVulkanInstanceExtensionsData,
-    );
+    // var instance_extensions_size: u32 = 0;
+    // try c.xrCheck(
+    //     xrGetVulkanInstanceExtensionsKHR(instance, system_id, 0, &instance_extensions_size, null),
+    //     error.GetVulkanInstanceExtensionsCount,
+    // );
 
-    std.debug.print("\n\n\nInstance Extenstion: {s}\n\n", .{instance_extensions_data});
-    var extensions = try std.ArrayList([*:0]const u8).initCapacity(allocator, instance_extensions_size + 1);
+    // var instance_extensions_data = try allocator.alloc(u8, instance_extensions_size + 1);
+    // defer allocator.free(instance_extensions_data);
+    // try c.xrCheck(
+    //     xrGetVulkanInstanceExtensionsKHR(instance, system_id, instance_extensions_size, &instance_extensions_size, instance_extensions_data.ptr),
+    //     error.GetVulkanInstanceExtensionsData,
+    // );
 
-    instance_extensions_data[instance_extensions_size] = ' ';
-    var iter = std.mem.splitScalar(u8, instance_extensions_data, ' ');
-    while (iter.next()) |slice| {
-        const null_terminated_slice = try allocator.dupeZ(u8, slice);
-        defer allocator.free(null_terminated_slice);
-        try extensions.append(null_terminated_slice);
-    }
+    // std.debug.print("\n\n\nInstance Extenstion: |{s}|\n\n", .{instance_extensions_data});
+    // var extensions = std.ArrayList([*:0]const u8).init(allocator);
 
-    return .{ graphics_requirements, try extensions.toOwnedSlice() };
+    // instance_extensions_data[instance_extensions_size] = ' ';
+
+    // var last: usize = 0;
+    // var word_index: u8 = 0;
+    // var word_lens: [10]usize = undefined;
+    // for (0..instance_extensions_size + 1) |i| {
+    //     std.debug.print("Index {d} = ", .{i});
+    //     if (instance_extensions_data[i] == ' ' or (instance_extensions_data[i] == 0)) {
+    //         if (instance_extensions_data[i] == 0) continue;
+    //         //std.debug.print("AAAAAA\n", .{});
+    //         instance_extensions_data[i] = '\x00';
+    //         try extensions.append(@ptrCast(instance_extensions_data[last..i]));
+    //         word_lens[word_index] = i - last;
+    //         last = i + 1;
+    //         word_index += 1;
+    //         std.debug.print("[0] I: {d} - C: {c}\n", .{ instance_extensions_data[i], instance_extensions_data[i] });
+    //     } else std.debug.print("I: {d} - C: {c}\n", .{ instance_extensions_data[i], instance_extensions_data[i] });
+    // }
+
+    // std.debug.print("EXT DATA: {s}\n", .{instance_extensions_data});
+
+    // for (extensions.items, 0..) |ext, i| {
+    //     std.debug.print("{d} {s}\n", .{ i, ext });
+    //     std.debug.print("MASTER debug {d}\n", .{ext[word_lens[i]]});
+    // }
+
+    //TODO: DONT USE HARD CODED! Use the code from above but make it work!
+
+    const extensions = &[_][*:0]const u8{
+        "VK_KHR_external_memory_capabilities",
+        "VK_KHR_get_physical_device_properties2",
+        "VK_KHR_external_fence_capabilities",
+        "VK_KHR_surface",
+        "VK_KHR_external_semaphore_capabilities",
+        "VK_EXT_debug_utils", // TODO: <---- EXTRA EXT add manunally!!!!
+    };
+
+    return .{ graphics_requirements, extensions };
 }
 
 pub fn getVulkanDeviceRequirements(allocator: std.mem.Allocator, instance: c.XrInstance, system: c.XrSystemId, vk_instance: c.VkInstance) !struct { c.VkPhysicalDevice, []const [*:0]const u8 } {
     const xrGetVulkanGraphicsDeviceKHR = try getXRFunction(c.PFN_xrGetVulkanGraphicsDeviceKHR, instance, "xrGetVulkanGraphicsDeviceKHR");
-    const xrGetVulkanDeviceExtensionsKHR = try getXRFunction(c.PFN_xrGetVulkanDeviceExtensionsKHR, instance, "xrGetVulkanDeviceExtensionsKHR");
+    // const xrGetVulkanDeviceExtensionsKHR = try getXRFunction(c.PFN_xrGetVulkanDeviceExtensionsKHR, instance, "xrGetVulkanDeviceExtensionsKHR");
 
     var physical_device: c.VkPhysicalDevice = undefined;
     try c.xrCheck(
@@ -183,28 +206,34 @@ pub fn getVulkanDeviceRequirements(allocator: std.mem.Allocator, instance: c.XrI
         error.xrGetVulkanGraphicsDevice,
     );
 
-    var device_extensions_size: u32 = 0;
-    try c.xrCheck(
-        xrGetVulkanDeviceExtensionsKHR(instance, system, 0, &device_extensions_size, null),
-        error.xrGetVulkanDeviceExtensionsCount,
-    );
+    _ = allocator;
 
-    var device_extensions_data = try allocator.alloc(u8, device_extensions_size);
-    std.debug.print("Instance Extenstion: {s}\n", .{device_extensions_data});
-    defer allocator.free(device_extensions_data);
-    try c.xrCheck(
-        xrGetVulkanDeviceExtensionsKHR(instance, system, device_extensions_size, &device_extensions_size, device_extensions_data.ptr),
-        error.xrGetVulkanDeviceExtensionsData,
-    );
+    // var device_extensions_size: u32 = 0;
+    // try c.xrCheck(
+    //     xrGetVulkanDeviceExtensionsKHR(instance, system, 0, &device_extensions_size, null),
+    //     error.xrGetVulkanDeviceExtensionsCount,
+    // );
 
-    var extensions = try std.ArrayList([*:0]const u8).initCapacity(allocator, device_extensions_size);
+    // var device_extensions_data = try allocator.alloc(u8, device_extensions_size + 1);
+    // std.debug.print("Instance Extenstion: {s}\n", .{device_extensions_data});
+    // defer allocator.free(device_extensions_data);
+    // try c.xrCheck(
+    //     xrGetVulkanDeviceExtensionsKHR(instance, system, device_extensions_size, &device_extensions_size, device_extensions_data.ptr),
+    //     error.xrGetVulkanDeviceExtensionsData,
+    // );
 
-    device_extensions_data[device_extensions_size] = ' ';
-    var iter = std.mem.splitScalar(u8, device_extensions_data, ' ');
-    while (iter.next()) |slice| {
-        const null_terminated_slice = try allocator.dupeZ(u8, slice);
-        try extensions.append(null_terminated_slice);
-    }
+    // var extensions = try std.ArrayList([*:0]const u8).initCapacity(allocator, device_extensions_size);
 
-    return .{ physical_device, try extensions.toOwnedSlice() };
+    // device_extensions_data[device_extensions_size] = ' ';
+    // var iter = std.mem.splitScalar(u8, device_extensions_data, ' ');
+    // while (iter.next()) |slice| {
+    //     const null_terminated_slice = try allocator.dupeZ(u8, slice);
+    //     try extensions.append(null_terminated_slice);
+    // }
+
+    //TODO: DONT USE HARD CODED! Use the code from above but make it work!
+
+    const extensions = &[_][*:0]const u8{};
+
+    return .{ physical_device, extensions };
 }
