@@ -1,4 +1,3 @@
-/.zig-cache*
-/zig-out*
-/test*
+.zig-cache/
+zig-out/
 monado/
