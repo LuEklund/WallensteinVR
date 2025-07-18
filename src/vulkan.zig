@@ -4,6 +4,11 @@ const log = std.log;
 const loader = @import("loader");
 const c = loader.c;
 
+pub const Dispatcher = loader.VkDispatcher(.{
+    .vkCreateDebugUtilsMessengerEXT = true,
+    .vkDestroyDebugUtilsMessengerEXT = true,
+});
+
 export fn debugCallback(
     message_severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
     _: c.VkDebugUtilsMessageTypeFlagsEXT,
@@ -51,22 +56,10 @@ pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, 
     return instance;
 }
 
-pub fn getVkFunction(
-    comptime T: type,
+pub fn createDebugMessenger(
+    dispatcher: Dispatcher,
     instance: c.VkInstance,
-    name: [*:0]const u8,
-) !switch (@typeInfo(T)) {
-    .optional => |O| O.child,
-    else => T,
-} {
-    const func = c.vkGetInstanceProcAddr(instance, name);
-
-    if (func == null) return error.GetInstanceProcAddr;
-
-    return @ptrCast(func.?);
-}
-
-pub fn createDebugMessenger(instance: c.VkInstance) !c.VkDebugUtilsMessengerEXT {
+) !c.VkDebugUtilsMessengerEXT {
     var debug_messenger_create_info = c.VkDebugUtilsMessengerCreateInfoEXT{
         .sType = c.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
@@ -78,15 +71,14 @@ pub fn createDebugMessenger(instance: c.VkInstance) !c.VkDebugUtilsMessengerEXT 
     };
 
     var debug_messenger: c.VkDebugUtilsMessengerEXT = undefined;
-    const vkCreateDebugUtilsMessengerEXT = try loader.loadVkCreateDebugUtilsMessengerEXT(instance);
-    try loader.vkCheck(vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, null, &debug_messenger));
+    try dispatcher.vkCreateDebugUtilsMessengerEXT(
+        instance,
+        &debug_messenger_create_info,
+        null,
+        &debug_messenger,
+    );
 
     return debug_messenger;
-}
-pub fn destroyDebugMessenger(instance: c.VkInstance, debug_messenger: c.VkDebugUtilsMessengerEXT) void {
-    const vkDestroyDebugUtilsMessengerEXT = getVkFunction(c.PFN_vkDestroyDebugUtilsMessengerEXT, instance, "vkDestroyDebugUtilsMessengerEXT") catch unreachable;
-
-    _ = vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, null);
 }
 
 pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []const [*:0]const u8) !c.VkDevice {

@@ -192,14 +192,17 @@ fn createDispatcher(
     , if (mode == .xr) .{ "Xr", "instance" } else .{ "Vk", "instance_or_device" });
 
     inline for (pfns) |pfn| {
+        const FnProto = @typeInfo(@typeInfo(pfn.pfn).pointer.child).@"fn";
+
+        if (FnProto.return_type.? != c_int and FnProto.return_type.? != void)
+            continue;
+
         try writer.print(
             \\
             \\    pub fn {0s}{1s}(
             \\        self: @This(),
             \\
         , .{ if (mode == .xr) "xr" else "vk", pfn.trimmed_name });
-
-        const FnProto = @typeInfo(@typeInfo(pfn.pfn).pointer.child).@"fn";
 
         inline for (FnProto.params, 0..) |pfn_param, i| {
             try writer.print(
@@ -208,24 +211,45 @@ fn createDispatcher(
             , .{ i, pfn_param.type.? });
         }
 
-        try writer.print(
-            \\    ) {0s}Error!void {{
-            \\        try {1s}Check(self.store.{1s}{2s}(
-            \\
-        , if (mode == .xr) .{ "Xr", "xr", pfn.trimmed_name } else .{ "Vk", "vk", pfn.trimmed_name });
-
-        for (0..FnProto.params.len) |i| {
+        if (FnProto.return_type.? == c_int) {
             try writer.print(
-                \\            _{},
+                \\    ) {0s}Error!void {{
+                \\        try {1s}Check(self.store.{1s}{2s}(
                 \\
-            , .{i});
-        }
+            , if (mode == .xr) .{ "Xr", "xr", pfn.trimmed_name } else .{ "Vk", "vk", pfn.trimmed_name });
 
-        try writer.writeAll(
-            \\        ));
-            \\    }
-            \\
-        );
+            for (0..FnProto.params.len) |i| {
+                try writer.print(
+                    \\            _{},
+                    \\
+                , .{i});
+            }
+
+            try writer.writeAll(
+                \\        ));
+                \\    }
+                \\
+            );
+        } else if (FnProto.return_type.? == void) {
+            try writer.print(
+                \\    ) void {{
+                \\        self.store.{0s}{1s}(
+                \\
+            , if (mode == .xr) .{ "xr", pfn.trimmed_name } else .{ "vk", pfn.trimmed_name });
+
+            for (0..FnProto.params.len) |i| {
+                try writer.print(
+                    \\            _{},
+                    \\
+                , .{i});
+            }
+
+            try writer.writeAll(
+                \\        );
+                \\    }
+                \\
+            );
+        }
     }
 
     try writer.writeAll(
