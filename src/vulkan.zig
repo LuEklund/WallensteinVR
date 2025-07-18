@@ -21,29 +21,13 @@ export fn debugCallback(
     return c.VK_FALSE;
 }
 
-fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, extensions: []const [:0]const u8) !c.VkInstance {
-    const validation_layers = &[_][:0]const u8{
-        "VK_LAYER_KHRONOS_validation",
-    };
-
-    const debug_info = c.VkDebugUtilsMessengerCreateInfoEXT{
-        .sType = c.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-            c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-            c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-            c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-        .pfnUserCallback = debugCallback,
-        .pUserData = null,
-    };
-
+pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, extensions: []const [*:0]const u8, layers: []const [*:0]const u8) !c.VkInstance {
     var create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext = &debug_info,
         .ppEnabledExtensionNames = @ptrCast(&extensions),
         .enabledExtensionCount = @intCast(extensions.len),
-        .ppEnabledLayerNames = @ptrCast(&validation_layers),
-        .enabledLayerCount = @intCast(validation_layers.len),
+        .ppEnabledLayerNames = @ptrCast(&layers),
+        .enabledLayerCount = @intCast(layers.len),
 
         .pApplicationInfo = &.{
             .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -61,14 +45,36 @@ fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, exte
     };
 
     var instance: c.VkInstance = undefined;
-    try c.check(
+    try c.vkCheck(
         c.vkCreateInstance(&create_info, null, &instance),
         error.CreateInstance,
     );
     return instance;
 }
 
-pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice) !c.VkDevice {
+pub fn createDebugMessenger(instance: c.VkInstance) !c.VkDebugUtilsMessengerEXT {
+    var debug_messenger_create_info = c.VkDebugUtilsMessengerCreateInfoEXT{
+        .sType = c.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+            c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType = c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+            c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+            c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+        .pfnUserCallback = debugCallback,
+    };
+
+    // const vkCreateDebugUtilsMessengerEXT = undefined; // Waiting for Xorbits loader
+
+    var debug_messenger: c.VkDebugUtilsMessengerEXT = undefined;
+    try c.vkCheck(
+        c.vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, null, &debug_messenger),
+        error.CreateDebugUtilsMessenger,
+    );
+
+    return debug_messenger;
+}
+
+pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []const [*:0]const u8) !c.VkDevice {
     const indices = findGraphicsQueueFamily(physical_device);
     if (indices == null) return error.MissingGraphicsQueue;
 
@@ -91,14 +97,14 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice) !c.VkDevice {
         .pQueueCreateInfos = &queue_info,
         .pEnabledFeatures = &features,
         .enabledExtensionCount = 0,
-        .ppEnabledExtensionNames = null,
-        .enabledLayerCount = 0,
+        .ppEnabledExtensionNames = extensions.ptr,
+        .enabledLayerCount = @intCast(extensions.len),
         .ppEnabledLayerNames = null,
         .flags = 0,
     };
 
     var logical_device: c.VkDevice = undefined;
-    try c.check(
+    try c.vkCheck(
         c.vkCreateDevice(physical_device, &device_info, null, &logical_device),
         error.CreateDevice,
     );

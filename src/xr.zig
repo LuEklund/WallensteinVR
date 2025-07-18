@@ -68,7 +68,9 @@ pub const Context = struct {
             error.GetSystemProperties,
         );
 
-        _ = try getVulkanInstanceRequirements(allocator, instance, system_id);
+        const graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const instance_extensions: []const [*:0]const u8 = try getVulkanInstanceRequirements(allocator, instance, system_id);
+        defer allocator.free(instance_extensions);
+        _ = graphics_requirements;
 
         return .{
             .allocator = allocator,
@@ -352,6 +354,7 @@ pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.X
     var iter = std.mem.splitScalar(u8, instance_extensions_data, ' ');
     while (iter.next()) |slice| {
         const null_terminated_slice = try allocator.dupeZ(u8, slice);
+        defer allocator.free(null_terminated_slice);
         try extensions.append(null_terminated_slice);
     }
 

@@ -118,7 +118,7 @@ inline fn wrapXrError(code: c.XrResult) ?XrErrors {
     };
 }
 
-inline fn vkCheck(result: c_int, err: anyerror) (VkErrors || anyerror)!void {
+pub inline fn vkCheck(result: c_int, err: anyerror) (VkErrors || anyerror)!void {
     if (result == c.XR_SUCCESS) return;
 
     return wrapVkError(result) orelse err;
@@ -221,24 +221,7 @@ inline fn wrapVkError(code: c.VkResult) ?VkErrors {
         c.VK_ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR => error.ErrorVideoProfileCodecNotSupportedKhr,
         c.VK_ERROR_VIDEO_STD_VERSION_NOT_SUPPORTED_KHR => error.ErrorVideoStdVersionNotSupportedKhr,
         c.VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT => error.ErrorInvalidDrmFormatModifierPlaneLayoutExt,
-        c.VK_ERROR_NOT_PERMITTED_KHR => error.ErrorNotPermittedKhr,
         c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => error.ErrorFullScreenExclusiveModeLostExt,
-        c.VK_THREAD_IDLE_KHR => error.ThreadIdleKhr,
-        c.VK_THREAD_DONE_KHR => error.ThreadDoneKhr,
-        c.VK_OPERATION_DEFERRED_KHR => error.OperationDeferredKhr,
-        c.VK_OPERATION_NOT_DEFERRED_KHR => error.OperationNotDeferredKhr,
-        c.VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR => error.ErrorInvalidVideoStdParametersKhr,
-        c.VK_ERROR_COMPRESSION_EXHAUSTED_EXT => error.ErrorCompressionExhaustedExt,
-        c.VK_INCOMPATIBLE_SHADER_BINARY_EXT => error.IncompatibleShaderBinaryExt,
-        c.VK_ERROR_OUT_OF_POOL_MEMORY_KHR => error.ErrorOutOfPoolMemoryKhr,
-        c.VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR => error.ErrorInvalidExternalHandleKhr,
-        c.VK_ERROR_FRAGMENTATION_EXT => error.ErrorFragmentationExt,
-        c.VK_ERROR_NOT_PERMITTED_EXT => error.ErrorNotPermittedExt,
-        c.VK_ERROR_INVALID_DEVICE_ADDRESS_EXT => error.ErrorInvalidDeviceAddressExt,
-        c.VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR => error.ErrorInvalidOpaqueCaptureAddressKhr,
-        c.VK_PIPELINE_COMPILE_REQUIRED_EXT => error.PipelineCompileRequiredExt,
-        c.VK_ERROR_PIPELINE_COMPILE_REQUIRED_EXT => error.ErrorPipelineCompileRequiredExt,
-        c.VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT => error.ErrorIncompatibleShaderBinaryExt,
         else => null,
     };
 }

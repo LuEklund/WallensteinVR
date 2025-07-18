@@ -2,6 +2,8 @@
 
 ## ⚙️ Installation
 
+Great resource [here](https://dochavez.github.io/Documenting-with-Docusaurus-V2.-/docs/monado/)
+
 _NOTE: The <a href="https://vulkan.lunarg.com/sdk/home" target="_blank"><img src="https://vulkan.lunarg.com/img/vulkan/vulkan-red.svg" height="22" style="vertical-align: text-bottom"/> SDK</a> is required._
 
 ### 🪟 Windows
@@ -16,7 +18,19 @@ Idk, use linux tbh
 
 ```sh
 sudo apt update
-sudo apt install libopenxr-loader1 libopenxr-dev
+sudo apt install libopenxr-loader1 libopenxr-dev xr-hardware openxr-layer-corevalidation
+```
+
+or
+
+```sh
+wget -nv https://download.opensuse.org/repositories/home:rpavlik:monado/Debian-10/Release.key -O obs-monado.asc
+sudo mv obs-monado.asc /etc/apt/trusted.gpg.d/
+
+echo 'deb http://download.opensuse.org/repositories/home:/rpavlik:/monado/Debian-10/ /' | sudo tee /etc/apt/sources.list.d/monado.list
+
+sudo apt update
+sudo apt install openxr-layer-corevalidation openxr-layer-apidump xr-hardware openxr-layer-corevalidation
 ```
 
 #### 📦 Arch
@@ -45,10 +59,31 @@ sudo pacman -S openxr
   </span>
 </a>
 
+[Gitlab](https://gitlab.freedesktop.org/monado/monado) _Recommended_
+
 [![Monado Repo](https://img.shields.io/badge/Monado-GitHub-black?style=flat&logo=github)](https://github.com/mateosss/monado)
 
+APT
+
 ```sh
-rm /tmp/monado_comp_ipc; monado-service --verbose # Add --null to run with a virtual device (no real hardware)
+sudo apt install libopenxr1-monado monado-cli monado-gui
+```
+
+Build from source
+
+```sh
+git clone https://gitlab.freedesktop.org/monado/monado
+cd monado
+mkdir build
+cd build
+cmake ..
+sudo make install
+```
+
+Run
+
+```sh
+rm -rf /run/user/1000/monado_comp_ipc && monado-service --verbose # --null to run with a virtual device (no real hardware)
 ```
 
 ##### Steam VR
