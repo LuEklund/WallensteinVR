@@ -1,7 +1,8 @@
 const std = @import("std");
 const log = std.log;
 
-const c = @import("c.zig");
+const loader = @import("loader");
+const c = loader.c;
 
 export fn debugCallback(
     message_severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
@@ -46,7 +47,7 @@ pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, 
     };
 
     var instance: c.VkInstance = undefined;
-    try c.vkCheck(
+    try loader.vkCheck(
         c.vkCreateInstance(&create_info, null, &instance),
         error.CreateInstance,
     );
@@ -79,10 +80,9 @@ pub fn createDebugMessenger(instance: c.VkInstance) !c.VkDebugUtilsMessengerEXT 
         .pfnUserCallback = debugCallback,
     };
 
-    const vkCreateDebugUtilsMessengerEXT = try getVkFunction(c.PFN_vkCreateDebugUtilsMessengerEXT, instance, "vkCreateDebugUtilsMessengerEXT");
-
     var debug_messenger: c.VkDebugUtilsMessengerEXT = undefined;
-    try c.vkCheck(
+    const vkCreateDebugUtilsMessengerEXT = try loader.loadVkCreateDebugUtilsMessengerEXT(instance);
+    try loader.vkCheck(
         vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, null, &debug_messenger),
         error.CreateDebugUtilsMessenger,
     );
@@ -125,7 +125,7 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []co
     };
 
     var logical_device: c.VkDevice = undefined;
-    try c.vkCheck(
+    try loader.vkCheck(
         c.vkCreateDevice(physical_device, &device_info, null, &logical_device),
         error.CreateDevice,
     );
@@ -217,7 +217,7 @@ pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat) !c.VkRenderPass 
     };
 
     var render_pass: c.VkRenderPass = undefined;
-    try c.vkCheck(
+    try loader.vkCheck(
         c.vkCreateRenderPass(device, &create_info, null, &render_pass),
         error.CreateRenderPass,
     );
@@ -239,7 +239,7 @@ pub fn createDescriptorPool(device: c.VkDevice) !c.VkDescriptorPool {
         },
     };
 
-    try c.vkCheck(
+    try loader.vkCheck(
         c.vkCreateDescriptorPool(device, &create_info, null, &descriptor_pool),
         error.CreateDescriptorPool,
     );
@@ -261,7 +261,7 @@ pub fn createDescriptorSetLayout(device: c.VkDevice) c.VkDescriptorSetLayout {
     };
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-    try c.vkCheck(
+    try loader.vkCheck(
         c.vkCreateDescriptorSetLayout(device, &create_info, null, &descriptor_set_layout),
         error.CreateDescriptorSetLayout,
     );
@@ -279,7 +279,7 @@ pub fn createShader(allocator: std.mem.Allocator, device: c.VkDevice, file_path:
     };
 
     var shader: c.VkShaderModule = undefined;
-    try c.vkCheck(
+    try loader.vkCheck(
         c.vkCreateShaderModule(device, &shader_create_info, null, &shader),
         error.CreateShaderModule,
     );
@@ -297,7 +297,7 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
     };
 
     var pipeline_layout: c.VkPipelineLayout = undefined;
-    try c.vkCheck(
+    try loader.vkCheck(
         c.vkCreatePipelineLayout(device, &layout_create_info, null, &pipeline_layout),
         error.CreatePipelineLayout,
     );
@@ -424,7 +424,7 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
         .basePipelineIndex = -1,
     };
 
-    try c.vkCheck(
+    try loader.vkCheck(
         c.vkCreateGraphicsPipelines(device, null, 1, &create_info, null, &pipeline),
         error.CreateGraphicsPipelines,
     );

@@ -1,7 +1,8 @@
 const std = @import("std");
 const log = @import("std").log;
 
-const c = @import("c.zig");
+const loader = @import("loader");
+const c = loader.c;
 
 pub fn createInstance(extensions: []const [*:0]const u8, layers: []const [*:0]const u8) !c.XrInstance {
     var create_info = c.XrInstanceCreateInfo{
@@ -22,7 +23,7 @@ pub fn createInstance(extensions: []const [*:0]const u8, layers: []const [*:0]co
     };
 
     var instance: c.XrInstance = undefined;
-    try c.xrCheck(
+    try loader.xrCheck(
         c.xrCreateInstance(&create_info, &instance),
         error.CreateInstance,
     );
@@ -40,7 +41,7 @@ pub fn getXRFunction(
 } {
     var func: c.PFN_xrVoidFunction = undefined;
 
-    try c.xrCheck(
+    try loader.xrCheck(
         c.xrGetInstanceProcAddr(instance, name, &func),
         error.GetInstanceProcAddr,
     );
@@ -95,7 +96,7 @@ pub fn createDebugMessenger(instance: c.XrInstance) !c.XrDebugUtilsMessengerEXT 
 
     const xrCreateDebugUtilsMessengerEXT = try getXRFunction(c.PFN_xrCreateDebugUtilsMessengerEXT, instance, "xrCreateDebugUtilsMessengerEXT");
 
-    try c.xrCheck(
+    try loader.xrCheck(
         xrCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, &debug_messenger),
         error.CreateDebugUtilsMessengerEXT,
     );
@@ -116,7 +117,7 @@ pub fn getSystem(instance: c.XrInstance) !c.XrSystemId {
     };
 
     var system_id: c.XrSystemId = undefined;
-    try c.xrCheck(
+    try loader.xrCheck(
         c.xrGetSystem(instance, &system_get_info, &system_id),
         error.getSystem,
     );
@@ -133,7 +134,7 @@ pub fn getVulkanInstanceRequirements(allocator: std.mem.Allocator, instance: c.X
         .type = c.XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR,
     };
 
-    try c.xrCheck(
+    try loader.xrCheck(
         xrGetVulkanGraphicsRequirementsKHR(instance, system_id, &graphics_requirements),
         error.GetVulkanGraphicsRequirement,
     );
@@ -201,7 +202,7 @@ pub fn getVulkanDeviceRequirements(allocator: std.mem.Allocator, instance: c.XrI
     // const xrGetVulkanDeviceExtensionsKHR = try getXRFunction(c.PFN_xrGetVulkanDeviceExtensionsKHR, instance, "xrGetVulkanDeviceExtensionsKHR");
 
     var physical_device: c.VkPhysicalDevice = undefined;
-    try c.xrCheck(
+    try loader.xrCheck(
         xrGetVulkanGraphicsDeviceKHR(instance, system, vk_instance, &physical_device),
         error.xrGetVulkanGraphicsDevice,
     );

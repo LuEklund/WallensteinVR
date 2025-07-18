@@ -2,7 +2,7 @@ const std = @import("std");
 const log = @import("std").log;
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
-const c = @import("c.zig");
+const c = @import("loader").c;
 
 pub const Engine = struct {
     const Self = @This();
