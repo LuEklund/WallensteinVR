@@ -16,7 +16,7 @@ export fn debugCallback(
     _: c.VkDebugUtilsMessageTypeFlagsEXT,
     callback_data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
     _: ?*anyopaque,
-) callconv(.C) c.VkBool32 {
+) callconv(.c) c.VkBool32 {
     const prefix: []const u8 = switch (message_severity) {
         c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT => "info",
         c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT => "warn", // ← fix typo from "wanr"

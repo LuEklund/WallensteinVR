@@ -32,9 +32,9 @@ pub fn main() !void {
     var output_file = try std.fs.cwd().createFile(args[1], .{});
     defer output_file.close();
 
-    var buf_writer = std.io.bufferedWriter(output_file.writer());
-    const writer = buf_writer.writer();
-
+    var buffer: [4096]u8 = undefined;
+    var writer_interface = output_file.writer(&buffer);
+    const writer = &writer_interface.interface;
     try writer.writeAll(@embedFile("loader-generator-base.zig"));
 
     comptime var vk_pfns: []const Pfn = &.{};
@@ -61,7 +61,7 @@ pub fn main() !void {
     try createDispatcher(writer, xr_pfns, .xr);
 
     try writer.writeAll("\n");
-    try buf_writer.flush();
+    try writer.flush();
 }
 
 fn checkDecl(
@@ -74,14 +74,14 @@ fn checkDecl(
         needle,
     )) return null;
 
-    return [1]Pfn{.{
+    return .{.{
         .trimmed_name = decl.name[6..],
         .pfn = @typeInfo(@field(c, decl.name)).optional.child,
     }};
 }
 
 fn addVkWrapper(
-    writer: anytype,
+    writer: *std.io.Writer,
     comptime pfn: Pfn,
 ) !void {
     try writer.print(
@@ -102,7 +102,7 @@ fn addVkWrapper(
 }
 
 fn addXrWrapper(
-    writer: anytype,
+    writer: *std.io.Writer,
     comptime pfn: Pfn,
 ) !void {
     try writer.print(
@@ -119,9 +119,9 @@ fn addXrWrapper(
 }
 
 fn createDispatcherSpec(
-    writer: anytype,
+    writer: *std.io.Writer,
     comptime pfns: []const Pfn,
-    comptime mode: Mode,
+    mode: Mode,
 ) !void {
     try writer.print(
         \\
@@ -143,9 +143,9 @@ fn createDispatcherSpec(
 }
 
 fn createDispatcher(
-    writer: anytype,
+    writer: *std.io.Writer,
     comptime pfns: []const Pfn,
-    comptime mode: Mode,
+    mode: Mode,
 ) !void {
     try writer.print(
         \\
