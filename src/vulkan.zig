@@ -4,6 +4,8 @@ const log = std.log;
 const loader = @import("loader");
 const c = loader.c;
 
+const xr = @import("openxr.zig");
+
 pub const Dispatcher = loader.VkDispatcher(.{
     .vkCreateDebugUtilsMessengerEXT = true,
     .vkDestroyDebugUtilsMessengerEXT = true,
@@ -391,3 +393,156 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
 
     return .{ pipeline_layout, pipeline };
 }
+
+// NOTE: Named SwapchainImage in the toutorial
+pub const Swapchain = struct {
+    const Self = @This();
+
+    device: c.VkDevice,
+    command_pool: c.VkCommandPool,
+    descriptor_pool: c.VkDescriptorPool,
+
+    image: c.XrSwapchainImageVulkanKHR,
+    image_view: c.VkImageView,
+    framebuffer: c.VkFramebuffer,
+    memory: c.VkDeviceMemory,
+    buffer: c.VkBuffer,
+    command_buffer: c.VkCommandBuffer,
+    descriptor_set: c.VkDescriptorSet,
+
+    pub fn init(
+        physical_device: c.VkPhysicalDevice,
+        device: c.VkDevice,
+        render_pass: c.VkRenderPass,
+        command_pool: c.VkCommandPool,
+        descriptor_pool: c.VkDescriptorPool,
+        descriptor_set_layout: c.VkDescriptorSetLayout,
+        swapchain: *const xr.Swapchain,
+        image: c.XrSwapchainImageVulkanKHR,
+    ) !Self {
+        var image_view_create_info = c.VkImageViewCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = image.image,
+            .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
+            .format = swapchain.format,
+            .subresourceRange = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+
+        var image_view: c.VkImageView = undefined;
+        try loader.vkCheck(c.vkCreateImageView(device, &image_view_create_info, null, &image_view));
+
+        var framebuffer_create_info = c.VkFramebufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .renderPass = render_pass,
+            .attachmentCount = 1,
+            .pAttachments = &image_view,
+            .width = swapchain.width,
+            .height = swapchain.height,
+            .layers = 1,
+        };
+
+        var framebuffer: c.VkFramebuffer = undefined;
+        try loader.vkCheck(c.vkCreateFramebuffer(device, &framebuffer_create_info, null, &framebuffer));
+
+        var create_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = null, // bufferSize <-- The toutorial is just this???,
+            .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        };
+
+        var buffer: c.VkBuffer = undefined;
+        try loader.vkCheck(c.vkCreateBuffer(device, &create_info, null, &buffer));
+
+        var requirements: c.VkMemoryRequirements = undefined;
+        c.vkGetBufferMemoryRequirements(device, buffer, &requirements);
+
+        const flags: c.VkMemoryPropertyFlags = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        var properties: c.VkPhysicalDeviceMemoryProperties = undefined;
+        c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
+
+        const memory_type_index: u32 = blk: for (properties.memoryTypeCount) |i| {
+            if (!(requirements.memoryTypeBits & (1 << i)) or (properties.memoryTypes[i].propertyFlags & flags) != flags) continue;
+
+            break :blk i;
+        };
+
+        var allocate_info = c.VkMemoryAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .allocationSize = requirements.size,
+            .memoryTypeIndex = memory_type_index,
+        };
+
+        var memory: c.VkDeviceMemory = undefined;
+        try loader.vkCheck(c.vkAllocateMemory(device, &allocate_info, null, &memory));
+
+        try loader.vkCheck(c.vkBindBufferMemory(device, buffer, memory, 0));
+
+        var command_buffer_allocate_info = c.VkCommandBufferAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = command_pool,
+            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+
+        var command_buffer: c.VkCommandBuffer = undefined;
+        try loader.vkCheck(c.vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &command_buffer));
+
+        var descriptor_set_allocate_info = c.VkDescriptorSetAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = descriptor_pool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &descriptor_set_layout,
+        };
+
+        var descriptor_set: c.VkDescriptorSet = undefined;
+        try loader.vkCheck(c.vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, &descriptor_set));
+
+        var descriptor_buffer_info = c.VkDescriptorBufferInfo{
+            .buffer = buffer,
+            .offset = 0,
+            .range = c.VK_WHOLE_SIZE,
+        };
+
+        var descriptor_write = c.VkWriteDescriptorSet{
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = descriptor_set,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &descriptor_buffer_info,
+        };
+
+        try loader.vkCheck(c.vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, null));
+
+        return .{
+            .device = device,
+            .command_pool = command_pool,
+            .descriptor_pool = descriptor_pool,
+            .image = image,
+            .image_view = image_view,
+            .framebuffer = framebuffer,
+            .memory = memory,
+            .buffer = buffer,
+            .command_buffer = command_buffer,
+            .descriptor_set = descriptor_set,
+        };
+    }
+
+    pub fn deinit(self: Self) void {
+        c.vkFreeDescriptorSets(self.device, self.descriptor_pool, 1, &self.descriptor_set);
+        c.vkFreeCommandBuffers(self.device, self.command_pool, 1, &self.command_buffer);
+        c.vkDestroyBuffer(self.device, self.buffer, null);
+        c.vkFreeMemory(self.device, self.memory, null);
+        c.vkDestroyFramebuffer(self.device, self.framebuffer, null);
+        c.vkDestroyImageView(self.device, self.image_view, null);
+    }
+};
