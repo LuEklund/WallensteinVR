@@ -1,7 +1,7 @@
 const std = @import("std");
 const log = @import("std").log;
 
-const loader = @import("../tools/loader-generator-base.zig");
+const loader = @import("loader");
 const c = loader.c;
 
 pub const Dispatcher = loader.XrDispatcher(.{
