@@ -1,9 +1,11 @@
 const std = @import("std");
 const log = @import("std").log;
+const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
 const loader = @import("loader");
 const c = loader.c;
+var quit: std.atomic.Value(bool) = .init(false);
 
 pub const Engine = struct {
     const Self = @This();
@@ -11,6 +13,7 @@ pub const Engine = struct {
     allocator: std.mem.Allocator,
 
     xr_instance: c.XrInstance,
+    xr_session: c.XrSession,
     xrd: xr.Dispatcher,
     xr_instance_extensions: []const [*:0]const u8,
     xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
@@ -40,11 +43,11 @@ pub const Engine = struct {
         const logical_device: c.VkDevice = try vk.createLogicalDevice(physical_device, vk_device_extensions);
         _ = logical_device;
 
-        std.debug.print("HELLO", .{});
-
         return .{
             .allocator = allocator,
             .xr_instance = xr_instance,
+            //TODO: ADD XR SESSION!
+            .xr_session = null,
             .xr_instance_extensions = xr_instance_extensions,
             .xrd = xrd,
             .xr_debug_messenger = xr_debug_messenger,
@@ -60,6 +63,124 @@ pub const Engine = struct {
 
         _ = c.vkDestroyInstance(self.vk_instance, null);
         _ = c.xrDestroyInstance(self.xr_instance);
+    }
+
+    pub fn start(self: Self) !void {
+        const isPosix: bool = switch (builtin.os.tag) {
+            .linux,
+            .plan9,
+            .solaris,
+            .netbsd,
+            .openbsd,
+            .haiku,
+            .macos,
+            .ios,
+            .watchos,
+            .tvos,
+            .visionos,
+            .dragonfly,
+            .freebsd,
+            => true,
+
+            else => false,
+        };
+        if (isPosix) {
+            std.posix.sigaction(std.posix.SIG.INT, &.{
+                .handler = .{ .handler = onInterrupt },
+                .mask = std.posix.sigemptyset(),
+                .flags = 0,
+            }, null);
+            std.debug.print("Program started. Press Ctrl+C to quit, or send SIGTERM.\n", .{});
+        } else if (builtin.os.tag == .windows) {
+            // --- Windows-specific graceful shutdown (Console Control Handler) ---
+            // const windows = std.os.windows;
+
+            // const HandlerFunc = fn(event_type: windows.DWORD) callconv(.Winapi) windows.BOOL;
+
+            // const win_handler = struct {
+            //     fn handle(event_type: windows.DWORD) callconv(.Winapi) windows.BOOL {
+            //         switch (event_type) {
+            //             windows.CTRL_C_EVENT,
+            //             windows.CTRL_BREAK_EVENT,
+            //             windows.CTRL_CLOSE_EVENT,
+            //             windows.CTRL_LOGOFF_EVENT,
+            //             windows.CTRL_SHUTDOWN_EVENT,
+            //             => {
+            //                 std.debug.print("Windows console event received ({}). Initiating graceful shutdown...\n", .{event_type});
+            //                 quit_requested.store(true, .Release);
+            //                 return 1; // TRUE, indicating handled
+            //             },
+            //             else => return 0, // FALSE, let default handler take over
+            //         }
+            //     }
+            // }.handle;
+
+            // _ = try windows.SetConsoleCtrlHandler(@ptrCast(HandlerFunc, win_handler), 1);
+            @compileError("YOU ARE USING WINDOWS!");
+        } else {
+            @compileError("WTF ARE YOU USING? Not Posix or Windows OS");
+        }
+
+        var running: bool = true;
+        while (!quit.load(.acquire)) {
+            var eventData = c.XrEventDataBuffer{
+                .type = c.XR_TYPE_EVENT_DATA_BUFFER,
+            };
+            const result: c.XrResult = c.xrPollEvent(self.xr_instance, &eventData);
+            if (result == c.XR_EVENT_UNAVAILABLE) {
+                if (running) {}
+            } else if (result != c.XR_SUCCESS) {
+                try loader.xrCheck(result);
+            } else {
+                switch (eventData.type) {
+                    c.XR_TYPE_EVENT_DATA_EVENTS_LOST => std.debug.print("Event queue overflowed and events were lost.\n", .{}),
+                    c.XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING => {
+                        std.debug.print("OpenXR instance is shutting down.\n", .{});
+                        quit.store(true, .release);
+                    },
+                    c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => std.debug.print("The interaction profile has changed.\n", .{}),
+                    c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
+                    c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
+                        const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
+
+                        switch (event.state) {
+                            c.XR_SESSION_STATE_UNKNOWN, c.XR_SESSION_STATE_MAX_ENUM => std.debug.print("Unknown session state entered: {any}\n", .{event.state}),
+                            c.XR_SESSION_STATE_IDLE => running = false,
+                            c.XR_SESSION_STATE_READY => {
+                                const sessionBeginInfo = c.XrSessionBeginInfo{
+                                    .type = c.XR_TYPE_SESSION_BEGIN_INFO,
+                                    .primaryViewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+                                };
+                                try loader.xrCheck(c.xrBeginSession(self.xr_session, &sessionBeginInfo));
+                                running = true;
+                            },
+                            c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => running = true,
+                            c.XR_SESSION_STATE_STOPPING => try loader.xrCheck(c.xrEndSession(self.xr_session)),
+                            c.XR_SESSION_STATE_LOSS_PENDING => {
+                                std.debug.print("OpenXR session is shutting down.\n", .{});
+                                quit.store(true, .release);
+                            },
+                            c.XR_SESSION_STATE_EXITING => {
+                                std.debug.print("OpenXR runtime requested shutdown.\n", .{});
+                                quit.store(true, .release);
+                            },
+                            else => {
+                                log.err("Unknown event STATE type received: {any}", .{eventData.type});
+                            },
+                        }
+                    },
+                    else => {
+                        log.err("Unknown event type received: {any}", .{eventData.type});
+                    },
+                }
+            }
+        }
+    }
+
+    fn onInterrupt(signum: c_int) callconv(.c) void {
+        _ = signum;
+        std.debug.print("SIGINT received. Initiating graceful shutdown...\n", .{});
+        quit.store(true, .release); // Set quit_requested to true
     }
 };
 
@@ -90,4 +211,5 @@ pub fn main() !void {
         .vk_layers = vk_layers,
     });
     defer engine.deinit();
+    try engine.start();
 }
