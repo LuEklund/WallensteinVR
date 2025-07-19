@@ -1,7 +1,7 @@
 const std = @import("std");
 const log = @import("std").log;
 
-const loader = @import("loader");
+const loader = @import("../tools/loader-generator-base.zig");
 const c = loader.c;
 
 pub const Dispatcher = loader.XrDispatcher(.{
@@ -219,4 +219,124 @@ pub fn getVulkanDeviceRequirements(
     const extensions = &[_][*:0]const u8{};
 
     return .{ physical_device, extensions };
+}
+
+// NOTE: use xrDestroySession(session); to free
+pub fn createSession(
+    instance: c.XrInstance,
+    system_id: c.XrSystemId,
+    vk_instance: c.VkInstance,
+    physical_device: c.VkPhysicalDevice,
+    device: c.VkDevice,
+    queue_family_index: u32,
+) !c.XrSession {
+    var graphics_binding = c.XrGraphicsBindingVulkanKHR{
+        .type = c.XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR,
+        .instance = vk_instance,
+        .physicalDevice = physical_device,
+        .device = device,
+        .queueFamilyIndex = queue_family_index,
+        .queueIndex = 0,
+    };
+
+    var session_create_info = c.XrSessionCreateInfo{
+        .type = c.XR_TYPE_SESSION_CREATE_INFO,
+        .next = &graphics_binding,
+        .createFlags = 0,
+        .systemId = system_id,
+    };
+
+    var session: c.XrSession = undefined;
+    try loader.xrCheck(c.xrCreateSession(instance, &session_create_info, &session));
+
+    return session;
+}
+
+// Swapchain isnt just helper functions since its cool like this also no idea if this works, it seems very weird
+pub const Swapchain = struct {
+    const Self = @This();
+
+    swapchain: c.XrSwapchain,
+    format: c.VkFormat,
+    width: u32,
+    height: u32,
+
+    // Same as createSwapchains
+    pub fn init(allocator: std.mem.Allocator, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) ![]const Self {
+        const eyes = [_]c.XrViewConfigurationView{
+            .{ .type = c.XR_TYPE_VIEW_CONFIGURATION_VIEW },
+        } ** 2;
+
+        try loader.xrCheck(c.xrEnumerateViewConfigurationViews(instance, system_id, c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, @intCast(eyes.len), &@intCast(eyes.len), eyes.ptr));
+
+        const format: i64 = blk: {
+            var format_count: u32 = 0;
+            try loader.xrCheck(c.xrEnumerateSwapchainFormats(session, 0, &format_count, null));
+
+            var formats = try allocator.alloc(i64, format_count);
+            defer allocator.free(formats);
+            try loader.xrCheck(c.xrEnumerateSwapchainFormats(session, format_count, &format_count, formats.data()));
+
+            for (formats) |fmt| {
+                if (fmt == c.VK_FORMAT_R8G8B8A8_SRGB) break :blk fmt;
+            }
+        };
+
+        var swapchains: [eyes.len]Self = undefined;
+
+        for (eyes.len) |i| {
+            var swapchain_create_info = c.XrSwapchainCreateInfo{
+                .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
+                .usageFlags = c.XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
+                .format = format,
+                .sampleCount = c.VK_SAMPLE_COUNT_1_BIT,
+                .width = eyes[i].recommendedImageRectWidth,
+                .height = eyes[i].recommendedImageRectHeight,
+                .faceCount = 1,
+                .arraySize = 1,
+                .mipCount = 1,
+            };
+
+            var swapchain: c.XrSwapchain = undefined;
+            try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &swapchain));
+
+            swapchains[i] = Self{
+                .swapchain = swapchains[0],
+                .format = @intCast(format),
+                .width = eyes[i].recommendedImageRectWidth,
+                .height = eyes[i].recommendedImageRectHeight,
+            };
+        }
+
+        return @ptrCast(swapchains);
+    }
+
+    pub fn getImages(self: Self) ![]const c.XrSwapchainImageVulkanKHR {
+        var image_count: u32 = undefined;
+        try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, 0, &image_count, null));
+
+        var images = [_]c.XrSwapchainImageVulkanKHR{
+            .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR },
+        } ** 8;
+
+        try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, image_count, &image_count, images[image_count..].ptr));
+
+        return images[image_count..];
+    }
+};
+
+// More shit here https://amini-allight.org/post/openxr-tutorial-part-8
+
+// NOTE: Use     xrDestroySpace(space);
+pub fn createSpace(session: c.XrSession) !c.XrSpace {
+    var space_create_info = c.XrReferenceSpaceCreateInfo{
+        .type = c.XR_TYPE_REFERENCE_SPACE_CREATE_INFO,
+        .referenceSpaceType = c.XR_REFERENCE_SPACE_TYPE_STAGE,
+        .poseInReferenceSpace = .{ .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1 }, .position = .{ .x = 0, .y = 0, .z = 0 } },
+    };
+
+    var space: c.XrSpace = undefined;
+    try loader.xrCheck(c.xrCreateReferenceSpace(session, &space_create_info, &space));
+
+    return space;
 }
