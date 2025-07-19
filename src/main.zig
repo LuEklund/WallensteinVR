@@ -40,6 +40,8 @@ pub const Engine = struct {
         const logical_device: c.VkDevice = try vk.createLogicalDevice(physical_device, vk_device_extensions);
         _ = logical_device;
 
+        std.debug.print("HELLO", .{});
+
         return .{
             .allocator = allocator,
             .xr_instance = xr_instance,
@@ -56,9 +58,7 @@ pub const Engine = struct {
         self.vkid.vkDestroyDebugUtilsMessengerEXT(self.vk_instance, self.vk_debug_messenger, null);
         self.xrd.xrDestroyDebugUtilsMessengerEXT(self.xr_debug_messenger) catch {};
 
-        // self.allocator.free(self.xr_instance_extensions);
         _ = c.vkDestroyInstance(self.vk_instance, null);
-        self.xrd.xrDestroyDebugUtilsMessengerEXT(self.xr_debug_messenger) catch {};
         _ = c.xrDestroyInstance(self.xr_instance);
     }
 };
