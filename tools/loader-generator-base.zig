@@ -1,19 +1,25 @@
-const c = @cImport({
+const std = @import("std");
+
+pub const c = @cImport({
     @cDefine("XR_USE_GRAPHICS_API_VULKAN", "1");
     @cDefine("XR_EXTENSION_PROTOTYPES", "1");
     @cInclude("vulkan/vulkan.h");
     @cInclude("openxr/openxr.h");
     @cInclude("openxr/openxr_platform.h");
 });
-pub usingnamespace c;
 
-pub inline fn xrCheck(result: c.XrResult, err: anyerror) (XrErrors || anyerror)!void {
+const cimport = c;
+
+pub const LoadError = error{
+    LoadFailed,
+};
+
+pub inline fn xrCheck(result: c.XrResult) XrError!void {
     if (result == c.XR_SUCCESS) return;
-
-    return wrapXrError(result) orelse err;
+    return wrapXrError(result);
 }
 
-pub const XrErrors = error{
+pub const XrError = error{
     ValidationFailure,
     RuntimeFailure,
     OutOfMemory,
@@ -62,9 +68,10 @@ pub const XrErrors = error{
     LocalizedNameInvalid,
     GraphicsRequirementsCallMissing,
     RuntimeUnavailable,
+    UnknownError,
 };
 
-inline fn wrapXrError(code: c.XrResult) ?XrErrors {
+pub inline fn wrapXrError(code: c.XrResult) XrError {
     return switch (code) {
         c.XR_ERROR_VALIDATION_FAILURE => error.ValidationFailure,
         c.XR_ERROR_RUNTIME_FAILURE => error.RuntimeFailure,
@@ -114,17 +121,16 @@ inline fn wrapXrError(code: c.XrResult) ?XrErrors {
         c.XR_ERROR_LOCALIZED_NAME_INVALID => error.LocalizedNameInvalid,
         c.XR_ERROR_GRAPHICS_REQUIREMENTS_CALL_MISSING => error.GraphicsRequirementsCallMissing,
         c.XR_ERROR_RUNTIME_UNAVAILABLE => error.RuntimeUnavailable,
-        else => null,
+        else => error.UnknownError,
     };
 }
 
-pub inline fn vkCheck(result: c_int, err: anyerror) (VkErrors || anyerror)!void {
+pub inline fn vkCheck(result: c_int) VkError!void {
     if (result == c.XR_SUCCESS) return;
-
-    return wrapVkError(result) orelse err;
+    return wrapVkError(result);
 }
 
-pub const VkErrors = error{
+pub const VkError = error{
     NotReady,
     Timeout,
     EventSet,
@@ -180,9 +186,10 @@ pub const VkErrors = error{
     PipelineCompileRequiredExt,
     ErrorPipelineCompileRequiredExt,
     ErrorIncompatibleShaderBinaryExt,
+    UnknownError,
 };
 
-inline fn wrapVkError(code: c.VkResult) ?VkErrors {
+pub inline fn wrapVkError(code: c.VkResult) VkError {
     return switch (code) {
         c.VK_NOT_READY => error.NotReady,
         c.VK_TIMEOUT => error.Timeout,
@@ -206,7 +213,7 @@ inline fn wrapVkError(code: c.VkResult) ?VkErrors {
         c.VK_ERROR_INVALID_EXTERNAL_HANDLE => error.ErrorInvalidExternalHandle,
         c.VK_ERROR_FRAGMENTATION => error.ErrorFragmentation,
         c.VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS => error.ErrorInvalidOpaqueCaptureAddress,
-        c.VK_PIPELINE_COMPILE_REQUIRED => error.PipelineCompileRequired,
+        c.VK_ERROR_PIPELINE_COMPILE_REQUIRED_EXT => error.PipelineCompileRequired,
         c.VK_ERROR_SURFACE_LOST_KHR => error.ErrorSurfaceLostKhr,
         c.VK_ERROR_NATIVE_WINDOW_IN_USE_KHR => error.ErrorNativeWindowInUseKhr,
         c.VK_SUBOPTIMAL_KHR => error.SuboptimalKhr,
@@ -221,7 +228,15 @@ inline fn wrapVkError(code: c.VkResult) ?VkErrors {
         c.VK_ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR => error.ErrorVideoProfileCodecNotSupportedKhr,
         c.VK_ERROR_VIDEO_STD_VERSION_NOT_SUPPORTED_KHR => error.ErrorVideoStdVersionNotSupportedKhr,
         c.VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT => error.ErrorInvalidDrmFormatModifierPlaneLayoutExt,
+        c.VK_ERROR_NOT_PERMITTED_KHR => error.ErrorNotPermittedKhr,
         c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => error.ErrorFullScreenExclusiveModeLostExt,
-        else => null,
+        c.VK_THREAD_IDLE_KHR => error.ThreadIdleKhr,
+        c.VK_THREAD_DONE_KHR => error.ThreadDoneKhr,
+        c.VK_OPERATION_DEFERRED_KHR => error.OperationDeferredKhr,
+        c.VK_OPERATION_NOT_DEFERRED_KHR => error.OperationNotDeferredKhr,
+        c.VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR => error.ErrorInvalidVideoStdParametersKhr,
+        c.VK_ERROR_COMPRESSION_EXHAUSTED_EXT => error.ErrorCompressionExhaustedExt,
+        c.VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT => error.ErrorIncompatibleShaderBinaryExt,
+        else => error.UnknownError,
     };
 }
