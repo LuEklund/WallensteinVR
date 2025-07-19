@@ -117,41 +117,6 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []co
     return logical_device;
 }
 
-// NOTE: Not needed since physical device is supplied from OpenXR
-// fn selectPhysicalDevice(instance: c.VkInstance) !c.VkPhysicalDevice {
-//     var device_count: u32 = 0;
-//     try c.check(
-//         c.vkEnumeratePhysicalDevices(instance, &device_count, null),
-//         error.EnumeratePhysicalDevicesCount,
-//     );
-//     if (device_count == 0) return error.NoPhysicalDevicesFound;
-
-//     var devices: [8]c.VkPhysicalDevice = undefined;
-//     try c.check(
-//         c.vkEnumeratePhysicalDevices(instance, &device_count, &devices),
-//         error.EnumeratePhysicalDevices,
-//     );
-
-//     for (devices[0..device_count], 0..) |device, i| {
-//         var props: c.VkPhysicalDeviceProperties = undefined;
-//         var feats: c.VkPhysicalDeviceFeatures = undefined;
-
-//         c.vkGetPhysicalDeviceProperties(device, &props);
-//         c.vkGetPhysicalDeviceFeatures(device, &feats);
-
-//         log.info("Device {}: {s}", .{ i, props.deviceName });
-
-//         if (props.deviceType == c.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU and
-//             feats.geometryShader == c.VK_TRUE)
-//         {
-//             log.info("Selected GPU: {s}", .{props.deviceName});
-//             return device;
-//         }
-//     }
-
-//     return error.NoSuitablePhysicalDevice;
-// }
-
 fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
     var count: u32 = 0;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, null);
@@ -165,6 +130,18 @@ fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
     }
 
     return null;
+}
+
+fn createCommandPool(device: c.VkDevice, graphicsQueueFamilyIndex: u32) c.VkCommandPool {
+    var commandPool: c.VkCommandPool = undefined;
+
+    var createInfo = c.VkCommandPoolCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .queueFamilyIndex = graphicsQueueFamilyIndex,
+        .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+    };
+    try loader.vkCheck(c.vkCreateCommandPool(device, &createInfo, null, &commandPool));
+    return commandPool;
 }
 
 pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat) !c.VkRenderPass {
