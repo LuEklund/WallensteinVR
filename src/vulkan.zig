@@ -135,7 +135,7 @@ pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
     return null;
 }
 
-fn createCommandPool(device: c.VkDevice, graphicsQueueFamilyIndex: u32) c.VkCommandPool {
+pub fn createCommandPool(device: c.VkDevice, graphicsQueueFamilyIndex: u32) !c.VkCommandPool {
     var commandPool: c.VkCommandPool = undefined;
 
     var createInfo = c.VkCommandPoolCreateInfo{
@@ -180,10 +180,7 @@ pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat) !c.VkRenderPass 
     };
 
     var render_pass: c.VkRenderPass = undefined;
-    try loader.vkCheck(
-        c.vkCreateRenderPass(device, &create_info, null, &render_pass),
-        error.CreateRenderPass,
-    );
+    try loader.vkCheck(c.vkCreateRenderPass(device, &create_info, null, &render_pass));
 
     return render_pass;
 }
@@ -202,15 +199,12 @@ pub fn createDescriptorPool(device: c.VkDevice) !c.VkDescriptorPool {
         },
     };
 
-    try loader.vkCheck(
-        c.vkCreateDescriptorPool(device, &create_info, null, &descriptor_pool),
-        error.CreateDescriptorPool,
-    );
+    try loader.vkCheck(c.vkCreateDescriptorPool(device, &create_info, null, &descriptor_pool));
 
     return descriptor_pool;
 }
 
-pub fn createDescriptorSetLayout(device: c.VkDevice) c.VkDescriptorSetLayout {
+pub fn createDescriptorSetLayout(device: c.VkDevice) !c.VkDescriptorSetLayout {
     var binding = c.VkDescriptorSetLayoutBinding{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -224,10 +218,7 @@ pub fn createDescriptorSetLayout(device: c.VkDevice) c.VkDescriptorSetLayout {
     };
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-    try loader.vkCheck(
-        c.vkCreateDescriptorSetLayout(device, &create_info, null, &descriptor_set_layout),
-        error.CreateDescriptorSetLayout,
-    );
+    try loader.vkCheck(c.vkCreateDescriptorSetLayout(device, &create_info, null, &descriptor_set_layout));
 
     return descriptor_set_layout;
 }
@@ -237,20 +228,17 @@ pub fn createShader(allocator: std.mem.Allocator, device: c.VkDevice, file_path:
 
     var shader_create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = source,
-        .pCode = source,
+        .codeSize = source.len,
+        .pCode = @ptrCast(@alignCast(source.ptr)),
     };
 
     var shader: c.VkShaderModule = undefined;
-    try loader.vkCheck(
-        c.vkCreateShaderModule(device, &shader_create_info, null, &shader),
-        error.CreateShaderModule,
-    );
+    try loader.vkCheck(c.vkCreateShaderModule(device, &shader_create_info, null, &shader));
 
     return shader;
 }
 
-pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descriptor_set_layout: c.VkDescriptorSetLayout, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) struct { c.VkPipelineLayout, c.VkPipeline } {
+pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descriptor_set_layout: c.VkDescriptorSetLayout, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !struct { c.VkPipelineLayout, c.VkPipeline } {
     var pipeline: c.VkPipeline = undefined;
 
     var layout_create_info = c.VkPipelineLayoutCreateInfo{
@@ -260,10 +248,7 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
     };
 
     var pipeline_layout: c.VkPipelineLayout = undefined;
-    try loader.vkCheck(
-        c.vkCreatePipelineLayout(device, &layout_create_info, null, &pipeline_layout),
-        error.CreatePipelineLayout,
-    );
+    try loader.vkCheck(c.vkCreatePipelineLayout(device, &layout_create_info, null, &pipeline_layout));
 
     var vertex_input_stage = c.VkPipelineVertexInputStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -276,7 +261,7 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
     var input_assembly_stage = c.VkPipelineInputAssemblyStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        .primitiveRestartEnable = false,
+        .primitiveRestartEnable = c.VK_FALSE,
     };
 
     const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
@@ -286,9 +271,8 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
         .pName = "main",
     };
 
-    var viewport = c.VkViewport{ 0, 0, 1024, 1024, 0, 1 };
-
-    var scissor = c.VkRect2D{ .{ 0, 0 }, .{ 1024, 1024 } };
+    var viewport = c.VkViewport{ .x = 0, .y = 0, .width = 1024, .height = 1024, .minDepth = 0, .maxDepth = 1 };
+    var scissor = c.VkRect2D{ .offset = .{ .x = 0, .y = 0 }, .extent = .{ .width = 1024, .height = 1024 } };
 
     var viewport_stage = c.VkPipelineViewportStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -300,13 +284,13 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
 
     var rasterization_stage = c.VkPipelineRasterizationStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .depthClampEnable = false,
-        .rasterizerDiscardEnable = false,
+        .depthClampEnable = c.VK_FALSE,
+        .rasterizerDiscardEnable = c.VK_FALSE,
         .polygonMode = c.VK_POLYGON_MODE_FILL,
         .lineWidth = 1,
         .cullMode = c.VK_CULL_MODE_NONE,
         .frontFace = c.VK_FRONT_FACE_COUNTER_CLOCKWISE,
-        .depthBiasEnable = false,
+        .depthBiasEnable = c.VK_FALSE,
         .depthBiasConstantFactor = 0,
         .depthBiasClamp = 0,
         .depthBiasSlopeFactor = 0,
@@ -315,19 +299,19 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
     var multisample_stage = c.VkPipelineMultisampleStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
         .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
-        .sampleShadingEnable = false,
+        .sampleShadingEnable = c.VK_FALSE,
         .minSampleShading = 0.25,
     };
 
     var depth_stencil_stage = c.VkPipelineDepthStencilStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = true,
-        .depthWriteEnable = true,
+        .depthTestEnable = c.VK_TRUE,
+        .depthWriteEnable = c.VK_TRUE,
         .depthCompareOp = c.VK_COMPARE_OP_LESS,
-        .depthBoundsTestEnable = false,
+        .depthBoundsTestEnable = c.VK_FALSE,
         .minDepthBounds = 0,
         .maxDepthBounds = 1,
-        .stencilTestEnable = false,
+        .stencilTestEnable = c.VK_FALSE,
     };
 
     const fragment_shader_stage = c.VkPipelineShaderStageCreateInfo{
@@ -339,7 +323,7 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
 
     var color_blend_attachment = c.VkPipelineColorBlendAttachmentState{
         .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
-        .blendEnable = true,
+        .blendEnable = c.VK_TRUE,
         .srcColorBlendFactor = c.VK_BLEND_FACTOR_SRC_ALPHA,
         .dstColorBlendFactor = c.VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .colorBlendOp = c.VK_BLEND_OP_ADD,
@@ -350,7 +334,7 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
 
     var color_blend_stage = c.VkPipelineColorBlendStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .logicOpEnable = false,
+        .logicOpEnable = c.VK_FALSE,
         .logicOp = c.VK_LOGIC_OP_COPY,
         .attachmentCount = 1,
         .pAttachments = &color_blend_attachment,
@@ -362,15 +346,15 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
     var dynamic_state = c.VkPipelineDynamicStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = 2,
-        .pDynamicStates = dynamic_states,
+        .pDynamicStates = &dynamic_states,
     };
 
-    const shader_stages = []c.VkPipelineShaderStageCreateInfo{ vertex_shader_stage, fragment_shader_stage };
+    const shader_stages = [_]c.VkPipelineShaderStageCreateInfo{ vertex_shader_stage, fragment_shader_stage };
 
     var create_info = c.VkGraphicsPipelineCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = 2,
-        .pStages = shader_stages,
+        .pStages = &shader_stages,
         .pVertexInputState = &vertex_input_stage,
         .pInputAssemblyState = &input_assembly_stage,
         .pTessellationState = null,
@@ -383,20 +367,17 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
         .layout = pipeline_layout,
         .renderPass = render_pass,
         .subpass = 0,
-        .basePipelineHandle = c.VK_NULL_HANDLE,
+        .basePipelineHandle = null,
         .basePipelineIndex = -1,
     };
 
-    try loader.vkCheck(
-        c.vkCreateGraphicsPipelines(device, null, 1, &create_info, null, &pipeline),
-        error.CreateGraphicsPipelines,
-    );
+    try loader.vkCheck(c.vkCreateGraphicsPipelines(device, null, 1, &create_info, null, &pipeline));
 
     return .{ pipeline_layout, pipeline };
 }
 
 // NOTE: Named SwapchainImage in the toutorial
-pub const Swapchain = struct {
+pub const SwapchainImage = struct {
     const Self = @This();
 
     device: c.VkDevice,

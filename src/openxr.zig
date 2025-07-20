@@ -254,7 +254,7 @@ pub fn createSession(
 }
 
 // Swapchain isnt just helper functions since its cool like this also no idea if this works, it seems very weird
-pub const SwapchainImage = struct {
+pub const Swapchain = struct {
     const Self = @This();
 
     swapchain: c.XrSwapchain,
@@ -263,36 +263,38 @@ pub const SwapchainImage = struct {
     height: u32,
 
     // Same as createSwapchains
-    pub fn init(allocator: std.mem.Allocator, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) ![]const Self {
-        const eyes = [_]c.XrViewConfigurationView{
+    pub fn init(eye_count: comptime_int, allocator: std.mem.Allocator, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) ![]const Self {
+        var config_views = [_]c.XrViewConfigurationView{
             .{ .type = c.XR_TYPE_VIEW_CONFIGURATION_VIEW },
-        } ** 2;
+        } ** eye_count;
 
-        try loader.xrCheck(c.xrEnumerateViewConfigurationViews(instance, system_id, c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, @intCast(eyes.len), &@intCast(eyes.len), eyes.ptr));
+        var config_view_count: u32 = eye_count;
+        try loader.xrCheck(c.xrEnumerateViewConfigurationViews(instance, system_id, c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, config_view_count, &config_view_count, &config_views[0]));
 
         const format: i64 = blk: {
             var format_count: u32 = 0;
             try loader.xrCheck(c.xrEnumerateSwapchainFormats(session, 0, &format_count, null));
 
-            var formats = try allocator.alloc(i64, format_count);
+            const formats = try allocator.alloc(i64, format_count);
             defer allocator.free(formats);
-            try loader.xrCheck(c.xrEnumerateSwapchainFormats(session, format_count, &format_count, formats.data()));
+            try loader.xrCheck(c.xrEnumerateSwapchainFormats(session, format_count, &format_count, formats.ptr));
 
             for (formats) |fmt| {
                 if (fmt == c.VK_FORMAT_R8G8B8A8_SRGB) break :blk fmt;
             }
+            unreachable;
         };
 
-        var swapchains: [eyes.len]Self = undefined;
+        var swapchains: []Self = try allocator.alloc(Self, config_views.len);
 
-        for (eyes.len) |i| {
+        for (0..config_views.len) |i| {
             var swapchain_create_info = c.XrSwapchainCreateInfo{
                 .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
                 .usageFlags = c.XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
                 .format = format,
                 .sampleCount = c.VK_SAMPLE_COUNT_1_BIT,
-                .width = eyes[i].recommendedImageRectWidth,
-                .height = eyes[i].recommendedImageRectHeight,
+                .width = config_views[i].recommendedImageRectWidth,
+                .height = config_views[i].recommendedImageRectHeight,
                 .faceCount = 1,
                 .arraySize = 1,
                 .mipCount = 1,
@@ -302,27 +304,26 @@ pub const SwapchainImage = struct {
             try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &swapchain));
 
             swapchains[i] = Self{
-                .swapchain = swapchains[0],
+                .swapchain = swapchain,
                 .format = @intCast(format),
-                .width = eyes[i].recommendedImageRectWidth,
-                .height = eyes[i].recommendedImageRectHeight,
+                .width = config_views[i].recommendedImageRectWidth,
+                .height = config_views[i].recommendedImageRectHeight,
             };
         }
 
-        return @ptrCast(swapchains);
+        return swapchains;
     }
 
-    pub fn getImages(self: Self) ![]const c.XrSwapchainImageVulkanKHR {
+    pub fn getImages(self: Self, allocator: std.mem.Allocator) ![]c.XrSwapchainImageVulkanKHR {
         var image_count: u32 = undefined;
         try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, 0, &image_count, null));
 
-        var images = [_]c.XrSwapchainImageVulkanKHR{
-            .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR },
-        } ** 8;
+        var images = try allocator.alloc(c.XrSwapchainImageVulkanKHR, image_count);
+        @memset(images, .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });
 
-        try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, image_count, &image_count, images[image_count..].ptr));
+        try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, image_count, &image_count, @ptrCast(&images[0])));
 
-        return images[image_count..];
+        return images;
     }
 };
 
