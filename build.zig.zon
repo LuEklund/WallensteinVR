@@ -2,7 +2,7 @@
     .name = .WallensteinVR,
     .version = "0.0.0",
     .fingerprint = 0xfbf8285a17d81f85,
-    .minimum_zig_version = "0.15.0-dev.929+31e46be74",
+    .minimum_zig_version = "0.15.0-dev.1147+69cf40da6",
 
     .dependencies = .{},
 

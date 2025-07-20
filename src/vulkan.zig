@@ -83,15 +83,12 @@ pub fn createDebugMessenger(
     return debug_messenger;
 }
 
-pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []const [*:0]const u8) !c.VkDevice {
-    const indices = findGraphicsQueueFamily(physical_device);
-    if (indices == null) return error.MissingGraphicsQueue;
-
+pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, graphics_queue_family_index: u32, extensions: []const [*:0]const u8) !struct { c.VkDevice, c.VkQueue } {
     var queue_priority: f32 = 1.0;
     const queue_info = c.VkDeviceQueueCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .pNext = null,
-        .queueFamilyIndex = indices.?,
+        .queueFamilyIndex = graphics_queue_family_index,
         .queueCount = 1,
         .pQueuePriorities = &queue_priority,
         .flags = 0,
@@ -114,21 +111,25 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, extensions: []co
 
     var logical_device: c.VkDevice = undefined;
     try loader.vkCheck(c.vkCreateDevice(physical_device, &device_info, null, &logical_device));
-    defer c.vkDestroyDevice(logical_device, null);
+    var queue: c.VkQueue = undefined;
+    c.vkGetDeviceQueue(logical_device, graphics_queue_family_index, 0, &queue);
 
-    return logical_device;
+    return .{ logical_device, queue };
 }
 
-fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
+pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
     var count: u32 = 0;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, null);
 
     var props: [16]c.VkQueueFamilyProperties = undefined;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, &props);
 
+    std.debug.print("Familys {d}\n", .{count});
     for (props[0..count], 0..) |qf, i| {
-        if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0)
+        if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
+            std.debug.print("FOUND {d}\n", .{i});
             return @intCast(i);
+        }
     }
 
     return null;
