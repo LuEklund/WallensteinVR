@@ -434,7 +434,7 @@ pub const SwapchainImage = struct {
 
         var create_info = c.VkBufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = null, // bufferSize <-- The toutorial is just this???,
+            .size = @sizeOf(f32) * 4 * 4 * 3, // :NOTE bufferSize <-- The toutorial is just this???,
             .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
         };
@@ -450,11 +450,21 @@ pub const SwapchainImage = struct {
         var properties: c.VkPhysicalDeviceMemoryProperties = undefined;
         c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
-        const memory_type_index: u32 = blk: for (properties.memoryTypeCount) |i| {
-            if (!(requirements.memoryTypeBits & (1 << i)) or (properties.memoryTypes[i].propertyFlags & flags) != flags) continue;
+        var memory_type_index: u32 = 0;
+        const shiftee: u32 = 1;
+        const i: u5 = 0;
 
-            break :blk i;
-        };
+        for (0..properties.memoryTypeCount) |a| {
+            _ = a;
+            if ((requirements.memoryTypeBits & (shiftee << i) == 0)) {
+                continue;
+            }
+            if ((properties.memoryTypes[i].propertyFlags & flags) != flags) {
+                continue;
+            }
+            memory_type_index = i;
+            break;
+        }
 
         var allocate_info = c.VkMemoryAllocateInfo{
             .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -503,7 +513,7 @@ pub const SwapchainImage = struct {
             .pBufferInfo = &descriptor_buffer_info,
         };
 
-        try loader.vkCheck(c.vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, null));
+        c.vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, null);
 
         return .{
             .device = device,

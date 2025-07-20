@@ -19,10 +19,11 @@ pub const Engine = struct {
     xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
     xr_system_id: c.XrSystemId,
     vk_instance: c.VkInstance,
+    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
+    vk_physical_device: c.VkPhysicalDevice,
     graphics_queue_family_index: u32,
     vk_logical_device: c.VkDevice,
     vkid: vk.Dispatcher,
-    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
 
     pub const Config = struct {
         xr_extensions: []const [*:0]const u8,
@@ -60,8 +61,9 @@ pub const Engine = struct {
             .xrd = xrd,
             .xr_debug_messenger = xr_debug_messenger,
             .xr_system_id = xr_system_id,
-            .vk_debug_messenger = vk_debug_messenger,
             .vk_instance = vk_instance,
+            .vk_debug_messenger = vk_debug_messenger,
+            .vk_physical_device = physical_device,
             .graphics_queue_family_index = queue_family_index.?,
             .vk_logical_device = logical_device,
             .vkid = vkid,
@@ -85,9 +87,7 @@ pub const Engine = struct {
         const swapchains = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
         const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchains[0].format);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(self.vk_logical_device, self.graphics_queue_family_index);
-        _ = command_pool;
         const descriptor_pool: c.VkDescriptorPool = try vk.createDescriptorPool(self.vk_logical_device);
-        _ = descriptor_pool;
         const descriptor_set_layout: c.VkDescriptorSetLayout = try vk.createDescriptorSetLayout(self.vk_logical_device);
         const vertex_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "assets/shaders/vert.spv");
         const fragment_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "assets/shaders/frag.spv");
@@ -98,6 +98,16 @@ pub const Engine = struct {
         var swapchains_images: [eye_count][]c.XrSwapchainImageVulkanKHR = undefined;
         for (0..eye_count) |i| {
             swapchains_images[i] = try swapchains[i].getImages(self.allocator);
+        }
+
+        var wrapped_swapchain_images: [eye_count]std.ArrayList(vk.SwapchainImage) = undefined;
+
+        for (0..eye_count) |i| {
+            wrapped_swapchain_images[i] = .init(self.allocator);
+
+            for (0..swapchains_images.len) |j| {
+                try wrapped_swapchain_images[i].append(try vk.SwapchainImage.init(self.vk_physical_device, self.vk_logical_device, render_pass, command_pool, descriptor_pool, descriptor_set_layout, &swapchains[i], swapchains_images[i][j]));
+            }
         }
 
         const isPosix: bool = switch (builtin.os.tag) {
@@ -162,7 +172,16 @@ pub const Engine = struct {
             };
             const result: c.XrResult = c.xrPollEvent(self.xr_instance, &eventData);
             if (result == c.XR_EVENT_UNAVAILABLE) {
-                if (running) {}
+                if (running) {
+                    // var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
+                    // var frame_state = c.XrFrameState{ .type = c.XR_FTYPE_FRAME_STATE };
+                    // loader.xrCheck(c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state));
+                    // if (!frame_state.shouldRender) {
+                    //     continue;
+                    // }
+                    // const should_quit =
+                    // quit.store(value: bool, comptime order: AtomicOrder)
+                }
             } else if (result != c.XR_SUCCESS) {
                 try loader.xrCheck(result);
             } else {
