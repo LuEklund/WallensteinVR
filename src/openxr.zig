@@ -254,7 +254,7 @@ pub fn createSession(
 }
 
 // Swapchain isnt just helper functions since its cool like this also no idea if this works, it seems very weird
-pub const Swapchain = struct {
+pub const SwapchainImage = struct {
     const Self = @This();
 
     swapchain: c.XrSwapchain,
