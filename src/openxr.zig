@@ -221,9 +221,8 @@ pub fn getVulkanDeviceRequirements(
     return .{ physical_device, extensions };
 }
 
-// NOTE: use xrDestroySession(session); to free
 pub fn createSession(
-    instance: c.XrInstance,
+    xr_instance: c.XrInstance,
     system_id: c.XrSystemId,
     vk_instance: c.VkInstance,
     physical_device: c.VkPhysicalDevice,
@@ -239,6 +238,8 @@ pub fn createSession(
         .queueIndex = 0,
     };
 
+    std.debug.print("\n\nALL: {any}\n\n", .{graphics_binding});
+
     var session_create_info = c.XrSessionCreateInfo{
         .type = c.XR_TYPE_SESSION_CREATE_INFO,
         .next = &graphics_binding,
@@ -247,13 +248,13 @@ pub fn createSession(
     };
 
     var session: c.XrSession = undefined;
-    try loader.xrCheck(c.xrCreateSession(instance, &session_create_info, &session));
+    try loader.xrCheck(c.xrCreateSession(xr_instance, &session_create_info, &session));
 
     return session;
 }
 
 // Swapchain isnt just helper functions since its cool like this also no idea if this works, it seems very weird
-pub const Swapchain = struct {
+pub const SwapchainImage = struct {
     const Self = @This();
 
     swapchain: c.XrSwapchain,

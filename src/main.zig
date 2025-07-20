@@ -18,6 +18,7 @@ pub const Engine = struct {
     xr_instance_extensions: []const [*:0]const u8,
     xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
     vk_instance: c.VkInstance,
+    vk_logical_device: c.VkDevice,
     vkid: vk.Dispatcher,
     vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
 
@@ -40,19 +41,25 @@ pub const Engine = struct {
         const vk_debug_messenger: c.VkDebugUtilsMessengerEXT = try vk.createDebugMessenger(vkid, vk_instance);
 
         const physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(xrd, allocator, xr_instance, xr_system_id, vk_instance);
-        const logical_device: c.VkDevice = try vk.createLogicalDevice(physical_device, vk_device_extensions);
-        _ = logical_device;
+        const queue_family_index = vk.findGraphicsQueueFamily(physical_device);
+        const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index.?, vk_device_extensions);
+        _ = queue;
 
+        std.debug.print("\n1: {*}\n", .{physical_device});
+        std.debug.print("\n2: {*}\n", .{logical_device});
+        const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index.?);
+
+        std.debug.print("\nHELLO2\n", .{});
         return .{
             .allocator = allocator,
             .xr_instance = xr_instance,
-            //TODO: ADD XR SESSION!
-            .xr_session = null,
+            .xr_session = xr_session,
             .xr_instance_extensions = xr_instance_extensions,
             .xrd = xrd,
             .xr_debug_messenger = xr_debug_messenger,
             .vk_debug_messenger = vk_debug_messenger,
             .vk_instance = vk_instance,
+            .vk_logical_device = logical_device,
             .vkid = vkid,
         };
     }
@@ -60,6 +67,10 @@ pub const Engine = struct {
     pub fn deinit(self: Self) void {
         self.vkid.vkDestroyDebugUtilsMessengerEXT(self.vk_instance, self.vk_debug_messenger, null);
         self.xrd.xrDestroyDebugUtilsMessengerEXT(self.xr_debug_messenger) catch {};
+
+        _ = c.vkDestroyDevice(self.vk_logical_device, null);
+
+        _ = c.xrDestroySession(self.xr_session);
 
         _ = c.vkDestroyInstance(self.vk_instance, null);
         _ = c.xrDestroyInstance(self.xr_instance);
