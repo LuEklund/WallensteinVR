@@ -1,4 +1,5 @@
 const std = @import("std");
+const CompileShaders = @import("build/CompileShaders.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -47,18 +48,38 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "loader", .module = loader },
+        },
     });
-    exe_mod.addImport("loader", loader);
 
     const exe = b.addExecutable(.{
         .name = "WallensteinVr",
         .root_module = exe_mod,
     });
 
+    const build_options = b.addOptions();
+    const eye_count = b.option(u8, "eye_count", "eye count") orelse 2;
+    build_options.addOption(u8, "eye_count", eye_count);
+    exe_mod.addOptions("build_options", build_options);
+
+    const shader_compile_step = addCompileShaders(b, .{
+        .in_dir = b.path("assets/shaders"),
+    });
+
+    const install_shaders_step = b.addInstallDirectory(.{
+        .source_dir = shader_compile_step.getOutputDir(),
+        .install_dir = .bin,
+        .install_subdir = "shaders",
+    });
     b.installArtifact(exe);
+    b.getInstallStep().dependOn(&install_shaders_step.step);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
+    // set the working directory to the installation's `bin` directory,
+    // so the executable can find its assets (like shaders)
+    run_cmd.cwd = .{ .cwd_relative = b.exe_dir };
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
@@ -71,4 +92,9 @@ pub fn build(b: *std.Build) void {
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
+}
+
+fn addCompileShaders(b: *std.Build, options: CompileShaders.Options) *CompileShaders {
+    const step = CompileShaders.create(b, options);
+    return step;
 }
