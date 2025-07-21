@@ -33,7 +33,7 @@ fn make(step: *Step, options: Step.MakeOptions) !void {
     const self: *@This() = @fieldParentPtr("step", step);
 
     const glslc_path = b.findProgram(&.{"glslc"}, &.{}) catch |err| switch (err) {
-        error.FileNotFound => @panic("glslc not found in PATH"), // double-check that you have vulkan sdk installed or install it from https://github.com/google/shaderc
+        error.FileNotFound => @panic("glslc not found in PATH"), // double-check that you have vulkan sdk installed or install glslc from https://github.com/google/shaderc
     };
 
     var man = b.graph.cache.obtain();
