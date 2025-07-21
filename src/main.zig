@@ -4,7 +4,8 @@ const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
 const loader = @import("loader");
-const build_options = @import("builds_options");
+const build_options = @import("build_options");
+const nz = @import("numz");
 const c = loader.c;
 var quit: std.atomic.Value(bool) = .init(false);
 
@@ -165,6 +166,8 @@ pub const Engine = struct {
             @compileError("WTF ARE YOU USING? Not Posix or Windows OS");
         }
 
+        const space: c.XrSpace = try xr.createSpace(self.xr_session);
+
         var running: bool = true;
         while (!quit.load(.acquire)) {
             var eventData = c.XrEventDataBuffer{
@@ -179,13 +182,12 @@ pub const Engine = struct {
                     if (frame_state.shouldRender != 0) {
                         continue;
                     }
-                    const should_quit = render(
+                    const should_quit = try render(
                         self.allocator,
                         self.xr_session,
                         swapchains,
-                        wrapped_swapchain_images,
-                        // TODO : ADD space!
-                        null,
+                        &wrapped_swapchain_images,
+                        space,
                         frame_state.predictedDisplayTime,
                         self.vk_logical_device,
                         self.vk_queue,
@@ -241,12 +243,13 @@ pub const Engine = struct {
                 }
             }
         }
+        try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
     }
     fn render(
         allocator: std.mem.Allocator,
         session: c.XrSession,
-        swapchains: [2]xr.Swapchain,
-        swapchain_images: [2]std.ArrayList(vk.SwapchainImage),
+        swapchains: []const xr.Swapchain,
+        swapchain_images: []std.ArrayList(vk.SwapchainImage),
         space: c.XrSpace,
         predicted_display_time: c.XrTime,
         device: c.VkDevice,
@@ -259,7 +262,7 @@ pub const Engine = struct {
             .type = c.XR_TYPE_FRAME_BEGIN_INFO,
         };
 
-        loader.xrCheck(c.xrBeginFrame(session, &begin_frame_info));
+        try loader.xrCheck(c.xrBeginFrame(session, &begin_frame_info));
 
         var view_locate_info = c.XrViewLocateInfo{
             .type = c.XR_TYPE_VIEW_LOCATE_INFO,
@@ -272,22 +275,22 @@ pub const Engine = struct {
             .type = c.XR_TYPE_VIEW_STATE,
         };
 
-        const view_count: u32 = build_options.eye_count;
-        var views = allocator.alloc(c.XrView, view_count);
+        var view_count: u32 = build_options.eye_count;
+        const views = try allocator.alloc(c.XrView, view_count);
         defer allocator.free(views);
-        @memset(views, .{ .type = c.Xr_TYPE_VIEW });
+        @memset(views, .{ .type = c.XR_TYPE_VIEW });
 
-        loader.xrCheck(c.xrLocateViews(
+        try loader.xrCheck(c.xrLocateViews(
             session,
             &view_locate_info,
             &view_state,
             view_count,
-            &view_count,
-            views.data(),
+            @ptrCast(&view_count),
+            views.ptr,
         ));
 
         for (0..build_options.eye_count) |i| {
-            const ok = renderEye(
+            const ok = try renderEye(
                 swapchains[i],
                 swapchain_images[i],
                 views[i],
@@ -302,6 +305,47 @@ pub const Engine = struct {
                 return false;
             }
         }
+
+        var projected_views: [build_options.eye_count]c.XrCompositionLayerProjectionView = undefined;
+
+        for (0..build_options.eye_count) |i| {
+            projected_views[i].type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
+            projected_views[i].pose = views[i].pose;
+            projected_views[i].fov = views[i].fov;
+            projected_views[i].subImage = .{
+                .swapchain = swapchains[i].swapchain,
+                .imageRect = .{
+                    // .{ 0, 0 },
+                    .extent = .{
+                        .width = @intCast(swapchains[i].width),
+                        .height = @intCast(swapchains[i].height),
+                    },
+                },
+                .imageArrayIndex = 0,
+            };
+        }
+
+        var layer = c.XrCompositionLayerProjection{
+            .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
+            .space = space,
+            .viewCount = build_options.eye_count,
+            .views = &projected_views[0],
+        };
+
+        // const layers = [_]c.XrCompositionLayerBaseHeader{@bitCast(layer)};
+        const pLayer: *c.XrCompositionLayerBaseHeader = @ptrCast(&layer);
+
+        var end_frame_info = c.XrFrameEndInfo{
+            .type = c.XR_TYPE_FRAME_END_INFO,
+            .displayTime = predicted_display_time,
+            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+            .layerCount = 1,
+            .layers = &pLayer,
+        };
+
+        try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
+
+        return true;
     }
     fn renderEye(
         swapchain: xr.Swapchain,
@@ -326,21 +370,26 @@ pub const Engine = struct {
             .timeout = std.math.maxInt(i64),
         };
 
-        loader.xrCheck(c.xrWaitSwapchainImage(swapchain.swapchain, &wait_image_info));
-        const image: c.SwapchainImage = images[active_index];
+        try loader.xrCheck(c.xrWaitSwapchainImage(swapchain.swapchain, &wait_image_info));
+        const image: vk.SwapchainImage = images.items[active_index];
 
-        const data: f32 = 0;
-        loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(data)));
+        std.debug.print("\npre-VK call\n", .{});
+        var data: ?*anyopaque = null;
+        try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
+        // if (data == null) return error.idkMan;
+
+        std.debug.print("\nVK call\n", .{});
 
         const angle_width: f32 = std.math.tan(view.fov.angleRight) - std.math.tan(view.fov.angleLeft);
         const angle_height: f32 = std.math.tan(view.fov.angleDown) - std.math.tan(view.fov.angleUp);
 
-        const projection_matrix: [4][4]f32 = 0;
+        var projection_matrix: [4][4]f32 = undefined;
 
         //NOTE make defines?
         const far_distance: f32 = 1;
         const near_distance: f32 = 0.01;
 
+        std.debug.print("\n\n=========[5]===========\n\n", .{});
         projection_matrix[0][0] = 2.0 / angle_width;
         projection_matrix[2][0] = (std.math.tan(view.fov.angleRight) + std.math.tan(view.fov.angleLeft)) / angle_width;
         projection_matrix[1][1] = 2.0 / angle_height;
@@ -349,11 +398,14 @@ pub const Engine = struct {
         projection_matrix[3][2] = -(far_distance * near_distance) / (far_distance - near_distance);
         projection_matrix[2][3] = -1;
 
-        // TODO : math library
         // glm::mat4 viewMatrix = glm::inverse(
         //     glm::translate(glm::mat4(1.0f), glm::vec3(view.pose.position.x, view.pose.position.y, view.pose.position.z))
         //     * glm::mat4_cast(glm::quat(view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z))
         // );
+        const view_matrix: nz.Mat4(f32) = .mul(
+            .translate(.{ view.pose.position.x, view.pose.position.y, view.pose.position.z }),
+            .fromQuaternion(.{ view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z }),
+        );
 
         const model_matrix = [4][4]f32{
             .{ 1, 0, 0, 0 },
@@ -362,11 +414,13 @@ pub const Engine = struct {
             .{ 0, 0, 0, 1 },
         };
 
-        @memcpy(data, projection_matrix);
-        //TODO . math library
-        // @memcpy(data + (4 * 4), glm::value_ptr(viewMatrix), sizeof(float) * 4 * 4);
-        @memcpy(data + (4 * 4) * 2, model_matrix);
-
+        std.debug.print("\n\n=========[6]===========\n\n", .{});
+        // @memcpy(data.d, projection_matrix);
+        @memcpy(@as([*]f32, @ptrCast(@alignCast(data))), @as([16]f32, @bitCast(projection_matrix))[0..]);
+        // @memcpy(data.d + 4 * 4, glm::value_ptr(viewMatrix));
+        @memcpy(@as([*]f32, @ptrFromInt(@intFromPtr(data))) + 4 * 4, @as([16]f32, @bitCast(view_matrix.d))[0..]);
+        // // @memcpy(data + (4 * 4) * 2, model_matrix);
+        @memcpy(@as([*]f32, @ptrFromInt(@intFromPtr(data))) + (4 * 4) * 2, @as([16]f32, @bitCast(model_matrix))[0..]);
         c.vkUnmapMemory(device, image.memory);
 
         const begin_info = c.VkCommandBufferBeginInfo{
@@ -374,10 +428,10 @@ pub const Engine = struct {
             .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
         };
 
-        loader.xrCheck(c.vkBeginCommandBuffer(image.commandBuffer, &begin_info));
+        try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
 
         const clearValue = c.VkClearValue{
-            .color = .{.{ 0.0, 0.0, 0.0, 1.0 }},
+            .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } },
         };
 
         const begin_render_pass_info = c.VkRenderPassBeginInfo{
@@ -385,28 +439,43 @@ pub const Engine = struct {
             .renderPass = render_pass,
             .framebuffer = image.framebuffer,
             .renderArea = .{
-                .{ 0, 0 },
-                .{ swapchain.width, swapchain.height },
+                .offset = .{ .x = 0, .y = 0 },
+                .extent = .{ .width = swapchain.width, .height = swapchain.height },
             },
             .clearValueCount = 1,
             .pClearValues = &clearValue,
         };
 
-        c.vkCmdBeginRenderPass(image.commandBuffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+        std.debug.print("\n\n=========[7]===========\n\n", .{});
+        c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
 
-        const viewport = c.VkViewport{ 0, 0, swapchain.width, swapchain.height, 0, 1 };
+        const viewport = c.VkViewport{
+            .x = 0,
+            .y = 0,
+            .width = @floatFromInt(swapchain.width),
+            .height = @floatFromInt(swapchain.height),
+            .minDepth = 0,
+            .maxDepth = 1,
+        };
 
-        c.vkCmdSetViewport(image.commandBuffer, 0, 1, &viewport);
+        std.debug.print("\n\n=========[8]===========\n\n", .{});
+        c.vkCmdSetViewport(image.command_buffer, 0, 1, &viewport);
 
-        const scissor = c.VkRect2D{ .{ 0, 0 }, .{ swapchain.width, swapchain.height } };
+        std.debug.print("\n\n=========[9]===========\n\n", .{});
+        const scissor = c.VkRect2D{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = .{ .width = swapchain.width, .height = swapchain.height },
+        };
 
-        c.vkCmdSetScissor(image.commandBuffer, 0, 1, &scissor);
-        c.vkCmdBindPipeline(image.commandBuffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        c.vkCmdBindDescriptorSets(image.commandBuffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptorSet, 0, null);
-        c.vkCmdDraw(image.commandBuffer, 3, 1, 0, 0);
-        c.vkCmdEndRenderPass(image.commandBuffer);
+        std.debug.print("\n\n=========[10]===========\n\n", .{});
+        c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
+        c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
+        c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
+        c.vkCmdEndRenderPass(image.command_buffer);
 
-        loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
+        std.debug.print("\n\n=========[11]===========\n\n", .{});
+        try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
 
         const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
@@ -414,10 +483,20 @@ pub const Engine = struct {
             .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .pWaitDstStageMask = &stage_mask,
             .commandBufferCount = 1,
-            .pCommandBuffers = &image.commandBuffer,
+            .pCommandBuffers = &image.command_buffer,
         };
+        try loader.xrCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
 
-        loader.xrCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
+        std.debug.print("\n\n=========[12]===========\n\n", .{});
+        const release_image_info = c.XrSwapchainImageReleaseInfo{
+            .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
+        };
+        std.debug.print("\n\n=========[13]===========\n\n", .{});
+
+        try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
+
+        std.debug.print("\n\n=========[14]===========\n\n", .{});
+        return true;
     }
 
     fn onInterrupt(signum: c_int) callconv(.c) void {

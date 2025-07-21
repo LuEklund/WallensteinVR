@@ -452,17 +452,15 @@ pub const SwapchainImage = struct {
 
         var memory_type_index: u32 = 0;
         const shiftee: u32 = 1;
-        const i: u5 = 0;
 
-        for (0..properties.memoryTypeCount) |a| {
-            _ = a;
-            if ((requirements.memoryTypeBits & (shiftee << i) == 0)) {
+        for (0..properties.memoryTypeCount) |i| {
+            if ((requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0)) {
                 continue;
             }
             if ((properties.memoryTypes[i].propertyFlags & flags) != flags) {
                 continue;
             }
-            memory_type_index = i;
+            memory_type_index = @intCast(i);
             break;
         }
 
@@ -474,6 +472,8 @@ pub const SwapchainImage = struct {
 
         var memory: c.VkDeviceMemory = undefined;
         try loader.vkCheck(c.vkAllocateMemory(device, &allocate_info, null, &memory));
+
+        std.debug.print("\n\n\n\nMEMORY: {any}\n\n\n\n\n", .{memory});
 
         try loader.vkCheck(c.vkBindBufferMemory(device, buffer, memory, 0));
 

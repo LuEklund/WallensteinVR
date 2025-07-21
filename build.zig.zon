@@ -4,7 +4,12 @@
     .fingerprint = 0xfbf8285a17d81f85,
     .minimum_zig_version = "0.15.0-dev.1147+69cf40da6",
 
-    .dependencies = .{},
+    .dependencies = .{
+        .numz = .{
+            .url = "git+https://github.com/HaraldWik/numz#09ab1b2f10f7142bf356111d4b08857b359eefb7",
+            .hash = "numz-0.0.0-oTBeDBxNAABufiHTzxEuz5P8g8EgKFLhnU4HKcRK9glZ",
+        },
+    },
 
     .paths = .{
         "build.zig",
