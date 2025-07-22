@@ -53,11 +53,8 @@ pub const Engine = struct {
         const queue_family_index = vk.findGraphicsQueueFamily(physical_device);
         const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index.?, vk_device_extensions);
 
-        std.debug.print("\n1: {*}\n", .{physical_device});
-        std.debug.print("\n2: {*}\n", .{logical_device});
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index.?);
 
-        std.debug.print("\nHELLO2\n", .{});
         return .{
             .allocator = allocator,
             .xr_instance = xr_instance,
@@ -78,30 +75,43 @@ pub const Engine = struct {
 
     pub fn deinit(self: Self) void {
         self.vkid.vkDestroyDebugUtilsMessengerEXT(self.vk_instance, self.vk_debug_messenger, null);
-        // self.xrd.xrDestroyDebugUtilsMessengerEXT(self.xr_debug_messenger) catch {};
+        self.xrd.xrDestroyDebugUtilsMessengerEXT(self.xr_debug_messenger) catch {};
 
-        // _ = c.vkDestroyDevice(self.vk_logical_device, null);
+        _ = c.xrDestroySession(self.xr_session);
+        _ = c.xrDestroyInstance(self.xr_instance);
 
-        // _ = c.xrDestroySession(self.xr_session);
-
-        // _ = c.vkDestroyInstance(self.vk_instance, null);
-        // _ = c.xrDestroyInstance(self.xr_instance);
+        _ = c.vkDestroyDevice(self.vk_logical_device, null);
+        _ = c.vkDestroyInstance(self.vk_instance, null);
     }
 
     pub fn start(self: Self) !void {
         const eye_count = build_options.eye_count;
         const swapchains = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
+        defer self.allocator.free(swapchains);
         const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchains[0].format);
+        defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(self.vk_logical_device, self.graphics_queue_family_index);
+        defer c.vkDestroyCommandPool(self.vk_logical_device, command_pool, null);
         const descriptor_pool: c.VkDescriptorPool = try vk.createDescriptorPool(self.vk_logical_device);
+        defer c.vkDestroyDescriptorPool(self.vk_logical_device, descriptor_pool, null);
         const descriptor_set_layout: c.VkDescriptorSetLayout = try vk.createDescriptorSetLayout(self.vk_logical_device);
+        defer c.vkDestroyDescriptorSetLayout(self.vk_logical_device, descriptor_set_layout, null);
         const vertex_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "shaders/vertex.vert.spv");
+        defer c.vkDestroyShaderModule(self.vk_logical_device, vertex_shader, null);
         const fragment_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "shaders/fragment.frag.spv");
+        defer c.vkDestroyShaderModule(self.vk_logical_device, fragment_shader, null);
         const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader);
+        defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
+        defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
 
         var swapchains_images: [eye_count][]c.XrSwapchainImageVulkanKHR = undefined;
         for (0..eye_count) |i| {
             swapchains_images[i] = try swapchains[i].getImages(self.allocator);
+        }
+        defer {
+            for (0..eye_count) |i| {
+                self.allocator.free(swapchains_images[i]);
+            }
         }
 
         var wrapped_swapchain_images: [eye_count]std.ArrayList(vk.SwapchainImage) = undefined;
@@ -110,7 +120,27 @@ pub const Engine = struct {
             wrapped_swapchain_images[i] = .init(self.allocator);
 
             for (0..swapchains_images.len) |j| {
-                try wrapped_swapchain_images[i].append(try vk.SwapchainImage.init(self.vk_physical_device, self.vk_logical_device, render_pass, command_pool, descriptor_pool, descriptor_set_layout, &swapchains[i], swapchains_images[i][j]));
+                try wrapped_swapchain_images[i].append(
+                    try vk.SwapchainImage.init(
+                        self.vk_physical_device,
+                        self.vk_logical_device,
+                        render_pass,
+                        command_pool,
+                        descriptor_pool,
+                        descriptor_set_layout,
+                        &swapchains[i],
+                        swapchains_images[i][j],
+                    ),
+                );
+            }
+        }
+        defer {
+            std.debug.print("\n\n=========[FREEING THE IMAGES]===========\n\n", .{});
+            for (0..eye_count) |i| {
+                for (wrapped_swapchain_images[i].items) |swapchain_image| {
+                    swapchain_image.deinit();
+                }
+                wrapped_swapchain_images[i].deinit();
             }
         }
 
@@ -173,6 +203,8 @@ pub const Engine = struct {
 
         var running: bool = true;
         while (!quit.load(.acquire)) {
+            std.debug.print("\n\n=========[entered while loop]===========\n\n", .{});
+
             var eventData = c.XrEventDataBuffer{
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
             };
@@ -185,6 +217,7 @@ pub const Engine = struct {
                     if (frame_state.shouldRender != 0) {
                         continue;
                     }
+                    std.debug.print("\n\n=========[entered rendering]===========\n\n", .{});
                     const should_quit = try render(
                         self.allocator,
                         self.xr_session,
@@ -198,6 +231,7 @@ pub const Engine = struct {
                         pipeline_layout,
                         pipeline,
                     );
+                    std.debug.print("\n\n=========[quite == {}]===========\n\n", .{should_quit});
                     quit.store(should_quit, .release);
                 }
             } else if (result != c.XR_SUCCESS) {
@@ -246,6 +280,7 @@ pub const Engine = struct {
                 }
             }
         }
+        std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
     }
     fn render(
@@ -305,7 +340,7 @@ pub const Engine = struct {
             );
 
             if (!ok) {
-                return false;
+                return true;
             }
         }
 
@@ -328,27 +363,27 @@ pub const Engine = struct {
             };
         }
 
-        var layer = c.XrCompositionLayerProjection{
-            .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
-            .space = space,
-            .viewCount = build_options.eye_count,
-            .views = &projected_views[0],
-        };
+        // var layer = c.XrCompositionLayerProjection{
+        //     .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
+        //     .space = space,
+        //     .viewCount = build_options.eye_count,
+        //     .views = &projected_views[0],
+        // };
 
-        // const layers = [_]c.XrCompositionLayerBaseHeader{@bitCast(layer)};
-        var pLayer: *c.XrCompositionLayerBaseHeader = @ptrCast(&layer);
+        // // const layers = [_]c.XrCompositionLayerBaseHeader{@bitCast(layer)};
+        // var pLayer: *const c.XrCompositionLayerBaseHeader = @ptrCast(&layer);
 
-        var end_frame_info = c.XrFrameEndInfo{
-            .type = c.XR_TYPE_FRAME_END_INFO,
-            .displayTime = predicted_display_time,
-            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
-            .layerCount = 1,
-            .layers = &pLayer,
-        };
+        // var end_frame_info = c.XrFrameEndInfo{
+        //     .type = c.XR_TYPE_FRAME_END_INFO,
+        //     .displayTime = predicted_display_time,
+        //     .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+        //     .layerCount = 1,
+        //     .layers = &pLayer,
+        // };
 
-        try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
+        // try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
 
-        return true;
+        return false;
     }
     fn renderEye(
         swapchain: xr.Swapchain,
@@ -376,11 +411,8 @@ pub const Engine = struct {
         try loader.xrCheck(c.xrWaitSwapchainImage(swapchain.swapchain, &wait_image_info));
         const image: vk.SwapchainImage = images.items[active_index];
 
-        std.debug.print("\npre-VK call\n", .{});
         var data: ?[*]f32 = null;
         try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
-
-        std.debug.print("\nVK call\n", .{});
 
         const angle_width: f32 = std.math.tan(view.fov.angleRight) - std.math.tan(view.fov.angleLeft);
         const angle_height: f32 = std.math.tan(view.fov.angleDown) - std.math.tan(view.fov.angleUp);
@@ -390,8 +422,6 @@ pub const Engine = struct {
         //NOTE make defines?
         const far_distance: f32 = 1;
         const near_distance: f32 = 0.01;
-
-        std.debug.print("\n\n=========[5]===========\n\n", .{});
 
         projection_matrix.d[0] = 2.0 / angle_width;
         projection_matrix.d[8] = (std.math.tan(view.fov.angleRight) + std.math.tan(view.fov.angleLeft)) / angle_width;
@@ -408,7 +438,6 @@ pub const Engine = struct {
 
         const model_matrix = nz.Mat4(f32).identity(1);
 
-        std.debug.print("\n\n=========[6]===========\n\n", .{});
         @memcpy(data.?[0..16], projection_matrix.d[0..]);
         @memcpy(data.?[16..32], view_matrix.d[0..]);
         @memcpy(data.?[32..48], model_matrix.d[0..]);
@@ -438,7 +467,6 @@ pub const Engine = struct {
             .pClearValues = &clearValue,
         };
 
-        std.debug.print("\n\n=========[7]===========\n\n", .{});
         c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
 
         const viewport = c.VkViewport{
@@ -450,23 +478,19 @@ pub const Engine = struct {
             .maxDepth = 1,
         };
 
-        std.debug.print("\n\n=========[8]===========\n\n", .{});
         c.vkCmdSetViewport(image.command_buffer, 0, 1, &viewport);
 
-        std.debug.print("\n\n=========[9]===========\n\n", .{});
         const scissor = c.VkRect2D{
             .offset = .{ .x = 0, .y = 0 },
             .extent = .{ .width = swapchain.width, .height = swapchain.height },
         };
 
-        std.debug.print("\n\n=========[10]===========\n\n", .{});
         c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
         c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
         c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
         c.vkCmdEndRenderPass(image.command_buffer);
 
-        std.debug.print("\n\n=========[11]===========\n\n", .{});
         try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
 
         const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -479,15 +503,12 @@ pub const Engine = struct {
         };
         try loader.xrCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
 
-        std.debug.print("\n\n=========[12]===========\n\n", .{});
         const release_image_info = c.XrSwapchainImageReleaseInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
         };
-        std.debug.print("\n\n=========[13]===========\n\n", .{});
 
         try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
 
-        std.debug.print("\n\n=========[14]===========\n\n", .{});
         return true;
     }
 
@@ -504,6 +525,7 @@ pub fn main() !void {
     }){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+    // const allocator = std.heap.page_allocator;
 
     const xr_extensions = &[_][*:0]const u8{
         loader.c.XR_KHR_VULKAN_ENABLE_EXTENSION_NAME,

@@ -238,8 +238,6 @@ pub fn createSession(
         .queueIndex = 0,
     };
 
-    std.debug.print("\n\nALL: {any}\n\n", .{graphics_binding});
-
     var session_create_info = c.XrSessionCreateInfo{
         .type = c.XR_TYPE_SESSION_CREATE_INFO,
         .next = &graphics_binding,
@@ -286,7 +284,6 @@ pub const Swapchain = struct {
         };
 
         var swapchains: []Self = try allocator.alloc(Self, config_views.len);
-
         for (0..config_views.len) |i| {
             var swapchain_create_info = c.XrSwapchainCreateInfo{
                 .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,

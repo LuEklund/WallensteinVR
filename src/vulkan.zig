@@ -30,7 +30,6 @@ export fn debugCallback(
 }
 
 pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, extensions: []const [*:0]const u8, layers: []const [*:0]const u8) !c.VkInstance {
-    log.info("\n\n\n\nLEN {d}\n", .{extensions.len});
     var create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .ppEnabledExtensionNames = if (extensions.len > 0) extensions.ptr else null,
@@ -123,11 +122,8 @@ pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
 
     var props: [16]c.VkQueueFamilyProperties = undefined;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, &props);
-
-    std.debug.print("Familys {d}\n", .{count});
     for (props[0..count], 0..) |qf, i| {
         if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
-            std.debug.print("FOUND {d}\n", .{i});
             return @intCast(i);
         }
     }
@@ -234,7 +230,7 @@ pub fn createShader(allocator: std.mem.Allocator, device: c.VkDevice, file_path:
 
     var shader: c.VkShaderModule = undefined;
     try loader.vkCheck(c.vkCreateShaderModule(device, &shader_create_info, null, &shader));
-
+    allocator.free(source);
     return shader;
 }
 
@@ -473,8 +469,6 @@ pub const SwapchainImage = struct {
         var memory: c.VkDeviceMemory = undefined;
         try loader.vkCheck(c.vkAllocateMemory(device, &allocate_info, null, &memory));
 
-        std.debug.print("\n\n\n\nMEMORY: {any}\n\n\n\n\n", .{memory});
-
         try loader.vkCheck(c.vkBindBufferMemory(device, buffer, memory, 0));
 
         var command_buffer_allocate_info = c.VkCommandBufferAllocateInfo{
@@ -530,7 +524,9 @@ pub const SwapchainImage = struct {
     }
 
     pub fn deinit(self: Self) void {
-        c.vkFreeDescriptorSets(self.device, self.descriptor_pool, 1, &self.descriptor_set);
+        std.debug.print("Destroyed SwapChainImage\n", .{});
+        _ = c.vkFreeDescriptorSets(self.device, self.descriptor_pool, 1, &self.descriptor_set);
+        std.debug.print("INFO : {any}\n", .{self.command_buffer});
         c.vkFreeCommandBuffers(self.device, self.command_pool, 1, &self.command_buffer);
         c.vkDestroyBuffer(self.device, self.buffer, null);
         c.vkFreeMemory(self.device, self.memory, null);
