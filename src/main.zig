@@ -82,6 +82,7 @@ pub const Engine = struct {
 
         _ = c.vkDestroyDevice(self.vk_logical_device, null);
         _ = c.vkDestroyInstance(self.vk_instance, null);
+
     }
 
     pub fn start(self: Self) !void {
@@ -218,7 +219,7 @@ pub const Engine = struct {
                         continue;
                     }
                     std.debug.print("\n\n=========[entered rendering]===========\n\n", .{});
-                    const should_quit = try render(
+                    const should_quit = render(
                         self.allocator,
                         self.xr_session,
                         swapchains,
@@ -230,8 +231,7 @@ pub const Engine = struct {
                         render_pass,
                         pipeline_layout,
                         pipeline,
-                    );
-                    std.debug.print("\n\n=========[quite == {}]===========\n\n", .{should_quit});
+                    ) catch true;
                     quit.store(should_quit, .release);
                 }
             } else if (result != c.XR_SUCCESS) {
@@ -280,6 +280,8 @@ pub const Engine = struct {
                 }
             }
         }
+
+        std.debug.print("\n\n=========[quite == {}]===========\n\n", .{quit.load(.acquire)});
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
     }
@@ -323,7 +325,7 @@ pub const Engine = struct {
             &view_locate_info,
             &view_state,
             view_count,
-            @ptrCast(&view_count),
+            &view_count,
             views.ptr,
         ));
 
@@ -363,25 +365,32 @@ pub const Engine = struct {
             };
         }
 
-        // var layer = c.XrCompositionLayerProjection{
-        //     .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
-        //     .space = space,
-        //     .viewCount = build_options.eye_count,
-        //     .views = &projected_views[0],
-        // };
+        var layer = c.XrCompositionLayerProjection{
+            .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
+            .space = space,
+            .viewCount = build_options.eye_count,
+            .views = &projected_views[0],
+        };
 
-        // // const layers = [_]c.XrCompositionLayerBaseHeader{@bitCast(layer)};
-        // var pLayer: *const c.XrCompositionLayerBaseHeader = @ptrCast(&layer);
+        std.debug.print("\n\n\nINFO : {any}\n\n\n", .{layer});
 
-        // var end_frame_info = c.XrFrameEndInfo{
-        //     .type = c.XR_TYPE_FRAME_END_INFO,
-        //     .displayTime = predicted_display_time,
-        //     .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
-        //     .layerCount = 1,
-        //     .layers = &pLayer,
-        // };
+        // const layers = [_]c.XrCompositionLayerBaseHeader{@bitCast(layer)};
+        // const pLayer: *const c.XrCompositionLayerBaseHeader = @ptrCast(&layer);
+        const composition_layers: [1]*const c.XrCompositionLayerBaseHeader = .{
+            @ptrCast(&layer),
+        };
 
-        // try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
+        // std.debug.print("\n\n\nINFO : {any}\n\n\n", .{pLayer});
+        var end_frame_info = c.XrFrameEndInfo{
+            .type = c.XR_TYPE_FRAME_END_INFO,
+            .displayTime = predicted_display_time,
+            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+            .layerCount = 1,
+            .layers = &composition_layers[0],
+        };
+
+        // std.debug.print("\n\n\nINFO : {any}\n\n\n", .{pLayer});
+        try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
 
         return false;
     }

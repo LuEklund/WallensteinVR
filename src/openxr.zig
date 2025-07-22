@@ -37,7 +37,16 @@ pub fn createInstance(extensions: []const [*:0]const u8, layers: []const [*:0]co
     return instance;
 }
 
-fn handleXRError(severity: c.XrDebugUtilsMessageSeverityFlagsEXT, @"type": c.XrDebugUtilsMessageTypeFlagsEXT, callback_data: *const c.XrDebugUtilsMessengerCallbackDataEXT, _: *anyopaque) c.XrBool32 {
+pub fn handleXRError(
+    severity: c.XrDebugUtilsMessageSeverityFlagsEXT,
+    @"type": c.XrDebugUtilsMessageTypeFlagsEXT,
+    callback_data: [*c]const c.XrDebugUtilsMessengerCallbackDataEXT,
+    _: ?*anyopaque,
+) callconv(.c) c.XrBool32 {
+    std.debug.print("\n\nHELLO!!!!\n\n\n", .{});
+
+    log.err("\n\nHELLO!!!!\n\n\n", .{});
+
     const type_str: []const u8 = switch (@"type") {
         c.XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT => "general",
         c.XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT => "validation",
@@ -54,7 +63,7 @@ fn handleXRError(severity: c.XrDebugUtilsMessageSeverityFlagsEXT, @"type": c.XrD
         else => "(other)",
     };
 
-    log.err("XR: {s}: {s}: {s}\n", .{ type_str, severity_str, callback_data.message });
+    log.err("XR: {s}: {s}: {s}\n", .{ type_str, severity_str, callback_data[0].message });
 
     return c.XR_FALSE;
 }
@@ -75,7 +84,7 @@ pub fn createDebugMessenger(
             c.XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
             c.XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
             c.XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT,
-        .userCallback = @ptrCast(&handleXRError),
+        .userCallback = handleXRError,
         .userData = null,
     };
 
