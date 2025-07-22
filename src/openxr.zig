@@ -342,3 +342,60 @@ pub fn createSpace(session: c.XrSession) !c.XrSpace {
 
     return space;
 }
+
+pub fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]const u8) !void {
+    var extension_count: u32 = 0;
+
+    try loader.xrCheck(
+        c.xrEnumerateInstanceExtensionProperties(null, 0, &extension_count, null),
+    );
+
+    const extension_properties = try allocator.alloc(c.XrExtensionProperties, @intCast(extension_count));
+    defer allocator.free(extension_properties);
+
+    @memset(extension_properties, .{ .type = c.XR_TYPE_EXTENSION_PROPERTIES });
+
+    try loader.xrCheck(
+        c.xrEnumerateInstanceExtensionProperties(null, extension_count, &extension_count, extension_properties.ptr),
+    );
+
+    for (extentions) |extention| {
+        for (extension_properties) |extension_property| {
+            if (std.mem.eql(u8, std.mem.span(extention), std.mem.sliceTo(&extension_property.extensionName, 0))) {
+                std.debug.print("found {s}\n", .{extention});
+                break;
+            }
+        } else {
+            log.err("Failed to find OpenXR extension: {s}\n", .{extention});
+            return error.MissingLayers;
+        }
+    }
+}
+
+pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u8) !void {
+    var layer_count: u32 = 0;
+
+    try loader.xrCheck(
+        c.xrEnumerateApiLayerProperties(0, &layer_count, null),
+    );
+    const layer_properties = try allocator.alloc(c.XrApiLayerProperties, @intCast(layer_count));
+    defer allocator.free(layer_properties);
+
+    @memset(layer_properties, .{ .type = c.XR_TYPE_API_LAYER_PROPERTIES });
+    try loader.xrCheck(
+        c.xrEnumerateApiLayerProperties(layer_count, &layer_count, layer_properties.ptr),
+    );
+
+    for (layer_properties) |l| {
+        std.debug.print("layer found: {s}\n", .{l.layerName});
+    }
+
+    for (layers) |layer| {
+        for (layer_properties) |layer_property| {
+            if (std.mem.eql(u8, std.mem.span(layer), std.mem.sliceTo(&layer_property.layerName, 0))) break;
+        } else {
+            log.err("Failed to find OpenXR layer: {s}\n", .{layer});
+            return error.MissingLayers;
+        }
+    }
+}

@@ -35,6 +35,9 @@ pub const Engine = struct {
     };
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
+        try xr.validateExtensions(allocator, config.xr_extensions);
+        try xr.validateLayers(allocator, config.xr_layers);
+
         const xr_instance: c.XrInstance = try xr.createInstance(config.xr_extensions, config.xr_layers);
         const xrd = try xr.Dispatcher.init(xr_instance);
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xrd, xr_instance);
@@ -333,7 +336,7 @@ pub const Engine = struct {
         };
 
         // const layers = [_]c.XrCompositionLayerBaseHeader{@bitCast(layer)};
-        const pLayer: *c.XrCompositionLayerBaseHeader = @ptrCast(&layer);
+        var pLayer: *c.XrCompositionLayerBaseHeader = @ptrCast(&layer);
 
         var end_frame_info = c.XrFrameEndInfo{
             .type = c.XR_TYPE_FRAME_END_INFO,
@@ -374,53 +377,42 @@ pub const Engine = struct {
         const image: vk.SwapchainImage = images.items[active_index];
 
         std.debug.print("\npre-VK call\n", .{});
-        var data: ?*anyopaque = null;
+        var data: ?[*]f32 = null;
         try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
-        // if (data == null) return error.idkMan;
 
         std.debug.print("\nVK call\n", .{});
 
         const angle_width: f32 = std.math.tan(view.fov.angleRight) - std.math.tan(view.fov.angleLeft);
         const angle_height: f32 = std.math.tan(view.fov.angleDown) - std.math.tan(view.fov.angleUp);
 
-        var projection_matrix: [4][4]f32 = undefined;
+        var projection_matrix = nz.Mat4(f32).identity(0);
 
         //NOTE make defines?
         const far_distance: f32 = 1;
         const near_distance: f32 = 0.01;
 
         std.debug.print("\n\n=========[5]===========\n\n", .{});
-        projection_matrix[0][0] = 2.0 / angle_width;
-        projection_matrix[2][0] = (std.math.tan(view.fov.angleRight) + std.math.tan(view.fov.angleLeft)) / angle_width;
-        projection_matrix[1][1] = 2.0 / angle_height;
-        projection_matrix[2][1] = (std.math.tan(view.fov.angleUp) + std.math.tan(view.fov.angleDown)) / angle_height;
-        projection_matrix[2][2] = -far_distance / (far_distance - near_distance);
-        projection_matrix[3][2] = -(far_distance * near_distance) / (far_distance - near_distance);
-        projection_matrix[2][3] = -1;
 
-        // glm::mat4 viewMatrix = glm::inverse(
-        //     glm::translate(glm::mat4(1.0f), glm::vec3(view.pose.position.x, view.pose.position.y, view.pose.position.z))
-        //     * glm::mat4_cast(glm::quat(view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z))
-        // );
+        projection_matrix.d[0] = 2.0 / angle_width;
+        projection_matrix.d[8] = (std.math.tan(view.fov.angleRight) + std.math.tan(view.fov.angleLeft)) / angle_width;
+        projection_matrix.d[5] = 2.0 / angle_height;
+        projection_matrix.d[9] = (std.math.tan(view.fov.angleUp) + std.math.tan(view.fov.angleDown)) / angle_height;
+        projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
+        projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
+        projection_matrix.d[11] = -1;
+
         const view_matrix: nz.Mat4(f32) = .mul(
             .translate(.{ view.pose.position.x, view.pose.position.y, view.pose.position.z }),
             .fromQuaternion(.{ view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z }),
         );
 
-        const model_matrix = [4][4]f32{
-            .{ 1, 0, 0, 0 },
-            .{ 0, 1, 0, 0 },
-            .{ 0, 0, 1, 0 },
-            .{ 0, 0, 0, 1 },
-        };
+        const model_matrix = nz.Mat4(f32).identity(1);
 
         std.debug.print("\n\n=========[6]===========\n\n", .{});
-        // @memcpy(data.d, projection_matrix);
-        @memcpy(@as([*]f32, @ptrCast(@alignCast(data))), @as([16]f32, @bitCast(projection_matrix))[0..]);
-        // @memcpy(data.d + 4 * 4, glm::value_ptr(viewMatrix));
-        @memcpy(@as([*]f32, @ptrFromInt(@intFromPtr(data))) + 4 * 4, @as([16]f32, @bitCast(view_matrix.d))[0..]);
-        // // @memcpy(data + (4 * 4) * 2, model_matrix);
-        @memcpy(@as([*]f32, @ptrFromInt(@intFromPtr(data))) + (4 * 4) * 2, @as([16]f32, @bitCast(model_matrix))[0..]);
+        @memcpy(data.?[0..16], projection_matrix.d[0..]);
+        @memcpy(data.?[16..32], view_matrix.d[0..]);
+        @memcpy(data.?[32..48], model_matrix.d[0..]);
+
         c.vkUnmapMemory(device, image.memory);
 
         const begin_info = c.VkCommandBufferBeginInfo{
