@@ -43,9 +43,9 @@ pub fn handleXRError(
     callback_data: [*c]const c.XrDebugUtilsMessengerCallbackDataEXT,
     _: ?*anyopaque,
 ) callconv(.c) c.XrBool32 {
-    std.debug.print("\n\nHELLO!!!!\n\n\n", .{});
+    // std.debug.print("\n\nHELLO!!!!\n\n\n", .{});
 
-    log.err("\n\nHELLO!!!!\n\n\n", .{});
+    // log.err("\n\nHELLO!!!!\n\n\n", .{});
 
     const type_str: []const u8 = switch (@"type") {
         c.XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT => "general",
@@ -305,6 +305,7 @@ pub const Swapchain = struct {
                 .arraySize = 1,
                 .mipCount = 1,
             };
+            std.debug.print("\n\n !config_views[{d}]: {any}\n\n", .{ i, config_views[i] });
 
             var swapchain: c.XrSwapchain = undefined;
             try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &swapchain));

@@ -82,7 +82,6 @@ pub const Engine = struct {
 
         _ = c.vkDestroyDevice(self.vk_logical_device, null);
         _ = c.vkDestroyInstance(self.vk_instance, null);
-
     }
 
     pub fn start(self: Self) !void {
@@ -214,7 +213,9 @@ pub const Engine = struct {
                 if (running) {
                     var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
                     var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
+                    std.debug.print("\n\nxrWaitFrame\n\n", .{});
                     try loader.xrCheck(c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state));
+                    std.debug.print("\n\n=====\n\n", .{});
                     if (frame_state.shouldRender != 0) {
                         continue;
                     }
@@ -260,7 +261,10 @@ pub const Engine = struct {
                                 running = true;
                             },
                             c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => running = true,
-                            c.XR_SESSION_STATE_STOPPING => try loader.xrCheck(c.xrEndSession(self.xr_session)),
+                            c.XR_SESSION_STATE_STOPPING => {
+                                try loader.xrCheck(c.xrEndSession(self.xr_session));
+                                running = false;
+                            },
                             c.XR_SESSION_STATE_LOSS_PENDING => {
                                 std.debug.print("OpenXR session is shutting down.\n", .{});
                                 quit.store(true, .release);
@@ -298,11 +302,19 @@ pub const Engine = struct {
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
     ) !bool {
+        // _ = swapchain_images;
+        // _ = queue;
+        // _ = device;
+        // _ = render_pass;
+        // _ = pipeline;
+        // _ = pipeline_layout;
         var begin_frame_info = c.XrFrameBeginInfo{
             .type = c.XR_TYPE_FRAME_BEGIN_INFO,
         };
 
+        std.debug.print("\n\nxrBeginFrame\n\n", .{});
         try loader.xrCheck(c.xrBeginFrame(session, &begin_frame_info));
+        std.debug.print("\n=====\n", .{});
 
         var view_locate_info = c.XrViewLocateInfo{
             .type = c.XR_TYPE_VIEW_LOCATE_INFO,
@@ -355,7 +367,7 @@ pub const Engine = struct {
             projected_views[i].subImage = .{
                 .swapchain = swapchains[i].swapchain,
                 .imageRect = .{
-                    // .{ 0, 0 },
+                    .offset = .{ .x = 0, .y = 0 },
                     .extent = .{
                         .width = @intCast(swapchains[i].width),
                         .height = @intCast(swapchains[i].height),
@@ -363,6 +375,10 @@ pub const Engine = struct {
                 },
                 .imageArrayIndex = 0,
             };
+            projected_views[i].next = null;
+            std.debug.print("\n\n projected_views[{d}]: {any}\n", .{ i, projected_views[i] });
+            std.debug.print("\nviews[{d}]: {any}\n", .{ i, views[i] });
+            std.debug.print("\nprojected_views[{d}].subImg: {any}\n", .{ i, projected_views[i].subImage });
         }
 
         var layer = c.XrCompositionLayerProjection{
@@ -370,30 +386,26 @@ pub const Engine = struct {
             .space = space,
             .viewCount = build_options.eye_count,
             .views = &projected_views[0],
+            .next = null,
         };
 
-        std.debug.print("\n\n\nINFO : {any}\n\n\n", .{layer});
+        const layers_array: [1]*const c.XrCompositionLayerBaseHeader = .{@ptrCast(&layer)};
+        std.debug.print("\n\n\nlayer : {any}\n\n\n", .{layer});
 
-        // const layers = [_]c.XrCompositionLayerBaseHeader{@bitCast(layer)};
-        // const pLayer: *const c.XrCompositionLayerBaseHeader = @ptrCast(&layer);
-        const composition_layers: [1]*const c.XrCompositionLayerBaseHeader = .{
-            @ptrCast(&layer),
-        };
-
-        // std.debug.print("\n\n\nINFO : {any}\n\n\n", .{pLayer});
         var end_frame_info = c.XrFrameEndInfo{
             .type = c.XR_TYPE_FRAME_END_INFO,
             .displayTime = predicted_display_time,
             .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
             .layerCount = 1,
-            .layers = &composition_layers[0],
+            .layers = &layers_array[0],
         };
-
-        // std.debug.print("\n\n\nINFO : {any}\n\n\n", .{pLayer});
+        std.debug.print("\n\n\nend_frame_info: {any}\n\n\n", .{end_frame_info});
         try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
 
+        std.debug.print("\n\n\nend_frame_info: {any}\n\n\n", .{end_frame_info});
         return false;
     }
+
     fn renderEye(
         swapchain: xr.Swapchain,
         images: std.ArrayList(vk.SwapchainImage),
@@ -404,119 +416,131 @@ pub const Engine = struct {
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
     ) !bool {
+        _ = render_pass;
+        _ = pipeline;
+        _ = pipeline_layout;
+        _ = view;
+        _ = device;
+        _ = images;
+        _ = queue;
         var acquire_image_info = c.XrSwapchainImageAcquireInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
         };
 
         var active_index: u32 = 0;
-
+        std.debug.print("\n\nxrAcquireSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrAcquireSwapchainImage(swapchain.swapchain, &acquire_image_info, &active_index));
+        std.debug.print("\n===== ACTIVE INDEX = {d}\n", .{active_index});
 
         var wait_image_info = c.XrSwapchainImageWaitInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
             .timeout = std.math.maxInt(i64),
         };
 
+        std.debug.print("\n\nxrWaitSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrWaitSwapchainImage(swapchain.swapchain, &wait_image_info));
-        const image: vk.SwapchainImage = images.items[active_index];
+        // const image: vk.SwapchainImage = images.items[active_index];
+        std.debug.print("\n=====\n", .{});
 
-        var data: ?[*]f32 = null;
-        try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
+        // var data: ?[*]f32 = null;
+        // try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
 
-        const angle_width: f32 = std.math.tan(view.fov.angleRight) - std.math.tan(view.fov.angleLeft);
-        const angle_height: f32 = std.math.tan(view.fov.angleDown) - std.math.tan(view.fov.angleUp);
+        // const angle_width: f32 = std.math.tan(view.fov.angleRight) - std.math.tan(view.fov.angleLeft);
+        // const angle_height: f32 = std.math.tan(view.fov.angleDown) - std.math.tan(view.fov.angleUp);
 
-        var projection_matrix = nz.Mat4(f32).identity(0);
+        // var projection_matrix = nz.Mat4(f32).identity(0);
 
-        //NOTE make defines?
-        const far_distance: f32 = 1;
-        const near_distance: f32 = 0.01;
+        // //NOTE make defines?
+        // const far_distance: f32 = 1;
+        // const near_distance: f32 = 0.01;
 
-        projection_matrix.d[0] = 2.0 / angle_width;
-        projection_matrix.d[8] = (std.math.tan(view.fov.angleRight) + std.math.tan(view.fov.angleLeft)) / angle_width;
-        projection_matrix.d[5] = 2.0 / angle_height;
-        projection_matrix.d[9] = (std.math.tan(view.fov.angleUp) + std.math.tan(view.fov.angleDown)) / angle_height;
-        projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
-        projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
-        projection_matrix.d[11] = -1;
+        // projection_matrix.d[0] = 2.0 / angle_width;
+        // projection_matrix.d[8] = (std.math.tan(view.fov.angleRight) + std.math.tan(view.fov.angleLeft)) / angle_width;
+        // projection_matrix.d[5] = 2.0 / angle_height;
+        // projection_matrix.d[9] = (std.math.tan(view.fov.angleUp) + std.math.tan(view.fov.angleDown)) / angle_height;
+        // projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
+        // projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
+        // projection_matrix.d[11] = -1;
 
-        const view_matrix: nz.Mat4(f32) = .mul(
-            .translate(.{ view.pose.position.x, view.pose.position.y, view.pose.position.z }),
-            .fromQuaternion(.{ view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z }),
-        );
+        // const view_matrix: nz.Mat4(f32) = .mul(
+        //     .translate(.{ view.pose.position.x, view.pose.position.y, view.pose.position.z }),
+        //     .fromQuaternion(.{ view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z }),
+        // );
 
-        const model_matrix = nz.Mat4(f32).identity(1);
+        // const model_matrix = nz.Mat4(f32).identity(1);
 
-        @memcpy(data.?[0..16], projection_matrix.d[0..]);
-        @memcpy(data.?[16..32], view_matrix.d[0..]);
-        @memcpy(data.?[32..48], model_matrix.d[0..]);
+        // @memcpy(data.?[0..16], projection_matrix.d[0..]);
+        // @memcpy(data.?[16..32], view_matrix.d[0..]);
+        // @memcpy(data.?[32..48], model_matrix.d[0..]);
 
-        c.vkUnmapMemory(device, image.memory);
+        // c.vkUnmapMemory(device, image.memory);
 
-        const begin_info = c.VkCommandBufferBeginInfo{
-            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        };
+        // const begin_info = c.VkCommandBufferBeginInfo{
+        //     .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        //     .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        // };
 
-        try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
+        // try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
 
-        const clearValue = c.VkClearValue{
-            .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } },
-        };
+        // const clearValue = c.VkClearValue{
+        //     .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } },
+        // };
 
-        const begin_render_pass_info = c.VkRenderPassBeginInfo{
-            .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass = render_pass,
-            .framebuffer = image.framebuffer,
-            .renderArea = .{
-                .offset = .{ .x = 0, .y = 0 },
-                .extent = .{ .width = swapchain.width, .height = swapchain.height },
-            },
-            .clearValueCount = 1,
-            .pClearValues = &clearValue,
-        };
+        // const begin_render_pass_info = c.VkRenderPassBeginInfo{
+        //     .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        //     .renderPass = render_pass,
+        //     .framebuffer = image.framebuffer,
+        //     .renderArea = .{
+        //         .offset = .{ .x = 0, .y = 0 },
+        //         .extent = .{ .width = swapchain.width, .height = swapchain.height },
+        //     },
+        //     .clearValueCount = 1,
+        //     .pClearValues = &clearValue,
+        // };
 
-        c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+        // c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
 
-        const viewport = c.VkViewport{
-            .x = 0,
-            .y = 0,
-            .width = @floatFromInt(swapchain.width),
-            .height = @floatFromInt(swapchain.height),
-            .minDepth = 0,
-            .maxDepth = 1,
-        };
+        // const viewport = c.VkViewport{
+        //     .x = 0,
+        //     .y = 0,
+        //     .width = @floatFromInt(swapchain.width),
+        //     .height = @floatFromInt(swapchain.height),
+        //     .minDepth = 0,
+        //     .maxDepth = 1,
+        // };
 
-        c.vkCmdSetViewport(image.command_buffer, 0, 1, &viewport);
+        // c.vkCmdSetViewport(image.command_buffer, 0, 1, &viewport);
 
-        const scissor = c.VkRect2D{
-            .offset = .{ .x = 0, .y = 0 },
-            .extent = .{ .width = swapchain.width, .height = swapchain.height },
-        };
+        // const scissor = c.VkRect2D{
+        //     .offset = .{ .x = 0, .y = 0 },
+        //     .extent = .{ .width = swapchain.width, .height = swapchain.height },
+        // };
 
-        c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
-        c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
-        c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
-        c.vkCmdEndRenderPass(image.command_buffer);
+        // c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
+        // c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        // c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
+        // c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
+        // c.vkCmdEndRenderPass(image.command_buffer);
 
-        try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
+        // try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
 
-        const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        // const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-        const submit_info = c.VkSubmitInfo{
-            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pWaitDstStageMask = &stage_mask,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &image.command_buffer,
-        };
-        try loader.xrCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
+        // const submit_info = c.VkSubmitInfo{
+        //     .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        //     .pWaitDstStageMask = &stage_mask,
+        //     .commandBufferCount = 1,
+        //     .pCommandBuffers = &image.command_buffer,
+        // };
+        // try loader.xrCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
 
         const release_image_info = c.XrSwapchainImageReleaseInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
         };
 
+        std.debug.print("\n\nxrReleaseSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
+        std.debug.print("\n=====\n", .{});
 
         return true;
     }
