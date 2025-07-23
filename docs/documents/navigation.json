@@ -1,0 +1,90 @@
+{
+  "title": "WallensteinVR Documentation",
+  "sections": [
+    {
+      "title": "Getting Started",
+      "items": [
+        {
+          "title": "Introduction",
+          "file": "introduction.md",
+          "description": "Overview of WallensteinVR and its features"
+        },
+        {
+          "title": "Installation",
+          "file": "installation.md",
+          "description": "Complete installation and setup guide"
+        },
+        {
+          "title": "Quick Start",
+          "file": "quick-start.md",
+          "description": "Get up and running in 5 minutes"
+        }
+      ]
+    },
+    {
+      "title": "Development Guides",
+      "items": [
+        {
+          "title": "Architecture",
+          "file": "guides/architecture.md",
+          "description": "System architecture and design overview"
+        },
+        {
+          "title": "Shader System",
+          "file": "guides/shaders.md",
+          "description": "Graphics pipeline and shader development"
+        },
+        {
+          "title": "Debugging",
+          "file": "guides/debugging.md",
+          "description": "Debugging tools and techniques"
+        },
+        {
+          "title": "Troubleshooting",
+          "file": "guides/troubleshooting.md",
+          "description": "Common issues and solutions"
+        }
+      ]
+    },
+    {
+      "title": "API Reference",
+      "items": [
+        {
+          "title": "API Overview",
+          "file": "api/overview.md",
+          "description": "Complete API documentation and examples"
+        }
+      ]
+    },
+    {
+      "title": "Examples",
+      "items": [
+        {
+          "title": "Basic VR App",
+          "file": "examples/basic-vr.md",
+          "description": "Simple VR application example"
+        },
+        {
+          "title": "Custom Shaders",
+          "file": "examples/custom-shaders.md",
+          "description": "Creating and using custom shaders"
+        }
+      ]
+    },
+    {
+      "title": "Community",
+      "items": [
+        {
+          "title": "Contributing",
+          "file": "community/contributing.md",
+          "description": "How to contribute to the project"
+        },
+        {
+          "title": "Support",
+          "file": "community/support.md",
+          "description": "Getting help and community resources"
+        }
+      ]
+    }
+  ]
+}

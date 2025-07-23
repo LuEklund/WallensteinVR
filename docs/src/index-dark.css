@@ -1,0 +1,115 @@
+/* Import base styles */
+@import url('index-base.css');
+
+/* Dark theme with purple accents CSS variables */
+:root {
+    --header-bg: #1a1625;
+    --header-text: #ffffff;
+    --bg-primary: #1e1e1e;
+    --bg-secondary: #2b2b2b;
+    --bg-tertiary: #333333;
+    --text-primary: #f0f0f0;
+    --text-secondary: #dddddd;
+    --text-muted: #999999;
+    --accent-primary: #8b5cf6;
+    --accent-secondary: #7c3aed;
+    --accent-light: #2d1b4e;
+    --accent-lighter: #3730a3;
+    --border-primary: #555555;
+    --border-secondary: #444444;
+    --shadow-light: rgba(0,0,0,0.3);
+    --error-bg: #3d1a1a;
+    --error-border: #742a2a;
+    --error-text: #f56565;
+    --error-text-secondary: #fed7d7;
+    --theme-toggle-bg: #8b5cf6;
+    --theme-toggle-text: #ffffff;
+    --sidebar-bg: #252525;
+    --toc-bg: #252525;
+    --syntax-string: #7dd3fc;
+    --syntax-function: #c084fc;
+    --syntax-number: #60a5fa;
+}
+
+/* Fix for text rendering in dark mode */
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    text-shadow: none;
+}
+
+/* Ensure code blocks have clean text rendering */
+.main-content pre code {
+    text-shadow: none;
+    font-weight: normal;
+    color: var(--text-primary) !important;
+}
+
+/* Override any external CSS that might be setting code text to black */
+.main-content pre,
+.main-content code {
+    color: var(--text-primary) !important;
+}
+
+/* Ensure Prism.js syntax highlighting works with dark theme */
+.main-content pre[class*="language-"] code,
+.main-content pre[class*="language-"] {
+    color: var(--text-primary) !important;
+}
+
+/* Override any token colors that might be too dark for dark mode */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+    color: var(--text-muted) !important;
+}
+
+.token.punctuation {
+    color: var(--text-primary) !important;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+    color: var(--syntax-number) !important;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+    color: var(--syntax-string) !important;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+    color: var(--text-primary) !important;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+    color: var(--accent-primary) !important;
+}
+
+.token.function,
+.token.class-name {
+    color: var(--syntax-function) !important;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+    color: var(--accent-secondary) !important;
+}

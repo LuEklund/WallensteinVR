@@ -1,0 +1,32 @@
+/* Import base styles */
+@import url('index-base.css');
+
+/* Blue theme CSS variables */
+:root {
+    --header-bg: #2563eb;
+    --header-text: #ffffff;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f8f8;
+    --bg-tertiary: #f0f0f0;
+    --text-primary: #000000;
+    --text-secondary: #333333;
+    --text-muted: #666666;
+    --accent-primary: #2563eb;
+    --accent-secondary: #1d4ed8;
+    --accent-light: #dbeafe;
+    --accent-lighter: #eff6ff;
+    --border-primary: #cccccc;
+    --border-secondary: #e0e0e0;
+    --shadow-light: rgba(0,0,0,0.1);
+    --error-bg: #fff5f5;
+    --error-border: #fed7d7;
+    --error-text: #c53030;
+    --error-text-secondary: #742a2a;
+    --theme-toggle-bg: #2563eb;
+    --theme-toggle-text: #ffffff;
+    --sidebar-bg: #f8f8f8;
+    --toc-bg: #ffffff;
+    --syntax-string: #22863a;
+    --syntax-function: #6f42c1;
+    --syntax-number: #005cc5;
+}

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WallensteinVR Documentation</title>
+    <link rel="stylesheet" href="src/index.css" id="theme-css">
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
+</head>
+
+<body>
+    <!-- Header Bar -->
+    <header class="header-bar">
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo">🥽</div>
+                <span class="logo-text">WallensteinVR</span>
+            </div>
+
+            <nav class="header-nav">
+                <a href="#documents/introduction.md" class="nav-item">Learn</a>
+                <div class="nav-item dropdown">
+                    <a href="#" class="dropdown-toggle">
+                        Documentation
+                        <span class="dropdown-arrow">▼</span>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#documents/introduction.md" class="dropdown-item">Introduction</a>
+                        <a href="#documents/installation.md" class="dropdown-item">Installation</a>
+                        <a href="#documents/quick-start.md" class="dropdown-item">Quick Start</a>
+                        <div class="dropdown-divider"></div>
+                        <a href="#documents/api/overview.md" class="dropdown-item">API Reference</a>
+                        <a href="#documents/guides/architecture.md" class="dropdown-item">Guides</a>
+                        <a href="#documents/guides/shaders.md" class="dropdown-item">Shader Development</a>
+                    </div>
+                </div>
+                <a href="#documents/downloads/index.md" class="nav-item">Downloads</a>
+                <a href="https://github.com/LuEklund/WallensteinVR/releases" class="nav-item">Releases</a>
+                <div class="nav-item dropdown">
+                    <a href="#" class="dropdown-toggle">
+                        Community
+                        <span class="dropdown-arrow">▼</span>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#documents/community/support.md" class="dropdown-item">Support & Help</a>
+                        <a href="https://github.com/LuEklund/WallensteinVR/discussions"
+                            class="dropdown-item">GitHub Discussions</a>
+                        <a href="https://discord.gg/zig" class="dropdown-item">Zig Discord</a>
+                        <a href="https://discord.gg/openxr" class="dropdown-item">OpenXR Community</a>
+                        <div class="dropdown-divider"></div>
+                        <a href="#documents/community/contributing.md" class="dropdown-item">Contributing</a>
+                    </div>
+                </div>
+                <div class="nav-item dropdown">
+                    <a href="#" class="dropdown-toggle">
+                        Resources
+                        <span class="dropdown-arrow">▼</span>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#documents/examples/basic-vr.md" class="dropdown-item">VR Examples</a>
+                        <a href="#documents/examples/custom-shaders.md" class="dropdown-item">Shader Examples</a>
+                        <a href="#documents/guides/debugging.md" class="dropdown-item">Debugging Tools</a>
+                        <a href="#documents/guides/troubleshooting.md" class="dropdown-item">Troubleshooting</a>
+                        <div class="dropdown-divider"></div>
+                        <a href="https://github.com/LuEklund/WallensteinVR" class="dropdown-item">Source Code</a>
+                        <a href="https://ziglang.org/" class="dropdown-item">Zig Language</a>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="header-right">
+                <div class="search-container">
+                    <input type="text" id="search-input" placeholder="Search documents..." class="search-input">
+                    <div id="search-results" class="search-results"></div>
+                    <select class="language-select">
+                        <option>Language</option>
+                        <option>English</option>
+                    </select>
+                </div>
+                <button class="theme-toggle" onclick="toggleTheme()">Theme</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="layout">
+        <!-- Left Sidebar -->
+        <nav class="sidebar">
+            <div class="nav-header">
+                <div class="nav-links">
+                    <a href="#documents/introduction.md" class="nav-link">Introduction</a>
+                    <a href="#documents/api/overview.md" class="nav-link">API Reference</a>
+                    <a href="#documents/guides/architecture.md" class="nav-link">Architecture</a>
+                    <a href="#documents/examples/basic-vr.md" class="nav-link">Examples</a>
+                    <a href="#documents/community/contributing.md" class="nav-link">Contributing</a>
+                </div>
+            </div>
+
+            <div class="nav" id="navigation">
+                <!-- Navigation will be populated by JavaScript -->
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="content-header">
+                <div class="breadcrumbs" id="breadcrumbs"></div>
+                <div class="version-info">
+                    <select class="version-select">
+                        <option>master</option>
+                        <option>v1.0</option>
+                        <option>v0.9</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="content">
+                <div class="loading">Loading documentation...</div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar (Table of Contents) -->
+        <aside class="toc-sidebar">
+            <div class="toc-header">
+                <h3>Contents</h3>
+                <a href="#" class="hide-link">[hide]</a>
+            </div>
+            <div class="toc" id="table-of-contents">
+                <!-- TOC will be populated by JavaScript -->
+            </div>
+        </aside>
+    </div>
+
+    <script type="module" src="src/app.js"></script>
+</body>
+
+</html>
