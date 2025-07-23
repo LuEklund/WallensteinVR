@@ -171,12 +171,21 @@ pub fn getVulkanInstanceRequirements(
 
     //TODO: DONT USE HARD CODED! Use the code from above but make it work!
 
+    //         Wed Jul 23 2025 20:48:44.607553 [Error] - Failed to load extension: GetMemoryFdKHR
+    // Wed Jul 23 2025 20:48:44.607572 [Error] - Failed to load extension: GetSemaphoreFdKHR
+    // Wed Jul 23 2025 20:48:44.607587 [Error] - Failed to load extension: ImportSemaphoreFdKHR
+    // Wed Jul 23 2025 20:48:44.607601 [Error] - Failed to load extension: GetImageMemoryRequirements2KHR
+    // Wed Jul 23 2025 20:48:44.607614 [Error] - Failed to load extension: GetBufferMemoryRequirements2KHR
+
     const extensions = &[_][*:0]const u8{
         "VK_KHR_external_memory_capabilities",
         "VK_KHR_get_physical_device_properties2",
         "VK_KHR_external_fence_capabilities",
         "VK_KHR_surface",
         "VK_KHR_external_semaphore_capabilities",
+        // "VK_KHR_external_memory",
+        // "VK_KHR_external_memory_fd",
+        // "VK_KHR_get_memory_requirements2",
         "VK_EXT_debug_utils", // TODO: <---- EXTRA EXT add manunally!!!!
     };
 
@@ -225,7 +234,10 @@ pub fn getVulkanDeviceRequirements(
 
     //TODO: DONT USE HARD CODED! Use the code from above but make it work!
 
-    const extensions = &[_][*:0]const u8{};
+    const extensions = &[_][*:0]const u8{
+        "VK_KHR_external_fence_fd",
+        "VK_KHR_external_semaphore_fd",
+    };
 
     return .{ physical_device, extensions };
 }

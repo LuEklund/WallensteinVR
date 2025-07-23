@@ -30,6 +30,7 @@ export fn debugCallback(
 }
 
 pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, extensions: []const [*:0]const u8, layers: []const [*:0]const u8) !c.VkInstance {
+    _ = graphics_requirements;
     var create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .ppEnabledExtensionNames = if (extensions.len > 0) extensions.ptr else null,
@@ -43,10 +44,11 @@ pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, 
             .applicationVersion = c.VK_MAKE_VERSION(1, 0, 0),
             .pEngineName = "WallensteinVR_Engine",
             .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
+            // .apiVersion = c.VK_VERSION_1_4,
             .apiVersion = c.VK_MAKE_API_VERSION(
                 0,
-                c.XR_VERSION_MAJOR(graphics_requirements.maxApiVersionSupported),
-                c.XR_VERSION_MINOR(graphics_requirements.minApiVersionSupported),
+                1,
+                4,
                 0,
             ),
         },
@@ -103,7 +105,7 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, graphics_queue_f
         .pEnabledFeatures = &features,
         .enabledExtensionCount = @intCast(extensions.len),
         .ppEnabledExtensionNames = extensions.ptr,
-        .enabledLayerCount = @intCast(extensions.len),
+        .enabledLayerCount = 0,
         .ppEnabledLayerNames = null,
         .flags = 0,
     };
