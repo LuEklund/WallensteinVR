@@ -9,6 +9,8 @@ const nz = @import("numz");
 const c = loader.c;
 var quit: std.atomic.Value(bool) = .init(false);
 
+const swapchain_count = 3;
+
 pub const Engine = struct {
     const Self = @This();
 
@@ -104,6 +106,7 @@ pub const Engine = struct {
         defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
         defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
 
+        //TODO : FIX EYE COUNT AND SwapChainCount
         var swapchains_images: [eye_count][]c.XrSwapchainImageVulkanKHR = undefined;
         for (0..eye_count) |i| {
             swapchains_images[i] = try swapchains[i].getImages(self.allocator);
@@ -114,9 +117,9 @@ pub const Engine = struct {
             }
         }
 
-        var wrapped_swapchain_images: [eye_count]std.ArrayList(vk.SwapchainImage) = undefined;
+        var wrapped_swapchain_images: [swapchain_count]std.ArrayList(vk.SwapchainImage) = undefined;
 
-        for (0..eye_count) |i| {
+        for (0..swapchain_count) |i| {
             wrapped_swapchain_images[i] = .init(self.allocator);
 
             for (0..swapchains_images.len) |j| {
@@ -136,7 +139,7 @@ pub const Engine = struct {
         }
         defer {
             std.debug.print("\n\n=========[FREEING THE IMAGES]===========\n\n", .{});
-            for (0..eye_count) |i| {
+            for (0..swapchain_count) |i| {
                 for (wrapped_swapchain_images[i].items) |swapchain_image| {
                     swapchain_image.deinit();
                 }
@@ -220,25 +223,42 @@ pub const Engine = struct {
                         std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{});
                         break;
                     }
+                    var begin_frame_info = c.XrFrameBeginInfo{
+                        .type = c.XR_TYPE_FRAME_BEGIN_INFO,
+                    };
+                    std.debug.print("\n\nxrBeginFrame\n\n", .{});
+                    try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
+                    std.debug.print("\n=====\n", .{});
                     if (frame_state.shouldRender == c.VK_FALSE) {
                         std.debug.print("\n\n=========[NOt ready for rendering]===========\n\n", .{});
+                        var end_frame_info = c.XrFrameEndInfo{
+                            .type = c.XR_TYPE_FRAME_END_INFO,
+                            .displayTime = frame_state.predictedDisplayTime,
+                            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+                            .layerCount = 0,
+                            .layers = null,
+                        };
+                        try loader.xrCheck(c.xrEndFrame(self.xr_session, &end_frame_info));
+                        std.debug.print("\n\n=====---------======\n\n", .{});
+
                         continue;
+                    } else {
+                        std.debug.print("\n\n=========[entered rendering]===========\n\n", .{});
+                        const should_quit = render(
+                            self.allocator,
+                            self.xr_session,
+                            swapchains,
+                            &wrapped_swapchain_images,
+                            space,
+                            frame_state.predictedDisplayTime,
+                            self.vk_logical_device,
+                            self.vk_queue,
+                            render_pass,
+                            pipeline_layout,
+                            pipeline,
+                        ) catch true;
+                        quit.store(should_quit, .release);
                     }
-                    std.debug.print("\n\n=========[entered rendering]===========\n\n", .{});
-                    const should_quit = render(
-                        self.allocator,
-                        self.xr_session,
-                        swapchains,
-                        &wrapped_swapchain_images,
-                        space,
-                        frame_state.predictedDisplayTime,
-                        self.vk_logical_device,
-                        self.vk_queue,
-                        render_pass,
-                        pipeline_layout,
-                        pipeline,
-                    ) catch true;
-                    quit.store(should_quit, .release);
                 }
             } else if (result != c.XR_SUCCESS) {
                 try loader.xrCheck(result);
@@ -313,13 +333,6 @@ pub const Engine = struct {
         // _ = render_pass;
         // _ = pipeline;
         // _ = pipeline_layout;
-        var begin_frame_info = c.XrFrameBeginInfo{
-            .type = c.XR_TYPE_FRAME_BEGIN_INFO,
-        };
-
-        std.debug.print("\n\nxrBeginFrame\n\n", .{});
-        try loader.xrCheck(c.xrBeginFrame(session, &begin_frame_info));
-        std.debug.print("\n=====\n", .{});
 
         var view_locate_info = c.XrViewLocateInfo{
             .type = c.XR_TYPE_VIEW_LOCATE_INFO,

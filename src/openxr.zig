@@ -23,7 +23,8 @@ pub fn createInstance(extensions: []const [*:0]const u8, layers: []const [*:0]co
             .applicationVersion = 1,
             .engineName = ("WallensteinVR_Engine\x00" ++ [1]u8{0} ** (128 - "WallensteinVR_Engine\x00".len)).*,
             .engineVersion = 1,
-            .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
+            .apiVersion = c.XR_CURRENT_API_VERSION,
+            // .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
         },
         .enabledExtensionNames = @ptrCast(extensions.ptr),
         .enabledExtensionCount = @intCast(extensions.len),
@@ -183,9 +184,6 @@ pub fn getVulkanInstanceRequirements(
         "VK_KHR_external_fence_capabilities",
         "VK_KHR_surface",
         "VK_KHR_external_semaphore_capabilities",
-        // "VK_KHR_external_memory",
-        // "VK_KHR_external_memory_fd",
-        // "VK_KHR_get_memory_requirements2",
         "VK_EXT_debug_utils", // TODO: <---- EXTRA EXT add manunally!!!!
     };
 
@@ -237,6 +235,9 @@ pub fn getVulkanDeviceRequirements(
     const extensions = &[_][*:0]const u8{
         "VK_KHR_external_fence_fd",
         "VK_KHR_external_semaphore_fd",
+        // "VK_KHR_external_memory",
+        // "VK_KHR_external_memory_fd",
+        // "VK_KHR_get_memory_requirements2",
     };
 
     return .{ physical_device, extensions };
@@ -305,6 +306,7 @@ pub const Swapchain = struct {
         };
 
         var swapchains: []Self = try allocator.alloc(Self, config_views.len);
+        errdefer allocator.free(swapchains);
         for (0..config_views.len) |i| {
             var swapchain_create_info = c.XrSwapchainCreateInfo{
                 .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
@@ -318,6 +320,7 @@ pub const Swapchain = struct {
                 .mipCount = 1,
             };
             std.debug.print("\n\n !config_views[{d}]: {any}\n\n", .{ i, config_views[i] });
+            std.debug.print("\n\n !swapchain_create_info[{d}]: {any}\n\n", .{ i, swapchain_create_info });
 
             var swapchain: c.XrSwapchain = undefined;
             try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &swapchain));
@@ -336,6 +339,8 @@ pub const Swapchain = struct {
     pub fn getImages(self: Self, allocator: std.mem.Allocator) ![]c.XrSwapchainImageVulkanKHR {
         var image_count: u32 = undefined;
         try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, 0, &image_count, null));
+
+        std.debug.print("\n\n===========image count: {d}\n\n", .{image_count});
 
         var images = try allocator.alloc(c.XrSwapchainImageVulkanKHR, image_count);
         @memset(images, .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });
