@@ -107,22 +107,22 @@ pub const Engine = struct {
         defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
 
         //TODO : FIX EYE COUNT AND SwapChainCount
-        var swapchains_images: [eye_count][]c.XrSwapchainImageVulkanKHR = undefined;
-        for (0..eye_count) |i| {
-            swapchains_images[i] = try swapchains[i].getImages(self.allocator);
+        var swapchains_images: [eye_count * swapchain_count][]c.XrSwapchainImageVulkanKHR = undefined;
+        for (0..eye_count * swapchain_count) |i| {
+            swapchains_images[i] = try swapchains[i % 2].getImages(self.allocator);
         }
         defer {
-            for (0..eye_count) |i| {
+            for (0..eye_count * swapchain_count) |i| {
                 self.allocator.free(swapchains_images[i]);
             }
         }
 
         var wrapped_swapchain_images: [swapchain_count]std.ArrayList(vk.SwapchainImage) = undefined;
 
-        for (0..swapchain_count) |i| {
+        for (0..eye_count) |i| {
             wrapped_swapchain_images[i] = .init(self.allocator);
 
-            for (0..swapchains_images.len) |j| {
+            for (0..swapchain_count) |j| {
                 try wrapped_swapchain_images[i].append(
                     try vk.SwapchainImage.init(
                         self.vk_physical_device,
@@ -465,7 +465,7 @@ pub const Engine = struct {
         var projection_matrix = nz.Mat4(f32).identity(0);
 
         //NOTE make defines?
-        const far_distance: f32 = 1;
+        const far_distance: f32 = 100;
         const near_distance: f32 = 0.01;
 
         projection_matrix.d[0] = 2.0 / angle_width;
