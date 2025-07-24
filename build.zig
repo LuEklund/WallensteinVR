@@ -58,6 +58,17 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    const numz_dep = b.dependency("numz", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("numz", numz_dep.module("numz"));
+
+    const build_options = b.addOptions();
+    const eye_count = b.option(u8, "eye_count", "eye count") orelse 2;
+    build_options.addOption(u8, "eye_count", eye_count);
+    exe_mod.addOptions("build_options", build_options);
+
     const shader_compile_step = addCompileShaders(b, .{
         .in_dir = b.path("assets/shaders"),
     });

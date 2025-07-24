@@ -4,8 +4,12 @@ const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
 const loader = @import("loader");
+const build_options = @import("build_options");
+const nz = @import("numz");
 const c = loader.c;
 var quit: std.atomic.Value(bool) = .init(false);
+
+const swapchain_count = 3;
 
 pub const Engine = struct {
     const Self = @This();
@@ -19,10 +23,12 @@ pub const Engine = struct {
     xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
     xr_system_id: c.XrSystemId,
     vk_instance: c.VkInstance,
+    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
+    vk_physical_device: c.VkPhysicalDevice,
     graphics_queue_family_index: u32,
     vk_logical_device: c.VkDevice,
+    vk_queue: c.VkQueue,
     vkid: vk.Dispatcher,
-    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
 
     pub const Config = struct {
         xr_extensions: []const [*:0]const u8,
@@ -31,6 +37,9 @@ pub const Engine = struct {
     };
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
+        try xr.validateExtensions(allocator, config.xr_extensions);
+        try xr.validateLayers(allocator, config.xr_layers);
+
         const xr_instance: c.XrInstance = try xr.createInstance(config.xr_extensions, config.xr_layers);
         const xrd = try xr.Dispatcher.init(xr_instance);
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xrd, xr_instance);
@@ -45,13 +54,9 @@ pub const Engine = struct {
         const physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(xrd, allocator, xr_instance, xr_system_id, vk_instance);
         const queue_family_index = vk.findGraphicsQueueFamily(physical_device);
         const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index.?, vk_device_extensions);
-        _ = queue;
 
-        std.debug.print("\n1: {*}\n", .{physical_device});
-        std.debug.print("\n2: {*}\n", .{logical_device});
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index.?);
 
-        std.debug.print("\nHELLO2\n", .{});
         return .{
             .allocator = allocator,
             .xr_instance = xr_instance,
@@ -60,44 +65,86 @@ pub const Engine = struct {
             .xrd = xrd,
             .xr_debug_messenger = xr_debug_messenger,
             .xr_system_id = xr_system_id,
-            .vk_debug_messenger = vk_debug_messenger,
             .vk_instance = vk_instance,
+            .vk_debug_messenger = vk_debug_messenger,
+            .vk_physical_device = physical_device,
             .graphics_queue_family_index = queue_family_index.?,
             .vk_logical_device = logical_device,
+            .vk_queue = queue,
             .vkid = vkid,
         };
     }
 
     pub fn deinit(self: Self) void {
         self.vkid.vkDestroyDebugUtilsMessengerEXT(self.vk_instance, self.vk_debug_messenger, null);
-        // self.xrd.xrDestroyDebugUtilsMessengerEXT(self.xr_debug_messenger) catch {};
+        self.xrd.xrDestroyDebugUtilsMessengerEXT(self.xr_debug_messenger) catch {};
 
-        // _ = c.vkDestroyDevice(self.vk_logical_device, null);
+        _ = c.xrDestroySession(self.xr_session);
+        _ = c.xrDestroyInstance(self.xr_instance);
 
-        // _ = c.xrDestroySession(self.xr_session);
-
-        // _ = c.vkDestroyInstance(self.vk_instance, null);
-        // _ = c.xrDestroyInstance(self.xr_instance);
+        _ = c.vkDestroyDevice(self.vk_logical_device, null);
+        _ = c.vkDestroyInstance(self.vk_instance, null);
     }
 
     pub fn start(self: Self) !void {
-        const eye_count = 2;
+        const eye_count = build_options.eye_count;
         const swapchains = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
+        defer self.allocator.free(swapchains);
         const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchains[0].format);
+        defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(self.vk_logical_device, self.graphics_queue_family_index);
-        _ = command_pool;
+        defer c.vkDestroyCommandPool(self.vk_logical_device, command_pool, null);
         const descriptor_pool: c.VkDescriptorPool = try vk.createDescriptorPool(self.vk_logical_device);
-        _ = descriptor_pool;
+        defer c.vkDestroyDescriptorPool(self.vk_logical_device, descriptor_pool, null);
         const descriptor_set_layout: c.VkDescriptorSetLayout = try vk.createDescriptorSetLayout(self.vk_logical_device);
+        defer c.vkDestroyDescriptorSetLayout(self.vk_logical_device, descriptor_set_layout, null);
         const vertex_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "shaders/vertex.vert.spv");
+        defer c.vkDestroyShaderModule(self.vk_logical_device, vertex_shader, null);
         const fragment_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "shaders/fragment.frag.spv");
+        defer c.vkDestroyShaderModule(self.vk_logical_device, fragment_shader, null);
         const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader);
-        _ = pipeline_layout;
-        _ = pipeline;
+        defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
+        defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
 
-        var swapchains_images: [eye_count][]c.XrSwapchainImageVulkanKHR = undefined;
+        //TODO : FIX EYE COUNT AND SwapChainCount
+        var swapchains_images: [eye_count * swapchain_count][]c.XrSwapchainImageVulkanKHR = undefined;
+        for (0..eye_count * swapchain_count) |i| {
+            swapchains_images[i] = try swapchains[i % 2].getImages(self.allocator);
+        }
+        defer {
+            for (0..eye_count * swapchain_count) |i| {
+                self.allocator.free(swapchains_images[i]);
+            }
+        }
+
+        var wrapped_swapchain_images: [swapchain_count]std.ArrayList(vk.SwapchainImage) = undefined;
+
         for (0..eye_count) |i| {
-            swapchains_images[i] = try swapchains[i].getImages(self.allocator);
+            wrapped_swapchain_images[i] = .init(self.allocator);
+
+            for (0..swapchain_count) |j| {
+                try wrapped_swapchain_images[i].append(
+                    try vk.SwapchainImage.init(
+                        self.vk_physical_device,
+                        self.vk_logical_device,
+                        render_pass,
+                        command_pool,
+                        descriptor_pool,
+                        descriptor_set_layout,
+                        &swapchains[i],
+                        swapchains_images[i][j],
+                    ),
+                );
+            }
+        }
+        defer {
+            std.debug.print("\n\n=========[FREEING THE IMAGES]===========\n\n", .{});
+            for (0..swapchain_count) |i| {
+                for (wrapped_swapchain_images[i].items) |swapchain_image| {
+                    swapchain_image.deinit();
+                }
+                wrapped_swapchain_images[i].deinit();
+            }
         }
 
         const isPosix: bool = switch (builtin.os.tag) {
@@ -155,14 +202,64 @@ pub const Engine = struct {
             @compileError("WTF ARE YOU USING? Not Posix or Windows OS");
         }
 
+        const space: c.XrSpace = try xr.createSpace(self.xr_session);
+
         var running: bool = true;
         while (!quit.load(.acquire)) {
+            std.debug.print("\n\n=========[entered while loop]===========\n\n", .{});
+
             var eventData = c.XrEventDataBuffer{
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
             };
-            const result: c.XrResult = c.xrPollEvent(self.xr_instance, &eventData);
+            var result: c.XrResult = c.xrPollEvent(self.xr_instance, &eventData);
             if (result == c.XR_EVENT_UNAVAILABLE) {
-                if (running) {}
+                if (running) {
+                    var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
+                    var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
+                    std.debug.print("\n======xrWaitFrame====\n", .{});
+                    result = c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state);
+                    std.debug.print("\n=====[Result: {d}]======\n", .{result});
+                    if (result != c.XR_SUCCESS) {
+                        std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{});
+                        break;
+                    }
+                    var begin_frame_info = c.XrFrameBeginInfo{
+                        .type = c.XR_TYPE_FRAME_BEGIN_INFO,
+                    };
+                    std.debug.print("\n\nxrBeginFrame\n\n", .{});
+                    try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
+                    std.debug.print("\n=====\n", .{});
+                    if (frame_state.shouldRender == c.VK_FALSE) {
+                        std.debug.print("\n\n=========[NOt ready for rendering]===========\n\n", .{});
+                        var end_frame_info = c.XrFrameEndInfo{
+                            .type = c.XR_TYPE_FRAME_END_INFO,
+                            .displayTime = frame_state.predictedDisplayTime,
+                            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+                            .layerCount = 0,
+                            .layers = null,
+                        };
+                        try loader.xrCheck(c.xrEndFrame(self.xr_session, &end_frame_info));
+                        std.debug.print("\n\n=====---------======\n\n", .{});
+
+                        continue;
+                    } else {
+                        std.debug.print("\n\n=========[entered rendering]===========\n\n", .{});
+                        const should_quit = render(
+                            self.allocator,
+                            self.xr_session,
+                            swapchains,
+                            &wrapped_swapchain_images,
+                            space,
+                            frame_state.predictedDisplayTime,
+                            self.vk_logical_device,
+                            self.vk_queue,
+                            render_pass,
+                            pipeline_layout,
+                            pipeline,
+                        ) catch true;
+                        quit.store(should_quit, .release);
+                    }
+                }
             } else if (result != c.XR_SUCCESS) {
                 try loader.xrCheck(result);
             } else {
@@ -189,7 +286,10 @@ pub const Engine = struct {
                                 running = true;
                             },
                             c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => running = true,
-                            c.XR_SESSION_STATE_STOPPING => try loader.xrCheck(c.xrEndSession(self.xr_session)),
+                            c.XR_SESSION_STATE_STOPPING => {
+                                try loader.xrCheck(c.xrEndSession(self.xr_session));
+                                running = false;
+                            },
                             c.XR_SESSION_STATE_LOSS_PENDING => {
                                 std.debug.print("OpenXR session is shutting down.\n", .{});
                                 quit.store(true, .release);
@@ -209,6 +309,254 @@ pub const Engine = struct {
                 }
             }
         }
+
+        std.debug.print("\n\n=========[quite == {}]===========\n\n", .{quit.load(.acquire)});
+        std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
+        try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
+    }
+    fn render(
+        allocator: std.mem.Allocator,
+        session: c.XrSession,
+        swapchains: []const xr.Swapchain,
+        swapchain_images: []std.ArrayList(vk.SwapchainImage),
+        space: c.XrSpace,
+        predicted_display_time: c.XrTime,
+        device: c.VkDevice,
+        queue: c.VkQueue,
+        render_pass: c.VkRenderPass,
+        pipeline_layout: c.VkPipelineLayout,
+        pipeline: c.VkPipeline,
+    ) !bool {
+        // _ = swapchain_images;
+        // _ = queue;
+        // _ = device;
+        // _ = render_pass;
+        // _ = pipeline;
+        // _ = pipeline_layout;
+
+        var view_locate_info = c.XrViewLocateInfo{
+            .type = c.XR_TYPE_VIEW_LOCATE_INFO,
+            .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+            .displayTime = predicted_display_time,
+            .space = space,
+        };
+
+        var view_state = c.XrViewState{
+            .type = c.XR_TYPE_VIEW_STATE,
+        };
+
+        var view_count: u32 = build_options.eye_count;
+        const views = try allocator.alloc(c.XrView, view_count);
+        defer allocator.free(views);
+        @memset(views, .{ .type = c.XR_TYPE_VIEW });
+
+        try loader.xrCheck(c.xrLocateViews(
+            session,
+            &view_locate_info,
+            &view_state,
+            view_count,
+            &view_count,
+            views.ptr,
+        ));
+
+        for (0..build_options.eye_count) |i| {
+            const ok = try renderEye(
+                swapchains[i],
+                swapchain_images[i],
+                views[i],
+                device,
+                queue,
+                render_pass,
+                pipeline_layout,
+                pipeline,
+            );
+
+            if (!ok) {
+                return true;
+            }
+        }
+
+        var projected_views: [build_options.eye_count]c.XrCompositionLayerProjectionView = undefined;
+
+        for (0..build_options.eye_count) |i| {
+            projected_views[i].type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
+            projected_views[i].pose = views[i].pose;
+            projected_views[i].fov = views[i].fov;
+            projected_views[i].subImage = .{
+                .swapchain = swapchains[i].swapchain,
+                .imageRect = .{
+                    .offset = .{ .x = 0, .y = 0 },
+                    .extent = .{
+                        .width = @intCast(swapchains[i].width),
+                        .height = @intCast(swapchains[i].height),
+                    },
+                },
+                .imageArrayIndex = 0,
+            };
+            projected_views[i].next = null;
+        }
+
+        var layer = c.XrCompositionLayerProjection{
+            .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
+            .space = space,
+            .viewCount = build_options.eye_count,
+            .views = &projected_views[0],
+            .next = null,
+        };
+
+        const layers_array: [1]*const c.XrCompositionLayerBaseHeader = .{@ptrCast(&layer)};
+
+        var end_frame_info = c.XrFrameEndInfo{
+            .type = c.XR_TYPE_FRAME_END_INFO,
+            .displayTime = predicted_display_time,
+            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+            .layerCount = 1,
+            .layers = &layers_array[0],
+        };
+        std.debug.print("\n\n\nend_frame_info: {any}\n\n\n", .{end_frame_info});
+        try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
+        std.debug.print("\n\n=====---------======\n\n", .{});
+
+        return false;
+    }
+
+    fn renderEye(
+        swapchain: xr.Swapchain,
+        images: std.ArrayList(vk.SwapchainImage),
+        view: c.XrView,
+        device: c.VkDevice,
+        queue: c.VkQueue,
+        render_pass: c.VkRenderPass,
+        pipeline_layout: c.VkPipelineLayout,
+        pipeline: c.VkPipeline,
+    ) !bool {
+        // _ = render_pass;
+        // _ = pipeline;
+        // _ = pipeline_layout;
+        // _ = view;
+        // _ = device;
+        // _ = images;
+        // _ = queue;
+        var acquire_image_info = c.XrSwapchainImageAcquireInfo{
+            .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
+        };
+
+        var active_index: u32 = 0;
+        std.debug.print("\n\nxrAcquireSwapchainImage\n\n", .{});
+        try loader.xrCheck(c.xrAcquireSwapchainImage(swapchain.swapchain, &acquire_image_info, &active_index));
+        std.debug.print("\n===== ACTIVE INDEX = {d}\n", .{active_index});
+
+        var wait_image_info = c.XrSwapchainImageWaitInfo{
+            .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
+            .timeout = std.math.maxInt(i64),
+        };
+
+        std.debug.print("\n\nxrWaitSwapchainImage\n\n", .{});
+        try loader.xrCheck(c.xrWaitSwapchainImage(swapchain.swapchain, &wait_image_info));
+        const image: vk.SwapchainImage = images.items[active_index];
+        std.debug.print("\n=====\n", .{});
+
+        var data: ?[*]f32 = null;
+        try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
+
+        const angle_width: f32 = std.math.tan(view.fov.angleRight) - std.math.tan(view.fov.angleLeft);
+        const angle_height: f32 = std.math.tan(view.fov.angleDown) - std.math.tan(view.fov.angleUp);
+
+        var projection_matrix = nz.Mat4(f32).identity(0);
+
+        //NOTE make defines?
+        const far_distance: f32 = 100;
+        const near_distance: f32 = 0.01;
+
+        projection_matrix.d[0] = 2.0 / angle_width;
+        projection_matrix.d[8] = (std.math.tan(view.fov.angleRight) + std.math.tan(view.fov.angleLeft)) / angle_width;
+        projection_matrix.d[5] = 2.0 / angle_height;
+        projection_matrix.d[9] = (std.math.tan(view.fov.angleUp) + std.math.tan(view.fov.angleDown)) / angle_height;
+        projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
+        projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
+        projection_matrix.d[11] = -1;
+
+        const view_matrix: nz.Mat4(f32) = .mul(
+            .translate(.{ view.pose.position.x, view.pose.position.y, view.pose.position.z }),
+            .fromQuaternion(.{ view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z }),
+        );
+
+        const model_matrix = nz.Mat4(f32).identity(1);
+
+        @memcpy(data.?[0..16], projection_matrix.d[0..]);
+        @memcpy(data.?[16..32], view_matrix.d[0..]);
+        @memcpy(data.?[32..48], model_matrix.d[0..]);
+
+        c.vkUnmapMemory(device, image.memory);
+
+        const begin_info = c.VkCommandBufferBeginInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+
+        try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
+
+        const clearValue = c.VkClearValue{
+            .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } },
+        };
+
+        const begin_render_pass_info = c.VkRenderPassBeginInfo{
+            .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass = render_pass,
+            .framebuffer = image.framebuffer,
+            .renderArea = .{
+                .offset = .{ .x = 0, .y = 0 },
+                .extent = .{ .width = swapchain.width, .height = swapchain.height },
+            },
+            .clearValueCount = 1,
+            .pClearValues = &clearValue,
+        };
+
+        c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+
+        const viewport = c.VkViewport{
+            .x = 0,
+            .y = 0,
+            .width = @floatFromInt(swapchain.width),
+            .height = @floatFromInt(swapchain.height),
+            .minDepth = 0,
+            .maxDepth = 1,
+        };
+
+        c.vkCmdSetViewport(image.command_buffer, 0, 1, &viewport);
+
+        const scissor = c.VkRect2D{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = .{ .width = swapchain.width, .height = swapchain.height },
+        };
+
+        c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
+        c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
+        c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
+        c.vkCmdEndRenderPass(image.command_buffer);
+
+        try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
+
+        const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+        const submit_info = c.VkSubmitInfo{
+            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pWaitDstStageMask = &stage_mask,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &image.command_buffer,
+        };
+        try loader.xrCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
+
+        const release_image_info = c.XrSwapchainImageReleaseInfo{
+            .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
+        };
+
+        std.debug.print("\n\nxrReleaseSwapchainImage\n\n", .{});
+        try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
+        std.debug.print("\n=====\n", .{});
+
+        return true;
     }
 
     fn onInterrupt(signum: c_int) callconv(.c) void {
@@ -224,6 +572,7 @@ pub fn main() !void {
     }){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+    // const allocator = std.heap.page_allocator;
 
     const xr_extensions = &[_][*:0]const u8{
         loader.c.XR_KHR_VULKAN_ENABLE_EXTENSION_NAME,

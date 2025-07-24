@@ -30,7 +30,7 @@ export fn debugCallback(
 }
 
 pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, extensions: []const [*:0]const u8, layers: []const [*:0]const u8) !c.VkInstance {
-    log.info("\n\n\n\nLEN {d}\n", .{extensions.len});
+    _ = graphics_requirements;
     var create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .ppEnabledExtensionNames = if (extensions.len > 0) extensions.ptr else null,
@@ -44,10 +44,11 @@ pub fn createInstance(graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, 
             .applicationVersion = c.VK_MAKE_VERSION(1, 0, 0),
             .pEngineName = "WallensteinVR_Engine",
             .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
+            // .apiVersion = c.VK_VERSION_1_4,
             .apiVersion = c.VK_MAKE_API_VERSION(
                 0,
-                c.XR_VERSION_MAJOR(graphics_requirements.maxApiVersionSupported),
-                c.XR_VERSION_MINOR(graphics_requirements.minApiVersionSupported),
+                1,
+                4,
                 0,
             ),
         },
@@ -104,7 +105,7 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, graphics_queue_f
         .pEnabledFeatures = &features,
         .enabledExtensionCount = @intCast(extensions.len),
         .ppEnabledExtensionNames = extensions.ptr,
-        .enabledLayerCount = @intCast(extensions.len),
+        .enabledLayerCount = 0,
         .ppEnabledLayerNames = null,
         .flags = 0,
     };
@@ -123,11 +124,8 @@ pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
 
     var props: [16]c.VkQueueFamilyProperties = undefined;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, &props);
-
-    std.debug.print("Familys {d}\n", .{count});
     for (props[0..count], 0..) |qf, i| {
         if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
-            std.debug.print("FOUND {d}\n", .{i});
             return @intCast(i);
         }
     }
@@ -234,7 +232,7 @@ pub fn createShader(allocator: std.mem.Allocator, device: c.VkDevice, file_path:
 
     var shader: c.VkShaderModule = undefined;
     try loader.vkCheck(c.vkCreateShaderModule(device, &shader_create_info, null, &shader));
-
+    allocator.free(source);
     return shader;
 }
 
@@ -434,7 +432,7 @@ pub const SwapchainImage = struct {
 
         var create_info = c.VkBufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = null, // bufferSize <-- The toutorial is just this???,
+            .size = @sizeOf(f32) * 4 * 4 * 3, // :NOTE bufferSize <-- The toutorial is just this???,
             .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
         };
@@ -450,11 +448,19 @@ pub const SwapchainImage = struct {
         var properties: c.VkPhysicalDeviceMemoryProperties = undefined;
         c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
 
-        const memory_type_index: u32 = blk: for (properties.memoryTypeCount) |i| {
-            if (!(requirements.memoryTypeBits & (1 << i)) or (properties.memoryTypes[i].propertyFlags & flags) != flags) continue;
+        var memory_type_index: u32 = 0;
+        const shiftee: u32 = 1;
 
-            break :blk i;
-        };
+        for (0..properties.memoryTypeCount) |i| {
+            if ((requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0)) {
+                continue;
+            }
+            if ((properties.memoryTypes[i].propertyFlags & flags) != flags) {
+                continue;
+            }
+            memory_type_index = @intCast(i);
+            break;
+        }
 
         var allocate_info = c.VkMemoryAllocateInfo{
             .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -503,7 +509,7 @@ pub const SwapchainImage = struct {
             .pBufferInfo = &descriptor_buffer_info,
         };
 
-        try loader.vkCheck(c.vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, null));
+        c.vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, null);
 
         return .{
             .device = device,
@@ -520,7 +526,9 @@ pub const SwapchainImage = struct {
     }
 
     pub fn deinit(self: Self) void {
-        c.vkFreeDescriptorSets(self.device, self.descriptor_pool, 1, &self.descriptor_set);
+        std.debug.print("Destroyed SwapChainImage\n", .{});
+        _ = c.vkFreeDescriptorSets(self.device, self.descriptor_pool, 1, &self.descriptor_set);
+        std.debug.print("INFO : {any}\n", .{self.command_buffer});
         c.vkFreeCommandBuffers(self.device, self.command_pool, 1, &self.command_buffer);
         c.vkDestroyBuffer(self.device, self.buffer, null);
         c.vkFreeMemory(self.device, self.memory, null);

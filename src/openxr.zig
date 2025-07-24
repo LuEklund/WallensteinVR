@@ -23,7 +23,8 @@ pub fn createInstance(extensions: []const [*:0]const u8, layers: []const [*:0]co
             .applicationVersion = 1,
             .engineName = ("WallensteinVR_Engine\x00" ++ [1]u8{0} ** (128 - "WallensteinVR_Engine\x00".len)).*,
             .engineVersion = 1,
-            .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
+            .apiVersion = c.XR_CURRENT_API_VERSION,
+            // .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
         },
         .enabledExtensionNames = @ptrCast(extensions.ptr),
         .enabledExtensionCount = @intCast(extensions.len),
@@ -37,7 +38,16 @@ pub fn createInstance(extensions: []const [*:0]const u8, layers: []const [*:0]co
     return instance;
 }
 
-fn handleXRError(severity: c.XrDebugUtilsMessageSeverityFlagsEXT, @"type": c.XrDebugUtilsMessageTypeFlagsEXT, callback_data: *const c.XrDebugUtilsMessengerCallbackDataEXT, _: *anyopaque) c.XrBool32 {
+pub fn handleXRError(
+    severity: c.XrDebugUtilsMessageSeverityFlagsEXT,
+    @"type": c.XrDebugUtilsMessageTypeFlagsEXT,
+    callback_data: [*c]const c.XrDebugUtilsMessengerCallbackDataEXT,
+    _: ?*anyopaque,
+) callconv(.c) c.XrBool32 {
+    // std.debug.print("\n\nHELLO!!!!\n\n\n", .{});
+
+    // log.err("\n\nHELLO!!!!\n\n\n", .{});
+
     const type_str: []const u8 = switch (@"type") {
         c.XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT => "general",
         c.XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT => "validation",
@@ -54,7 +64,7 @@ fn handleXRError(severity: c.XrDebugUtilsMessageSeverityFlagsEXT, @"type": c.XrD
         else => "(other)",
     };
 
-    log.err("XR: {s}: {s}: {s}\n", .{ type_str, severity_str, callback_data.message });
+    log.err("XR: {s}: {s}: {s}\n", .{ type_str, severity_str, callback_data[0].message });
 
     return c.XR_FALSE;
 }
@@ -75,7 +85,7 @@ pub fn createDebugMessenger(
             c.XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
             c.XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
             c.XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT,
-        .userCallback = @ptrCast(&handleXRError),
+        .userCallback = handleXRError,
         .userData = null,
     };
 
@@ -162,6 +172,12 @@ pub fn getVulkanInstanceRequirements(
 
     //TODO: DONT USE HARD CODED! Use the code from above but make it work!
 
+    //         Wed Jul 23 2025 20:48:44.607553 [Error] - Failed to load extension: GetMemoryFdKHR
+    // Wed Jul 23 2025 20:48:44.607572 [Error] - Failed to load extension: GetSemaphoreFdKHR
+    // Wed Jul 23 2025 20:48:44.607587 [Error] - Failed to load extension: ImportSemaphoreFdKHR
+    // Wed Jul 23 2025 20:48:44.607601 [Error] - Failed to load extension: GetImageMemoryRequirements2KHR
+    // Wed Jul 23 2025 20:48:44.607614 [Error] - Failed to load extension: GetBufferMemoryRequirements2KHR
+
     const extensions = &[_][*:0]const u8{
         "VK_KHR_external_memory_capabilities",
         "VK_KHR_get_physical_device_properties2",
@@ -216,7 +232,13 @@ pub fn getVulkanDeviceRequirements(
 
     //TODO: DONT USE HARD CODED! Use the code from above but make it work!
 
-    const extensions = &[_][*:0]const u8{};
+    const extensions = &[_][*:0]const u8{
+        "VK_KHR_external_fence_fd",
+        "VK_KHR_external_semaphore_fd",
+        // "VK_KHR_external_memory",
+        // "VK_KHR_external_memory_fd",
+        // "VK_KHR_get_memory_requirements2",
+    };
 
     return .{ physical_device, extensions };
 }
@@ -237,8 +259,6 @@ pub fn createSession(
         .queueFamilyIndex = queue_family_index,
         .queueIndex = 0,
     };
-
-    std.debug.print("\n\nALL: {any}\n\n", .{graphics_binding});
 
     var session_create_info = c.XrSessionCreateInfo{
         .type = c.XR_TYPE_SESSION_CREATE_INFO,
@@ -286,7 +306,7 @@ pub const Swapchain = struct {
         };
 
         var swapchains: []Self = try allocator.alloc(Self, config_views.len);
-
+        errdefer allocator.free(swapchains);
         for (0..config_views.len) |i| {
             var swapchain_create_info = c.XrSwapchainCreateInfo{
                 .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
@@ -299,6 +319,8 @@ pub const Swapchain = struct {
                 .arraySize = 1,
                 .mipCount = 1,
             };
+            std.debug.print("\n\n !config_views[{d}]: {any}\n\n", .{ i, config_views[i] });
+            std.debug.print("\n\n !swapchain_create_info[{d}]: {any}\n\n", .{ i, swapchain_create_info });
 
             var swapchain: c.XrSwapchain = undefined;
             try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &swapchain));
@@ -317,6 +339,8 @@ pub const Swapchain = struct {
     pub fn getImages(self: Self, allocator: std.mem.Allocator) ![]c.XrSwapchainImageVulkanKHR {
         var image_count: u32 = undefined;
         try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, 0, &image_count, null));
+
+        std.debug.print("\n\n===========image count: {d}\n\n", .{image_count});
 
         var images = try allocator.alloc(c.XrSwapchainImageVulkanKHR, image_count);
         @memset(images, .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });
@@ -341,4 +365,61 @@ pub fn createSpace(session: c.XrSession) !c.XrSpace {
     try loader.xrCheck(c.xrCreateReferenceSpace(session, &space_create_info, &space));
 
     return space;
+}
+
+pub fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0]const u8) !void {
+    var extension_count: u32 = 0;
+
+    try loader.xrCheck(
+        c.xrEnumerateInstanceExtensionProperties(null, 0, &extension_count, null),
+    );
+
+    const extension_properties = try allocator.alloc(c.XrExtensionProperties, @intCast(extension_count));
+    defer allocator.free(extension_properties);
+
+    @memset(extension_properties, .{ .type = c.XR_TYPE_EXTENSION_PROPERTIES });
+
+    try loader.xrCheck(
+        c.xrEnumerateInstanceExtensionProperties(null, extension_count, &extension_count, extension_properties.ptr),
+    );
+
+    for (extentions) |extention| {
+        for (extension_properties) |extension_property| {
+            if (std.mem.eql(u8, std.mem.span(extention), std.mem.sliceTo(&extension_property.extensionName, 0))) {
+                std.debug.print("found {s}\n", .{extention});
+                break;
+            }
+        } else {
+            log.err("Failed to find OpenXR extension: {s}\n", .{extention});
+            return error.MissingLayers;
+        }
+    }
+}
+
+pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u8) !void {
+    var layer_count: u32 = 0;
+
+    try loader.xrCheck(
+        c.xrEnumerateApiLayerProperties(0, &layer_count, null),
+    );
+    const layer_properties = try allocator.alloc(c.XrApiLayerProperties, @intCast(layer_count));
+    defer allocator.free(layer_properties);
+
+    @memset(layer_properties, .{ .type = c.XR_TYPE_API_LAYER_PROPERTIES });
+    try loader.xrCheck(
+        c.xrEnumerateApiLayerProperties(layer_count, &layer_count, layer_properties.ptr),
+    );
+
+    for (layer_properties) |l| {
+        std.debug.print("layer found: {s}\n", .{l.layerName});
+    }
+
+    for (layers) |layer| {
+        for (layer_properties) |layer_property| {
+            if (std.mem.eql(u8, std.mem.span(layer), std.mem.sliceTo(&layer_property.layerName, 0))) break;
+        } else {
+            log.err("Failed to find OpenXR layer: {s}\n", .{layer});
+            return error.MissingLayers;
+        }
+    }
 }
