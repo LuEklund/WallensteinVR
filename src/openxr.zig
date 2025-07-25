@@ -14,14 +14,23 @@ pub const Dispatcher = loader.XrDispatcher(.{
 });
 
 pub fn createInstance(extensions: []const [*:0]const u8, layers: []const [*:0]const u8) !c.XrInstance {
+    const buffer_size = 128;
+
+    const buffer = [buffer_size]u8;
+    var application_name: buffer = .{0} ** buffer_size;
+    _ = std.fmt.bufPrintZ(&application_name, "WallensteinVR", .{}) catch unreachable;
+
+    var engine_name: buffer = .{0} ** buffer_size;
+    _ = std.fmt.bufPrintZ(&engine_name, "WallensteinVR_Engine", .{}) catch unreachable;
+
     var create_info = c.XrInstanceCreateInfo{
         .type = c.XR_TYPE_INSTANCE_CREATE_INFO,
         .next = null,
         .createFlags = 0,
         .applicationInfo = .{
-            .applicationName = ("WallensteinVR\x00" ++ [1]u8{0} ** (128 - "WallensteinVR\x00".len)).*, //mafs
+            .applicationName = application_name,
             .applicationVersion = 1,
-            .engineName = ("WallensteinVR_Engine\x00" ++ [1]u8{0} ** (128 - "WallensteinVR_Engine\x00".len)).*,
+            .engineName = engine_name,
             .engineVersion = 1,
             .apiVersion = c.XR_CURRENT_API_VERSION,
             // .apiVersion = c.XR_MAKE_VERSION(1, 0, 34), // c.XR_CURRENT_API_VERSION <-- Too modern for Steam VR
