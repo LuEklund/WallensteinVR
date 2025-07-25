@@ -432,3 +432,41 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
         }
     }
 }
+
+pub fn createActionSet(instance: c.XrInstance) c.XrActionSet {
+    var actionSet: c.XrActionSet = undefined;
+
+    var actionSetCreateInfo = c.XrActionSetCreateInfo{
+        .type = c.XR_TYPE_ACTION_SET_CREATE_INFO,
+        .actionSetName = ("openxr_example\x00" ++ [1]u8{0} ** (64 - "openxr_example\x00".len)).*, //mafs
+        .localizedActionSetName = ("WallensteinVR\x00" ++ [1]u8{0} ** (64 - "WallensteinVR\x00".len)).*, //mafs
+        .priority = 0,
+    };
+
+    loader.xrCheck(c.xrCreateActionSet(instance, &actionSetCreateInfo, &actionSet));
+
+    return actionSet;
+}
+
+pub fn createAction(actionSet: c.XrActionSet, name: [*:0]const u8,  type: c.XrActionType) c.XrAction
+{
+    var action: c.XrAction = undefined;
+
+    var actionCreateInfo = c.XrActionCreateInfo{
+        
+    };
+    actionCreateInfo.type = XR_TYPE_ACTION_CREATE_INFO;
+    strcpy(actionCreateInfo.actionName, name);
+    strcpy(actionCreateInfo.localizedActionName, name);
+    actionCreateInfo.actionType = type;
+
+    XrResult result = xrCreateAction(actionSet, &actionCreateInfo, &action);
+
+    if (result != XR_SUCCESS)
+    {
+        cerr << "Failed to create action: " << result << endl;
+        return XR_NULL_HANDLE;
+    }
+
+    return action;
+}
