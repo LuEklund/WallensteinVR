@@ -204,6 +204,21 @@ pub const Engine = struct {
 
         const space: c.XrSpace = try xr.createSpace(self.xr_session);
 
+        const actionSet: c.XrActionSet = xr.createActionSet(self.xr_instance);
+        defer c.xrDestroyActionSet(actionSet);
+        const leftHandAction: c.XrAction = xr.createAction(actionSet, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        defer c.xrDestroyAction(leftHandAction);
+        const rightHandAction: c.XrAction = xr.createAction(actionSet, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        defer c.xrDestroyAction(leftHandAction);
+        const leftGrabAction: c.XrAction = xr.createAction(actionSet, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        defer c.xrDestroyAction(leftGrabAction);
+        const rightgrabaction: c.XrAction = xr.createAction(actionSet, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        defer c.xrDestroyAction(rightgrabaction);
+        const leftHandSpace: c.XrSpace = xr.createActionSpace(self.xr_session, leftHandAction);
+        defer c.xrDestroySpace(leftHandSpace);
+        const rightHandSpace: c.XrSpace = xr.createActionSpace(self.xr_session, rightHandAction);
+        defer c.xrDestroySpace(rightHandSpace);
+
         var running: bool = true;
         while (!quit.load(.acquire)) {
             std.debug.print("\n\n=========[entered while loop]===========\n\n", .{});

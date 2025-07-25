@@ -433,13 +433,22 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
     }
 }
 
-pub fn createActionSet(instance: c.XrInstance) c.XrActionSet {
+pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
     var actionSet: c.XrActionSet = undefined;
+
+    const buffer_size = 64;
+
+    const buffer = [buffer_size]u8;
+    var set_name: buffer = .{0} ** buffer_size;
+    _ = std.fmt.bufPrintZ(&set_name, "openxr_example", .{}) catch unreachable;
+
+    var application_name: buffer = .{0} ** buffer_size;
+    _ = std.fmt.bufPrintZ(&application_name, "WallensteinVR", .{}) catch unreachable;
 
     var actionSetCreateInfo = c.XrActionSetCreateInfo{
         .type = c.XR_TYPE_ACTION_SET_CREATE_INFO,
-        .actionSetName = ("openxr_example\x00" ++ [1]u8{0} ** (64 - "openxr_example\x00".len)).*, //mafs
-        .localizedActionSetName = ("WallensteinVR\x00" ++ [1]u8{0} ** (64 - "WallensteinVR\x00".len)).*, //mafs
+        .actionSetName = set_name,
+        .localizedActionSetName = application_name,
         .priority = 0,
     };
 
@@ -448,25 +457,68 @@ pub fn createActionSet(instance: c.XrInstance) c.XrActionSet {
     return actionSet;
 }
 
-pub fn createAction(actionSet: c.XrActionSet, name: [*:0]const u8,  type: c.XrActionType) c.XrAction
-{
+pub fn createAction(actionSet: c.XrActionSet, name: [*:0]const u8, action_type: c.XrActionType) !c.XrAction {
     var action: c.XrAction = undefined;
 
     var actionCreateInfo = c.XrActionCreateInfo{
-        
+        .type = c.XR_TYPE_ACTION_CREATE_INFO,
+        .actionName = name,
+        .localizedActionName = name,
+        .actionType = action_type,
     };
-    actionCreateInfo.type = XR_TYPE_ACTION_CREATE_INFO;
-    strcpy(actionCreateInfo.actionName, name);
-    strcpy(actionCreateInfo.localizedActionName, name);
-    actionCreateInfo.actionType = type;
 
-    XrResult result = xrCreateAction(actionSet, &actionCreateInfo, &action);
-
-    if (result != XR_SUCCESS)
-    {
-        cerr << "Failed to create action: " << result << endl;
-        return XR_NULL_HANDLE;
-    }
+    loader.xrCheck(c.xrCreateAction(actionSet, &actionCreateInfo, &action));
 
     return action;
+}
+
+pub fn createActionSpace(session: c.XrSession, action: c.XrAction) !c.XrSpace {
+    var space: c.XrSpace = undefined;
+
+    var actionSpaceCreateInfo = c.XrActionSpaceCreateInfo{
+        .type = c.XR_TYPE_ACTION_SPACE_CREATE_INFO,
+        .poseInActionSpace = .{
+            .position = .{ 0, 0, 0 },
+            .orientation = .{ 0, 0, 0, 1 },
+        },
+        .action = action,
+    };
+
+    loader.xrCheck(c.xrCreateActionSpace(session, &actionSpaceCreateInfo, &space));
+
+    return space;
+}
+
+pub fn getPath(instance: c.XrInstance, name: [*:0]const u8) !c.XrPath {
+    var path: c.XrPath = undefined;
+
+    loader.xrCheck(c.xrStringToPath(instance, name, &path));
+
+    return path;
+}
+
+//TODO: https://openxr-tutorial.com/linux/vulkan/4-actions.html#interactions
+//NOTE: https://amini-allight.org/post/openxr-tutorial-part-9
+pub fn suggestBindings(instance: c.XrInstance, leftHandAction: c.XrAction, rightHandAction: c.XrAction, leftGrabAction: c.XrAction, rightGrabAction: c.XrAction) !void {
+    const leftHandPath: c.XrPath = getPath(instance, "/user/hand/left/input/grip/pose");
+    const rightHandPath: c.XrPath = getPath(instance, "/user/hand/right/input/grip/pose");
+    const leftButtonPath: c.XrPath = getPath(instance, "/user/hand/left/input/a/click");
+    const rightButtonPath: c.XrPath = getPath(instance, "/user/hand/right/input/a/click");
+    const interactionProfilePath: c.XrPath = getPath(instance, "/interaction_profiles/valve/index_controller");
+
+    const suggestedBindings = c.XrActionSuggestedBinding[4]{
+        .{ leftHandAction, leftHandPath },
+        .{ rightHandAction, rightHandPath },
+        .{ leftGrabAction, leftButtonPath },
+        .{ rightGrabAction, rightButtonPath },
+    };
+
+    var suggestedBinding = c.XrInteractionProfileSuggestedBinding{
+        .type = c.XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING,
+        .interactionProfile = interactionProfilePath,
+        .countSuggestedBindings = 4,
+        .suggestedBindings = suggestedBindings,
+    };
+
+    loader.xrCheck(c.xrSuggestInteractionProfileBindings(instance, &suggestedBinding));
 }
