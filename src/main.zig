@@ -327,13 +327,6 @@ pub const Engine = struct {
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
     ) !bool {
-        // _ = swapchain_images;
-        // _ = queue;
-        // _ = device;
-        // _ = render_pass;
-        // _ = pipeline;
-        // _ = pipeline_layout;
-
         var view_locate_info = c.XrViewLocateInfo{
             .type = c.XR_TYPE_VIEW_LOCATE_INFO,
             .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
