@@ -9,6 +9,9 @@ const nz = @import("numz");
 const c = loader.c;
 var quit: std.atomic.Value(bool) = .init(false);
 
+var object_grabbed: u32 = 0;
+var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
+var grab_distance: f32 = 1;
 const swapchain_count = 3;
 
 pub const Engine = struct {
@@ -117,7 +120,7 @@ pub const Engine = struct {
             }
         }
 
-        var wrapped_swapchain_images: [swapchain_count]std.ArrayList(vk.SwapchainImage) = undefined;
+        var wrapped_swapchain_images: [eye_count]std.ArrayList(vk.SwapchainImage) = undefined;
 
         for (0..eye_count) |i| {
             wrapped_swapchain_images[i] = .init(self.allocator);
@@ -138,8 +141,7 @@ pub const Engine = struct {
             }
         }
         defer {
-            std.debug.print("\n\n=========[FREEING THE IMAGES]===========\n\n", .{});
-            for (0..swapchain_count) |i| {
+            for (0..eye_count) |i| {
                 for (wrapped_swapchain_images[i].items) |swapchain_image| {
                     swapchain_image.deinit();
                 }
@@ -204,10 +206,28 @@ pub const Engine = struct {
 
         const space: c.XrSpace = try xr.createSpace(self.xr_session);
 
+        const actionSet: c.XrActionSet = try xr.createActionSet(self.xr_instance);
+        defer _ = c.xrDestroyActionSet(actionSet);
+        const leftHandAction: c.XrAction = try xr.createAction(actionSet, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        defer _ = c.xrDestroyAction(leftHandAction);
+        const rightHandAction: c.XrAction = try xr.createAction(actionSet, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        defer _ = c.xrDestroyAction(leftHandAction);
+        const leftGrabAction: c.XrAction = try xr.createAction(actionSet, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        defer _ = c.xrDestroyAction(leftGrabAction);
+        const right_grab_action: c.XrAction = try xr.createAction(actionSet, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        defer _ = c.xrDestroyAction(right_grab_action);
+        const leftHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, leftHandAction);
+        defer _ = c.xrDestroySpace(leftHandSpace);
+        const rightHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, rightHandAction);
+        defer _ = c.xrDestroySpace(rightHandSpace);
+
+        try xr.suggestBindings(self.xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
+
+        try xr.attachActionSet(self.xr_session, actionSet);
+
         var running: bool = true;
         while (!quit.load(.acquire)) {
-            std.debug.print("\n\n=========[entered while loop]===========\n\n", .{});
-
+            std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
             var eventData = c.XrEventDataBuffer{
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
             };
@@ -216,9 +236,7 @@ pub const Engine = struct {
                 if (running) {
                     var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
                     var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
-                    std.debug.print("\n======xrWaitFrame====\n", .{});
                     result = c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state);
-                    std.debug.print("\n=====[Result: {d}]======\n", .{result});
                     if (result != c.XR_SUCCESS) {
                         std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{});
                         break;
@@ -226,11 +244,20 @@ pub const Engine = struct {
                     var begin_frame_info = c.XrFrameBeginInfo{
                         .type = c.XR_TYPE_FRAME_BEGIN_INFO,
                     };
-                    std.debug.print("\n\nxrBeginFrame\n\n", .{});
                     try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
-                    std.debug.print("\n=====\n", .{});
+                    var should_quit = input(
+                        self.xr_session,
+                        actionSet,
+                        space,
+                        frame_state.predictedDisplayTime,
+                        leftHandAction,
+                        rightHandAction,
+                        leftGrabAction,
+                        right_grab_action,
+                        leftHandSpace,
+                        rightHandSpace,
+                    ) catch true;
                     if (frame_state.shouldRender == c.VK_FALSE) {
-                        std.debug.print("\n\n=========[NOt ready for rendering]===========\n\n", .{});
                         var end_frame_info = c.XrFrameEndInfo{
                             .type = c.XR_TYPE_FRAME_END_INFO,
                             .displayTime = frame_state.predictedDisplayTime,
@@ -239,12 +266,10 @@ pub const Engine = struct {
                             .layers = null,
                         };
                         try loader.xrCheck(c.xrEndFrame(self.xr_session, &end_frame_info));
-                        std.debug.print("\n\n=====---------======\n\n", .{});
 
                         continue;
                     } else {
-                        std.debug.print("\n\n=========[entered rendering]===========\n\n", .{});
-                        const should_quit = render(
+                        should_quit = render(
                             self.allocator,
                             self.xr_session,
                             swapchains,
@@ -310,9 +335,69 @@ pub const Engine = struct {
             }
         }
 
-        std.debug.print("\n\n=========[quite == {}]===========\n\n", .{quit.load(.acquire)});
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
+    }
+
+    fn input(
+        session: c.XrSession,
+        actionSet: c.XrActionSet,
+        roomSpace: c.XrSpace,
+        predictedDisplayTime: c.XrTime,
+        leftHandAction: c.XrAction,
+        rightHandAction: c.XrAction,
+        leftGrabAction: c.XrAction,
+        rightGrabAction: c.XrAction,
+        leftHandSpace: c.XrSpace,
+        rightHandSpace: c.XrSpace,
+    ) !bool {
+        var activeActionSet = c.XrActiveActionSet{
+            .actionSet = actionSet,
+            .subactionPath = c.XR_NULL_PATH,
+        };
+
+        var syncInfo = c.XrActionsSyncInfo{
+            .type = c.XR_TYPE_ACTIONS_SYNC_INFO,
+            .countActiveActionSets = 1,
+            .activeActionSets = &activeActionSet,
+        };
+
+        const result: c.XrResult = (c.xrSyncActions(session, &syncInfo));
+
+        if (result == c.XR_SESSION_NOT_FOCUSED) {
+            return false;
+        } else if (result != c.XR_SUCCESS) {
+            std.log.err("Failed to synchronize actions: {any}\n", .{result});
+            return true;
+        }
+
+        const leftHand: c.XrPosef = try xr.getActionPose(session, leftHandAction, leftHandSpace, roomSpace, predictedDisplayTime);
+        const rightHand: c.XrPosef = try xr.getActionPose(session, rightHandAction, rightHandSpace, roomSpace, predictedDisplayTime);
+        const leftGrab: c.XrBool32 = try xr.getActionBoolean(session, leftGrabAction);
+        const rightGrab: c.XrBool32 = try xr.getActionBoolean(session, rightGrabAction);
+
+        std.debug.print("\n\n=========[RIGHT: {any}]===========\n\n", .{rightHand});
+        std.debug.print("\n\n=========[LEFT: {any}]===========\n\n", .{leftHand});
+
+        if (leftGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - leftHand.position.x, 2) + std.math.pow(f32, object_pos.y - leftHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
+            object_grabbed = 1;
+        } else if (leftGrab != 0 and object_grabbed == 1) {
+            object_grabbed = 0;
+        }
+
+        if (rightGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - rightHand.position.x, 2) + std.math.pow(f32, object_pos.y - rightHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
+            object_grabbed = 2;
+        } else if (rightGrab != 0 and object_grabbed == 2) {
+            object_grabbed = 0;
+        }
+
+        switch (object_grabbed) {
+            1 => object_pos = leftHand.position,
+            2 => object_pos = rightHand.position,
+            else => return false,
+        }
+
+        return false;
     }
     fn render(
         allocator: std.mem.Allocator,
@@ -327,13 +412,6 @@ pub const Engine = struct {
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
     ) !bool {
-        // _ = swapchain_images;
-        // _ = queue;
-        // _ = device;
-        // _ = render_pass;
-        // _ = pipeline;
-        // _ = pipeline_layout;
-
         var view_locate_info = c.XrViewLocateInfo{
             .type = c.XR_TYPE_VIEW_LOCATE_INFO,
             .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
@@ -413,9 +491,7 @@ pub const Engine = struct {
             .layerCount = 1,
             .layers = &layers_array[0],
         };
-        std.debug.print("\n\n\nend_frame_info: {any}\n\n\n", .{end_frame_info});
         try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
-        std.debug.print("\n\n=====---------======\n\n", .{});
 
         return false;
     }
@@ -442,19 +518,15 @@ pub const Engine = struct {
         };
 
         var active_index: u32 = 0;
-        std.debug.print("\n\nxrAcquireSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrAcquireSwapchainImage(swapchain.swapchain, &acquire_image_info, &active_index));
-        std.debug.print("\n===== ACTIVE INDEX = {d}\n", .{active_index});
 
         var wait_image_info = c.XrSwapchainImageWaitInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
             .timeout = std.math.maxInt(i64),
         };
 
-        std.debug.print("\n\nxrWaitSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrWaitSwapchainImage(swapchain.swapchain, &wait_image_info));
         const image: vk.SwapchainImage = images.items[active_index];
-        std.debug.print("\n=====\n", .{});
 
         var data: ?[*]f32 = null;
         try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
@@ -481,7 +553,11 @@ pub const Engine = struct {
             .fromQuaternion(.{ view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z }),
         );
 
-        const model_matrix = nz.Mat4(f32).identity(1);
+        var model_matrix = nz.Mat4(f32).identity(1);
+        model_matrix.d[12] = object_pos.x;
+        model_matrix.d[13] = object_pos.y;
+        model_matrix.d[14] = object_pos.z;
+        model_matrix.d[15] = 1;
 
         @memcpy(data.?[0..16], projection_matrix.d[0..]);
         @memcpy(data.?[16..32], view_matrix.d[0..]);
@@ -552,9 +628,7 @@ pub const Engine = struct {
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
         };
 
-        std.debug.print("\n\nxrReleaseSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
-        std.debug.print("\n=====\n", .{});
 
         return true;
     }

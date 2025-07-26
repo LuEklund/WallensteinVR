@@ -432,3 +432,159 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
         }
     }
 }
+
+pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
+    var actionSet: c.XrActionSet = undefined;
+
+    const buffer_size = 64;
+    const buffer = [buffer_size]u8;
+    var set_name: buffer = .{0} ** buffer_size;
+    _ = std.fmt.bufPrintZ(&set_name, "openxr_example", .{}) catch unreachable;
+
+    const buffer_size_128 = 128;
+    const buffer_128 = [buffer_size_128]u8;
+    var application_name: buffer_128 = .{0} ** buffer_size_128;
+    _ = std.fmt.bufPrintZ(&application_name, "WallensteinVR", .{}) catch unreachable;
+
+    var actionSetCreateInfo = c.XrActionSetCreateInfo{
+        .type = c.XR_TYPE_ACTION_SET_CREATE_INFO,
+        .actionSetName = set_name,
+        .localizedActionSetName = application_name,
+        .priority = 0,
+    };
+
+    try loader.xrCheck(c.xrCreateActionSet(instance, &actionSetCreateInfo, &actionSet));
+
+    return actionSet;
+}
+
+pub fn createAction(actionSet: c.XrActionSet, name: [*:0]const u8, action_type: c.XrActionType) !c.XrAction {
+    var action: c.XrAction = undefined;
+
+    var action_name: [64]u8 = undefined;
+    var localized_action_name: [128]u8 = undefined;
+    @memcpy(&action_name, name);
+    @memcpy(&localized_action_name, name);
+
+    var actionCreateInfo = c.XrActionCreateInfo{
+        .type = c.XR_TYPE_ACTION_CREATE_INFO,
+        .actionName = action_name,
+        .localizedActionName = localized_action_name,
+        .actionType = action_type,
+    };
+
+    try loader.xrCheck(c.xrCreateAction(actionSet, &actionCreateInfo, &action));
+
+    return action;
+}
+
+pub fn createActionSpace(session: c.XrSession, action: c.XrAction) !c.XrSpace {
+    var space: c.XrSpace = undefined;
+
+    var actionSpaceCreateInfo = c.XrActionSpaceCreateInfo{
+        .type = c.XR_TYPE_ACTION_SPACE_CREATE_INFO,
+        .poseInActionSpace = .{
+            .position = .{ .x = 0, .y = 0, .z = 0 },
+            .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1 },
+        },
+        .action = action,
+    };
+
+    try loader.xrCheck(c.xrCreateActionSpace(session, &actionSpaceCreateInfo, &space));
+
+    return space;
+}
+
+pub fn getPath(instance: c.XrInstance, name: [*:0]const u8) !c.XrPath {
+    var path: c.XrPath = undefined;
+
+    try loader.xrCheck(c.xrStringToPath(instance, name, &path));
+
+    return path;
+}
+
+//NOTE: https://openxr-tutorial.com/linux/vulkan/4-actions.html#interactions
+//NOTE: https://amini-allight.org/post/openxr-tutorial-part-9
+//NOTE: https://registry.khronos.org/OpenXR/specs/1.0/html/xrspec.html#semantic-path-interaction-profiles
+//TODO: Dymanic Headset Select? Instead of JUST HTC VIVE
+pub fn suggestBindings(instance: c.XrInstance, leftHandAction: c.XrAction, rightHandAction: c.XrAction, leftGrabAction: c.XrAction, rightGrabAction: c.XrAction) !void {
+    const leftHandPath: c.XrPath = try getPath(instance, "/user/hand/left/input/grip/pose");
+    const rightHandPath: c.XrPath = try getPath(instance, "/user/hand/right/input/grip/pose");
+    const leftButtonPath: c.XrPath = try getPath(instance, "/user/hand/left/input/trigger/click");
+    const rightButtonPath: c.XrPath = try getPath(instance, "/user/hand/right/input/trigger/click");
+    const interactionProfilePath: c.XrPath = try getPath(instance, "/interaction_profiles/valve/index_controller");
+
+    const suggestedBindings = [4]c.XrActionSuggestedBinding{
+        .{ .action = leftHandAction, .binding = leftHandPath },
+        .{ .action = rightHandAction, .binding = rightHandPath },
+        .{ .action = leftGrabAction, .binding = leftButtonPath },
+        .{ .action = rightGrabAction, .binding = rightButtonPath },
+    };
+
+    var suggestedBinding = c.XrInteractionProfileSuggestedBinding{
+        .type = c.XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING,
+        .interactionProfile = interactionProfilePath,
+        .countSuggestedBindings = 4,
+        .suggestedBindings = &suggestedBindings[0],
+    };
+
+    try loader.xrCheck(c.xrSuggestInteractionProfileBindings(instance, &suggestedBinding));
+}
+
+pub fn attachActionSet(session: c.XrSession, actionSet: c.XrActionSet) !void {
+    var actionSetsAttachInfo = c.XrSessionActionSetsAttachInfo{
+        .type = c.XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO,
+        .countActionSets = 1,
+        .actionSets = &actionSet,
+    };
+
+    try loader.xrCheck(c.xrAttachSessionActionSets(session, &actionSetsAttachInfo));
+}
+
+pub fn getActionBoolean(session: c.XrSession, action: c.XrAction) !c.XrBool32 {
+    var getInfo = c.XrActionStateGetInfo{
+        .type = c.XR_TYPE_ACTION_STATE_GET_INFO,
+        .action = action,
+    };
+
+    var state = c.XrActionStateBoolean{
+        .type = c.XR_TYPE_ACTION_STATE_BOOLEAN,
+    };
+
+    try loader.xrCheck(c.xrGetActionStateBoolean(session, &getInfo, &state));
+
+    return state.currentState;
+}
+
+pub fn getActionPose(session: c.XrSession, action: c.XrAction, space: c.XrSpace, roomSpace: c.XrSpace, predictedDisplayTime: c.XrTime) !c.XrPosef {
+    const pose = c.XrPosef{
+        .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1 },
+        .position = .{ .x = 0, .y = 0, .z = 0 },
+    };
+
+    var getInfo = c.XrActionStateGetInfo{
+        .type = c.XR_TYPE_ACTION_STATE_GET_INFO,
+        .action = action,
+    };
+
+    var state = c.XrActionStatePose{
+        .type = c.XR_TYPE_ACTION_STATE_POSE,
+    };
+
+    try loader.xrCheck(c.xrGetActionStatePose(session, &getInfo, &state));
+
+    var location = c.XrSpaceLocation{
+        .type = c.XR_TYPE_SPACE_LOCATION,
+    };
+
+    try loader.xrCheck(c.xrLocateSpace(space, roomSpace, predictedDisplayTime, &location));
+
+    if ((location.locationFlags & c.XR_SPACE_LOCATION_POSITION_VALID_BIT) == 0 or
+        (location.locationFlags & c.XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT) == 0)
+    {
+        std.log.err("Received incomplete result when locating space.", .{});
+        return pose;
+    }
+
+    return location.pose;
+}

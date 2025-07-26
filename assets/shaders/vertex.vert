@@ -7,9 +7,9 @@ layout(binding = 0) uniform Matrices {
     mat4 model;
 } matrices;
 vec3 vertices[3] = vec3[](
-    vec3(0, 1, 4),
-    vec3(-0.866025, -0.5, 4),
-    vec3(+0.866025, -0.5, 4)
+    vec3(1, 1, 4),
+    vec3(-1, -1, 4),
+    vec3(+1, -1, 4)
 );
 vec3 colors[3] = vec3[](
     vec3(1, 0, 0),
