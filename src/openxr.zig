@@ -508,24 +508,24 @@ pub fn getPath(instance: c.XrInstance, name: [*:0]const u8) !c.XrPath {
 //NOTE: https://registry.khronos.org/OpenXR/specs/1.0/html/xrspec.html#semantic-path-interaction-profiles
 //TODO: Dymanic Headset Select? Instead of JUST HTC VIVE
 pub fn suggestBindings(instance: c.XrInstance, leftHandAction: c.XrAction, rightHandAction: c.XrAction, leftGrabAction: c.XrAction, rightGrabAction: c.XrAction) !void {
-    const leftHandPath: c.XrPath = getPath(instance, "/user/hand/left/input/grip/pose");
-    const rightHandPath: c.XrPath = getPath(instance, "/user/hand/right/input/grip/pose");
-    const leftButtonPath: c.XrPath = getPath(instance, "/user/hand/left/input/trigger/click");
-    const rightButtonPath: c.XrPath = getPath(instance, "/user/hand/right/input/trigger/click");
-    const interactionProfilePath: c.XrPath = getPath(instance, "/interaction_profiles/valve/index_controller");
+    const leftHandPath: c.XrPath = try getPath(instance, "/user/hand/left/input/grip/pose");
+    const rightHandPath: c.XrPath = try getPath(instance, "/user/hand/right/input/grip/pose");
+    const leftButtonPath: c.XrPath = try getPath(instance, "/user/hand/left/input/trigger/click");
+    const rightButtonPath: c.XrPath = try getPath(instance, "/user/hand/right/input/trigger/click");
+    const interactionProfilePath: c.XrPath = try getPath(instance, "/interaction_profiles/valve/index_controller");
 
-    const suggestedBindings = c.XrActionSuggestedBinding[4]{
-        .{ leftHandAction, leftHandPath },
-        .{ rightHandAction, rightHandPath },
-        .{ leftGrabAction, leftButtonPath },
-        .{ rightGrabAction, rightButtonPath },
+    const suggestedBindings = [4]c.XrActionSuggestedBinding{
+        .{ .action = leftHandAction, .binding = leftHandPath },
+        .{ .action = rightHandAction, .binding = rightHandPath },
+        .{ .action = leftGrabAction, .binding = leftButtonPath },
+        .{ .action = rightGrabAction, .binding = rightButtonPath },
     };
 
     var suggestedBinding = c.XrInteractionProfileSuggestedBinding{
         .type = c.XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING,
         .interactionProfile = interactionProfilePath,
         .countSuggestedBindings = 4,
-        .suggestedBindings = suggestedBindings,
+        .suggestedBindings = &suggestedBindings[0],
     };
 
     try loader.xrCheck(c.xrSuggestInteractionProfileBindings(instance, &suggestedBinding));

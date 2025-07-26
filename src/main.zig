@@ -120,7 +120,7 @@ pub const Engine = struct {
             }
         }
 
-        var wrapped_swapchain_images: [swapchain_count]std.ArrayList(vk.SwapchainImage) = undefined;
+        var wrapped_swapchain_images: [eye_count]std.ArrayList(vk.SwapchainImage) = undefined;
 
         for (0..eye_count) |i| {
             wrapped_swapchain_images[i] = .init(self.allocator);
@@ -141,8 +141,7 @@ pub const Engine = struct {
             }
         }
         defer {
-            std.debug.print("\n\n=========[FREEING THE IMAGES]===========\n\n", .{});
-            for (0..swapchain_count) |i| {
+            for (0..eye_count) |i| {
                 for (wrapped_swapchain_images[i].items) |swapchain_image| {
                     swapchain_image.deinit();
                 }
@@ -222,10 +221,13 @@ pub const Engine = struct {
         const rightHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, rightHandAction);
         defer _ = c.xrDestroySpace(rightHandSpace);
 
+        try xr.suggestBindings(self.xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
+
+        try xr.attachActionSet(self.xr_session, actionSet);
+
         var running: bool = true;
         while (!quit.load(.acquire)) {
-            std.debug.print("\n\n=========[entered while loop]===========\n\n", .{});
-
+            std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
             var eventData = c.XrEventDataBuffer{
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
             };
@@ -234,9 +236,7 @@ pub const Engine = struct {
                 if (running) {
                     var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
                     var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
-                    std.debug.print("\n======xrWaitFrame====\n", .{});
                     result = c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state);
-                    std.debug.print("\n=====[Result: {d}]======\n", .{result});
                     if (result != c.XR_SUCCESS) {
                         std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{});
                         break;
@@ -244,9 +244,7 @@ pub const Engine = struct {
                     var begin_frame_info = c.XrFrameBeginInfo{
                         .type = c.XR_TYPE_FRAME_BEGIN_INFO,
                     };
-                    std.debug.print("\n\nxrBeginFrame\n\n", .{});
                     try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
-                    std.debug.print("\n=====\n", .{});
                     var should_quit = input(
                         self.xr_session,
                         actionSet,
@@ -260,7 +258,6 @@ pub const Engine = struct {
                         rightHandSpace,
                     ) catch true;
                     if (frame_state.shouldRender == c.VK_FALSE) {
-                        std.debug.print("\n\n=========[NOt ready for rendering]===========\n\n", .{});
                         var end_frame_info = c.XrFrameEndInfo{
                             .type = c.XR_TYPE_FRAME_END_INFO,
                             .displayTime = frame_state.predictedDisplayTime,
@@ -269,11 +266,9 @@ pub const Engine = struct {
                             .layers = null,
                         };
                         try loader.xrCheck(c.xrEndFrame(self.xr_session, &end_frame_info));
-                        std.debug.print("\n\n=====---------======\n\n", .{});
 
                         continue;
                     } else {
-                        std.debug.print("\n\n=========[entered rendering]===========\n\n", .{});
                         should_quit = render(
                             self.allocator,
                             self.xr_session,
@@ -340,7 +335,6 @@ pub const Engine = struct {
             }
         }
 
-        std.debug.print("\n\n=========[quite == {}]===========\n\n", .{quit.load(.acquire)});
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
     }
@@ -381,6 +375,9 @@ pub const Engine = struct {
         const rightHand: c.XrPosef = try xr.getActionPose(session, rightHandAction, rightHandSpace, roomSpace, predictedDisplayTime);
         const leftGrab: c.XrBool32 = try xr.getActionBoolean(session, leftGrabAction);
         const rightGrab: c.XrBool32 = try xr.getActionBoolean(session, rightGrabAction);
+
+        std.debug.print("\n\n=========[RIGHT: {any}]===========\n\n", .{rightHand});
+        std.debug.print("\n\n=========[LEFT: {any}]===========\n\n", .{leftHand});
 
         if (leftGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - leftHand.position.x, 2) + std.math.pow(f32, object_pos.y - leftHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
             object_grabbed = 1;
@@ -494,9 +491,7 @@ pub const Engine = struct {
             .layerCount = 1,
             .layers = &layers_array[0],
         };
-        std.debug.print("\n\n\nend_frame_info: {any}\n\n\n", .{end_frame_info});
         try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
-        std.debug.print("\n\n=====---------======\n\n", .{});
 
         return false;
     }
@@ -523,19 +518,15 @@ pub const Engine = struct {
         };
 
         var active_index: u32 = 0;
-        std.debug.print("\n\nxrAcquireSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrAcquireSwapchainImage(swapchain.swapchain, &acquire_image_info, &active_index));
-        std.debug.print("\n===== ACTIVE INDEX = {d}\n", .{active_index});
 
         var wait_image_info = c.XrSwapchainImageWaitInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
             .timeout = std.math.maxInt(i64),
         };
 
-        std.debug.print("\n\nxrWaitSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrWaitSwapchainImage(swapchain.swapchain, &wait_image_info));
         const image: vk.SwapchainImage = images.items[active_index];
-        std.debug.print("\n=====\n", .{});
 
         var data: ?[*]f32 = null;
         try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
@@ -637,9 +628,7 @@ pub const Engine = struct {
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
         };
 
-        std.debug.print("\n\nxrReleaseSwapchainImage\n\n", .{});
         try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
-        std.debug.print("\n=====\n", .{});
 
         return true;
     }
