@@ -9,6 +9,9 @@ const nz = @import("numz");
 const c = loader.c;
 var quit: std.atomic.Value(bool) = .init(false);
 
+var object_grabbed: u32 = 0;
+var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
+var grab_distance: f32 = 1;
 const swapchain_count = 3;
 
 pub const Engine = struct {
@@ -204,20 +207,20 @@ pub const Engine = struct {
 
         const space: c.XrSpace = try xr.createSpace(self.xr_session);
 
-        const actionSet: c.XrActionSet = xr.createActionSet(self.xr_instance);
-        defer c.xrDestroyActionSet(actionSet);
-        const leftHandAction: c.XrAction = xr.createAction(actionSet, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        defer c.xrDestroyAction(leftHandAction);
-        const rightHandAction: c.XrAction = xr.createAction(actionSet, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        defer c.xrDestroyAction(leftHandAction);
-        const leftGrabAction: c.XrAction = xr.createAction(actionSet, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        defer c.xrDestroyAction(leftGrabAction);
-        const rightgrabaction: c.XrAction = xr.createAction(actionSet, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        defer c.xrDestroyAction(rightgrabaction);
-        const leftHandSpace: c.XrSpace = xr.createActionSpace(self.xr_session, leftHandAction);
-        defer c.xrDestroySpace(leftHandSpace);
-        const rightHandSpace: c.XrSpace = xr.createActionSpace(self.xr_session, rightHandAction);
-        defer c.xrDestroySpace(rightHandSpace);
+        const actionSet: c.XrActionSet = try xr.createActionSet(self.xr_instance);
+        defer _ = c.xrDestroyActionSet(actionSet);
+        const leftHandAction: c.XrAction = try xr.createAction(actionSet, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        defer _ = c.xrDestroyAction(leftHandAction);
+        const rightHandAction: c.XrAction = try xr.createAction(actionSet, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        defer _ = c.xrDestroyAction(leftHandAction);
+        const leftGrabAction: c.XrAction = try xr.createAction(actionSet, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        defer _ = c.xrDestroyAction(leftGrabAction);
+        const right_grab_action: c.XrAction = try xr.createAction(actionSet, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        defer _ = c.xrDestroyAction(right_grab_action);
+        const leftHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, leftHandAction);
+        defer _ = c.xrDestroySpace(leftHandSpace);
+        const rightHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, rightHandAction);
+        defer _ = c.xrDestroySpace(rightHandSpace);
 
         var running: bool = true;
         while (!quit.load(.acquire)) {
@@ -244,6 +247,18 @@ pub const Engine = struct {
                     std.debug.print("\n\nxrBeginFrame\n\n", .{});
                     try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
                     std.debug.print("\n=====\n", .{});
+                    var should_quit = input(
+                        self.xr_session,
+                        actionSet,
+                        space,
+                        frame_state.predictedDisplayTime,
+                        leftHandAction,
+                        rightHandAction,
+                        leftGrabAction,
+                        right_grab_action,
+                        leftHandSpace,
+                        rightHandSpace,
+                    ) catch true;
                     if (frame_state.shouldRender == c.VK_FALSE) {
                         std.debug.print("\n\n=========[NOt ready for rendering]===========\n\n", .{});
                         var end_frame_info = c.XrFrameEndInfo{
@@ -259,7 +274,7 @@ pub const Engine = struct {
                         continue;
                     } else {
                         std.debug.print("\n\n=========[entered rendering]===========\n\n", .{});
-                        const should_quit = render(
+                        should_quit = render(
                             self.allocator,
                             self.xr_session,
                             swapchains,
@@ -328,6 +343,64 @@ pub const Engine = struct {
         std.debug.print("\n\n=========[quite == {}]===========\n\n", .{quit.load(.acquire)});
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
+    }
+
+    fn input(
+        session: c.XrSession,
+        actionSet: c.XrActionSet,
+        roomSpace: c.XrSpace,
+        predictedDisplayTime: c.XrTime,
+        leftHandAction: c.XrAction,
+        rightHandAction: c.XrAction,
+        leftGrabAction: c.XrAction,
+        rightGrabAction: c.XrAction,
+        leftHandSpace: c.XrSpace,
+        rightHandSpace: c.XrSpace,
+    ) !bool {
+        var activeActionSet = c.XrActiveActionSet{
+            .actionSet = actionSet,
+            .subactionPath = c.XR_NULL_PATH,
+        };
+
+        var syncInfo = c.XrActionsSyncInfo{
+            .type = c.XR_TYPE_ACTIONS_SYNC_INFO,
+            .countActiveActionSets = 1,
+            .activeActionSets = &activeActionSet,
+        };
+
+        const result: c.XrResult = (c.xrSyncActions(session, &syncInfo));
+
+        if (result == c.XR_SESSION_NOT_FOCUSED) {
+            return false;
+        } else if (result != c.XR_SUCCESS) {
+            std.log.err("Failed to synchronize actions: {any}\n", .{result});
+            return true;
+        }
+
+        const leftHand: c.XrPosef = try xr.getActionPose(session, leftHandAction, leftHandSpace, roomSpace, predictedDisplayTime);
+        const rightHand: c.XrPosef = try xr.getActionPose(session, rightHandAction, rightHandSpace, roomSpace, predictedDisplayTime);
+        const leftGrab: c.XrBool32 = try xr.getActionBoolean(session, leftGrabAction);
+        const rightGrab: c.XrBool32 = try xr.getActionBoolean(session, rightGrabAction);
+
+        if (leftGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - leftHand.position.x, 2) + std.math.pow(f32, object_pos.y - leftHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
+            object_grabbed = 1;
+        } else if (leftGrab != 0 and object_grabbed == 1) {
+            object_grabbed = 0;
+        }
+
+        if (rightGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - rightHand.position.x, 2) + std.math.pow(f32, object_pos.y - rightHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
+            object_grabbed = 2;
+        } else if (rightGrab != 0 and object_grabbed == 2) {
+            object_grabbed = 0;
+        }
+
+        switch (object_grabbed) {
+            1 => object_pos = leftHand.position,
+            2 => object_pos = rightHand.position,
+            else => return false,
+        }
+
+        return false;
     }
     fn render(
         allocator: std.mem.Allocator,
@@ -489,7 +562,11 @@ pub const Engine = struct {
             .fromQuaternion(.{ view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z }),
         );
 
-        const model_matrix = nz.Mat4(f32).identity(1);
+        var model_matrix = nz.Mat4(f32).identity(1);
+        model_matrix.d[12] = object_pos.x;
+        model_matrix.d[13] = object_pos.y;
+        model_matrix.d[14] = object_pos.z;
+        model_matrix.d[15] = 1;
 
         @memcpy(data.?[0..16], projection_matrix.d[0..]);
         @memcpy(data.?[16..32], view_matrix.d[0..]);
