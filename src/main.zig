@@ -655,6 +655,13 @@ pub fn main() !void {
         "VK_LAYER_KHRONOS_validation",
     };
 
+    defer sdl.shutdown();
+    const init_flags: sdl.InitFlags = .{ .video = true };
+    try sdl.init(init_flags);
+    defer sdl.quit(init_flags);
+
+    const window = try sdl.video.Window.init("Hello SDL3", windowWidth, windowHeight, .{});
+    defer window.deinit();
     //SDL window
     // const sdl_error: bool = sdl.SDL_Init(sdl.SDL_INIT_VIDEO);
     // if (sdl_error) {
