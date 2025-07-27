@@ -288,11 +288,12 @@ pub const Swapchain = struct {
 
     swapchain: c.XrSwapchain,
     format: c.VkFormat,
+    sample_count: u32,
     width: u32,
     height: u32,
 
     // Same as createSwapchains
-    pub fn init(eye_count: comptime_int, allocator: std.mem.Allocator, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) ![]const Self {
+    pub fn init(eye_count: comptime_int, allocator: std.mem.Allocator, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) !Self {
         var config_views = [_]c.XrViewConfigurationView{
             .{ .type = c.XR_TYPE_VIEW_CONFIGURATION_VIEW },
         } ** eye_count;
@@ -314,35 +315,27 @@ pub const Swapchain = struct {
             unreachable;
         };
 
-        var swapchains: []Self = try allocator.alloc(Self, config_views.len);
-        errdefer allocator.free(swapchains);
-        for (0..config_views.len) |i| {
-            var swapchain_create_info = c.XrSwapchainCreateInfo{
-                .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
-                .usageFlags = c.XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
-                .format = format,
-                .sampleCount = c.VK_SAMPLE_COUNT_1_BIT,
-                .width = config_views[i].recommendedImageRectWidth,
-                .height = config_views[i].recommendedImageRectHeight,
-                .faceCount = 1,
-                .arraySize = 1,
-                .mipCount = 1,
-            };
-            std.debug.print("\n\n !config_views[{d}]: {any}\n\n", .{ i, config_views[i] });
-            std.debug.print("\n\n !swapchain_create_info[{d}]: {any}\n\n", .{ i, swapchain_create_info });
+        var swapchain_create_info = c.XrSwapchainCreateInfo{
+            .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
+            .usageFlags = c.XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
+            .format = format,
+            .sampleCount = c.VK_SAMPLE_COUNT_1_BIT,
+            .width = config_views[0].recommendedImageRectWidth,
+            .height = config_views[0].recommendedImageRectHeight,
+            .faceCount = 1,
+            .arraySize = eye_count,
+            .mipCount = 1,
+        };
+        var swapchain: c.XrSwapchain = undefined;
+        try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &swapchain));
 
-            var swapchain: c.XrSwapchain = undefined;
-            try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &swapchain));
-
-            swapchains[i] = Self{
-                .swapchain = swapchain,
-                .format = @intCast(format),
-                .width = config_views[i].recommendedImageRectWidth,
-                .height = config_views[i].recommendedImageRectHeight,
-            };
-        }
-
-        return swapchains;
+        return Self{
+            .swapchain = swapchain,
+            .format = @intCast(format),
+            .sample_count = config_views[0].recommendedSwapchainSampleCount,
+            .width = config_views[0].recommendedImageRectWidth,
+            .height = config_views[0].recommendedImageRectHeight,
+        };
     }
 
     pub fn getImages(self: Self, allocator: std.mem.Allocator) ![]c.XrSwapchainImageVulkanKHR {

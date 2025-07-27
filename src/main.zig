@@ -91,9 +91,8 @@ pub const Engine = struct {
 
     pub fn start(self: Self) !void {
         const eye_count = build_options.eye_count;
-        const swapchains = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
-        defer self.allocator.free(swapchains);
-        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchains[0].format);
+        const swapchain = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
+        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchain.format, swapchain.sample_count);
         defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(self.vk_logical_device, self.graphics_queue_family_index);
         defer c.vkDestroyCommandPool(self.vk_logical_device, command_pool, null);
@@ -105,48 +104,34 @@ pub const Engine = struct {
         defer c.vkDestroyShaderModule(self.vk_logical_device, vertex_shader, null);
         const fragment_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "shaders/fragment.frag.spv");
         defer c.vkDestroyShaderModule(self.vk_logical_device, fragment_shader, null);
-        const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader);
+        const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, swapchain.sample_count);
         defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
         defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
 
         //TODO : FIX EYE COUNT AND SwapChainCount
-        var swapchains_images: [eye_count * swapchain_count][]c.XrSwapchainImageVulkanKHR = undefined;
-        for (0..eye_count * swapchain_count) |i| {
-            swapchains_images[i] = try swapchains[i % 2].getImages(self.allocator);
+        const swapchains_images: []c.XrSwapchainImageVulkanKHR = try swapchain.getImages(self.allocator);
+        defer self.allocator.free(swapchains_images);
+
+        var wrapped_swapchain_images = std.ArrayList(vk.SwapchainImage).init(self.allocator);
+        for (0..swapchains_images.len) |i| {
+            try wrapped_swapchain_images.append(
+                try vk.SwapchainImage.init(
+                    self.vk_physical_device,
+                    self.vk_logical_device,
+                    render_pass,
+                    command_pool,
+                    descriptor_pool,
+                    descriptor_set_layout,
+                    swapchain,
+                    swapchains_images[i],
+                ),
+            );
         }
         defer {
-            for (0..eye_count * swapchain_count) |i| {
-                self.allocator.free(swapchains_images[i]);
+            for (wrapped_swapchain_images.items) |wrapped_swapchain_image| {
+                wrapped_swapchain_image.deinit();
             }
-        }
-
-        var wrapped_swapchain_images: [eye_count]std.ArrayList(vk.SwapchainImage) = undefined;
-
-        for (0..eye_count) |i| {
-            wrapped_swapchain_images[i] = .init(self.allocator);
-
-            for (0..swapchain_count) |j| {
-                try wrapped_swapchain_images[i].append(
-                    try vk.SwapchainImage.init(
-                        self.vk_physical_device,
-                        self.vk_logical_device,
-                        render_pass,
-                        command_pool,
-                        descriptor_pool,
-                        descriptor_set_layout,
-                        &swapchains[i],
-                        swapchains_images[i][j],
-                    ),
-                );
-            }
-        }
-        defer {
-            for (0..eye_count) |i| {
-                for (wrapped_swapchain_images[i].items) |swapchain_image| {
-                    swapchain_image.deinit();
-                }
-                wrapped_swapchain_images[i].deinit();
-            }
+            wrapped_swapchain_images.deinit();
         }
 
         const isPosix: bool = switch (builtin.os.tag) {
@@ -226,7 +211,10 @@ pub const Engine = struct {
         try xr.attachActionSet(self.xr_session, actionSet);
 
         var running: bool = true;
+        // var times: u8 = 0;
+        // while (times < 8 and !quit.load(.acquire)) {
         while (!quit.load(.acquire)) {
+            // times += 1;
             std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
             var eventData = c.XrEventDataBuffer{
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
@@ -272,8 +260,8 @@ pub const Engine = struct {
                         should_quit = render(
                             self.allocator,
                             self.xr_session,
-                            swapchains,
-                            &wrapped_swapchain_images,
+                            swapchain,
+                            wrapped_swapchain_images,
                             space,
                             frame_state.predictedDisplayTime,
                             self.vk_logical_device,
@@ -402,8 +390,8 @@ pub const Engine = struct {
     fn render(
         allocator: std.mem.Allocator,
         session: c.XrSession,
-        swapchains: []const xr.Swapchain,
-        swapchain_images: []std.ArrayList(vk.SwapchainImage),
+        swapchain: xr.Swapchain,
+        swapchain_images: std.ArrayList(vk.SwapchainImage),
         space: c.XrSpace,
         predicted_display_time: c.XrTime,
         device: c.VkDevice,
@@ -437,21 +425,18 @@ pub const Engine = struct {
             views.ptr,
         ));
 
-        for (0..build_options.eye_count) |i| {
-            const ok = try renderEye(
-                swapchains[i],
-                swapchain_images[i],
-                views[i],
-                device,
-                queue,
-                render_pass,
-                pipeline_layout,
-                pipeline,
-            );
-
-            if (!ok) {
-                return true;
-            }
+        const ok = try renderEye(
+            swapchain,
+            swapchain_images,
+            views,
+            device,
+            queue,
+            render_pass,
+            pipeline_layout,
+            pipeline,
+        );
+        if (!ok) {
+            return true;
         }
 
         var projected_views: [build_options.eye_count]c.XrCompositionLayerProjectionView = undefined;
@@ -461,15 +446,15 @@ pub const Engine = struct {
             projected_views[i].pose = views[i].pose;
             projected_views[i].fov = views[i].fov;
             projected_views[i].subImage = .{
-                .swapchain = swapchains[i].swapchain,
+                .swapchain = swapchain.swapchain,
                 .imageRect = .{
                     .offset = .{ .x = 0, .y = 0 },
                     .extent = .{
-                        .width = @intCast(swapchains[i].width),
-                        .height = @intCast(swapchains[i].height),
+                        .width = @intCast(swapchain.width),
+                        .height = @intCast(swapchain.height),
                     },
                 },
-                .imageArrayIndex = 0,
+                .imageArrayIndex = @intCast(i),
             };
             projected_views[i].next = null;
         }
@@ -499,7 +484,7 @@ pub const Engine = struct {
     fn renderEye(
         swapchain: xr.Swapchain,
         images: std.ArrayList(vk.SwapchainImage),
-        view: c.XrView,
+        view: []c.XrView,
         device: c.VkDevice,
         queue: c.VkQueue,
         render_pass: c.VkRenderPass,
@@ -531,37 +516,43 @@ pub const Engine = struct {
         var data: ?[*]f32 = null;
         try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
 
-        const angle_width: f32 = std.math.tan(view.fov.angleRight) - std.math.tan(view.fov.angleLeft);
-        const angle_height: f32 = std.math.tan(view.fov.angleDown) - std.math.tan(view.fov.angleUp);
+        var ptr_start: u32 = 0;
+        for (0..2) |i| {
+            const angle_width: f32 = std.math.tan(view[i].fov.angleRight) - std.math.tan(view[i].fov.angleLeft);
+            const angle_height: f32 = std.math.tan(view[i].fov.angleDown) - std.math.tan(view[i].fov.angleUp);
 
-        var projection_matrix = nz.Mat4(f32).identity(0);
+            var projection_matrix = nz.Mat4(f32).identity(0);
 
-        //NOTE make defines?
-        const far_distance: f32 = 100;
-        const near_distance: f32 = 0.01;
+            //TODO: defines?
+            const far_distance: f32 = 100;
+            const near_distance: f32 = 0.01;
 
-        projection_matrix.d[0] = 2.0 / angle_width;
-        projection_matrix.d[8] = (std.math.tan(view.fov.angleRight) + std.math.tan(view.fov.angleLeft)) / angle_width;
-        projection_matrix.d[5] = 2.0 / angle_height;
-        projection_matrix.d[9] = (std.math.tan(view.fov.angleUp) + std.math.tan(view.fov.angleDown)) / angle_height;
-        projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
-        projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
-        projection_matrix.d[11] = -1;
+            projection_matrix.d[0] = 2.0 / angle_width;
+            projection_matrix.d[8] = (std.math.tan(view[i].fov.angleRight) + std.math.tan(view[i].fov.angleLeft)) / angle_width;
+            projection_matrix.d[5] = 2.0 / angle_height;
+            projection_matrix.d[9] = (std.math.tan(view[i].fov.angleUp) + std.math.tan(view[i].fov.angleDown)) / angle_height;
+            projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
+            projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
+            projection_matrix.d[11] = -1;
+            @memcpy(data.?[ptr_start .. ptr_start + 16], projection_matrix.d[0..]);
+            ptr_start += 16;
+        }
 
-        const view_matrix: nz.Mat4(f32) = .mul(
-            .translate(.{ view.pose.position.x, view.pose.position.y, view.pose.position.z }),
-            .fromQuaternion(.{ view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z }),
-        );
+        for (0..2) |i| {
+            const view_matrix: nz.Mat4(f32) = .mul(
+                .translate(.{ view[i].pose.position.x, view[i].pose.position.y, view[i].pose.position.z }),
+                .fromQuaternion(.{ view[i].pose.orientation.w, view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z }),
+            );
+            @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
+            ptr_start += 16;
+        }
 
         var model_matrix = nz.Mat4(f32).identity(1);
         model_matrix.d[12] = object_pos.x;
         model_matrix.d[13] = object_pos.y;
         model_matrix.d[14] = object_pos.z;
         model_matrix.d[15] = 1;
-
-        @memcpy(data.?[0..16], projection_matrix.d[0..]);
-        @memcpy(data.?[16..32], view_matrix.d[0..]);
-        @memcpy(data.?[32..48], model_matrix.d[0..]);
+        @memcpy(data.?[ptr_start .. ptr_start + 16], model_matrix.d[0..]);
 
         c.vkUnmapMemory(device, image.memory);
 
