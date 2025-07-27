@@ -7,12 +7,16 @@ const loader = @import("loader");
 const build_options = @import("build_options");
 const nz = @import("numz");
 const c = loader.c;
+const sdl = @cImport({
+    @cInclude("SDL3/SDL.h");
+});
 var quit: std.atomic.Value(bool) = .init(false);
 
 var object_grabbed: u32 = 0;
 var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
 var grab_distance: f32 = 1;
-const swapchain_count = 3;
+const windowWidth: c_int = 1600;
+const windowHeight: c_int = 900;
 
 pub const Engine = struct {
     const Self = @This();
@@ -652,6 +656,25 @@ pub fn main() !void {
     const vk_layers = &[_][*:0]const u8{
         "VK_LAYER_KHRONOS_validation",
     };
+
+    //SDL window
+    const sdl_error: bool = sdl.SDL_Init(sdl.SDL_INIT_VIDEO);
+    if (sdl_error) {
+        std.log.err("Failed to initialize SDL: {s}", .{sdl.SDL_GetError()});
+        return error.SDLInitFailed;
+    }
+
+    const window: ?*sdl.SDL_Window = sdl.SDL_CreateWindow(
+        "SDL APP".ptr,
+        windowWidth,
+        windowHeight,
+        sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_VULKAN,
+    );
+
+    if (window == null) {
+        std.debug.print("Failed to create window: {s}", .{sdl.SDL_GetError()});
+        return error.SDLWindow;
+    }
 
     const engine = try Engine.init(allocator, .{
         .xr_extensions = xr_extensions,

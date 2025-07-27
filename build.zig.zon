@@ -9,6 +9,10 @@
             .url = "git+https://github.com/HaraldWik/numz#09ab1b2f10f7142bf356111d4b08857b359eefb7",
             .hash = "numz-0.0.0-oTBeDBxNAABufiHTzxEuz5P8g8EgKFLhnU4HKcRK9glZ",
         },
+        .sdl = .{
+            .url = "git+https://github.com/castholm/SDL.git#5c55c894039a15a16bb7c89b2d6438e158e86ef1",
+            .hash = "sdl-0.2.5+3.2.18-7uIn9FwZfwHKOwSubcg5_CiW4fXag5IIsiV_jnLdkpDM",
+        },
     },
 
     .paths = .{

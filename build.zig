@@ -58,6 +58,19 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    const sdl_dep = b.dependency("sdl", .{
+        .target = target,
+        .optimize = optimize,
+        //.preferred_linkage = .static,
+        //.strip = null,
+        //.sanitize_c = null,
+        //.pic = null,
+        //.lto = null,
+        //.emscripten_pthreads = false,
+        //.install_build_config_h = false,
+    });
+    exe.root_module.linkLibrary(sdl_dep.artifact("SDL3"));
+
     const numz_dep = b.dependency("numz", .{
         .target = target,
         .optimize = optimize,
