@@ -123,14 +123,20 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, graphics_queue_f
     return .{ logical_device, queue };
 }
 
-pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
+pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice, surface: c.VkSurfaceKHR) ?u32 {
     var count: u32 = 0;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, null);
 
     var props: [16]c.VkQueueFamilyProperties = undefined;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, &props);
     for (props[0..count], 0..) |qf, i| {
-        if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
+        var present: c.VkBool32 = 0;
+        const result: c.VkResult = c.vkGetPhysicalDeviceSurfaceSupportKHR(physical, @intCast(i), surface, &present);
+        if (result != c.VK_SUCCESS) {
+            std.log.err("Failed to get Vulkan physical device surface support: {d}", .{result});
+            return null;
+        }
+        if (result != 0 and qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
             return @intCast(i);
         }
     }
@@ -560,3 +566,65 @@ pub const SwapchainImage = struct {
         c.vkDestroyImageView(self.device, self.image_view, null);
     }
 };
+
+// VulkanSwapchain* createVulkanSwapchain(
+//     VkPhysicalDevice physicalDevice,
+//     VkDevice device,
+//     VkSurfaceKHR surface,
+//     unsigned width,
+//     unsigned height
+// )
+// {
+//     VkSwapchainKHR swapchain;
+
+//     VkSurfaceCapabilitiesKHR capabilities;
+//     VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
+
+//     uint32_t formatCount;
+//     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
+
+//     vector<VkSurfaceFormatKHR> formats(formatCount);
+//     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, formats.data());
+
+//     VkSurfaceFormatKHR chosenFormat = formats.front();
+
+//     for (const VkSurfaceFormatKHR& format : formats)
+//     {
+//         if (format.format == VK_FORMAT_R8G8B8A8_SRGB)
+//         {
+//             chosenFormat = format;
+//             break;
+//         }
+//     }
+
+//     VkSwapchainCreateInfoKHR createInfo{};
+//     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+//     createInfo.surface = surface;
+//     createInfo.minImageCount = capabilities.minImageCount;
+//     createInfo.imageFormat = chosenFormat.format;
+//     createInfo.imageColorSpace = chosenFormat.colorSpace;
+//     createInfo.imageExtent = { width, height };
+//     createInfo.imageArrayLayers = 1;
+//     createInfo.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+//     createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+//     createInfo.preTransform = capabilities.currentTransform;
+//     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+//     createInfo.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+//     createInfo.clipped = true;
+
+//     result = vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain);
+
+//     if (result != VK_SUCCESS)
+//     {
+//         cerr << "Failed to create Vulkan swapchain: " << result << endl;
+//         return VK_NULL_HANDLE;
+//     }
+
+//     return new VulkanSwapchain(
+//         device,
+//         swapchain,
+//         chosenFormat.format,
+//         width,
+//         height
+//     );
+// }

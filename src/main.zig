@@ -34,6 +34,8 @@ pub const Engine = struct {
     vk_logical_device: c.VkDevice,
     vk_queue: c.VkQueue,
     vkid: vk.Dispatcher,
+    sdl_window: sdl.video.Window,
+    sdl_surface: c.VkSurfaceKHR,
 
     pub const Config = struct {
         xr_extensions: []const [*:0]const u8,
@@ -44,6 +46,16 @@ pub const Engine = struct {
     pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
         try xr.validateExtensions(allocator, config.xr_extensions);
         try xr.validateLayers(allocator, config.xr_layers);
+
+        //SDL
+        const init_flags: sdl.InitFlags = .{ .video = true };
+        try sdl.init(init_flags);
+        defer sdl.quit(init_flags);
+        const window = try sdl.video.Window.init("Hello SDL3", windowWidth, windowHeight, .{});
+        const vk_exts = try sdl.vulkan.getInstanceExtensions();
+        for (0..vk_exts.len) |i| {
+            std.debug.print("EXT_SDL: {s}\n", .{vk_exts[i]});
+        }
 
         const xr_instance: c.XrInstance = try xr.createInstance(config.xr_extensions, config.xr_layers);
         const xrd = try xr.Dispatcher.init(xr_instance);
@@ -56,8 +68,10 @@ pub const Engine = struct {
         const vkid = try vk.Dispatcher.init(vk_instance);
         const vk_debug_messenger: c.VkDebugUtilsMessengerEXT = try vk.createDebugMessenger(vkid, vk_instance);
 
+        const surface: sdl.vulkan.Surface = try .init(window, @ptrCast(vk_instance), null);
+
         const physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(xrd, allocator, xr_instance, xr_system_id, vk_instance);
-        const queue_family_index = vk.findGraphicsQueueFamily(physical_device);
+        const queue_family_index = vk.findGraphicsQueueFamily(physical_device, @ptrCast(surface.surface));
         const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index.?, vk_device_extensions);
 
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index.?);
@@ -77,6 +91,8 @@ pub const Engine = struct {
             .vk_logical_device = logical_device,
             .vk_queue = queue,
             .vkid = vkid,
+            .sdl_window = window,
+            .sdl_surface = @ptrCast(surface.surface),
         };
     }
 
@@ -89,6 +105,7 @@ pub const Engine = struct {
 
         _ = c.vkDestroyDevice(self.vk_logical_device, null);
         _ = c.vkDestroyInstance(self.vk_instance, null);
+        self.sdl_window.deinit();
     }
 
     pub fn start(self: Self) !void {
@@ -656,30 +673,6 @@ pub fn main() !void {
     };
 
     defer sdl.shutdown();
-    const init_flags: sdl.InitFlags = .{ .video = true };
-    try sdl.init(init_flags);
-    defer sdl.quit(init_flags);
-
-    const window = try sdl.video.Window.init("Hello SDL3", windowWidth, windowHeight, .{});
-    defer window.deinit();
-    //SDL window
-    // const sdl_error: bool = sdl.SDL_Init(sdl.SDL_INIT_VIDEO);
-    // if (sdl_error) {
-    //     std.log.err("Failed to initialize SDL: {s}", .{sdl.SDL_GetError()});
-    //     return error.SDLInitFailed;
-    // }
-
-    // const window: ?*sdl.SDL_Window = sdl.SDL_CreateWindow(
-    //     "SDL APP".ptr,
-    //     windowWidth,
-    //     windowHeight,
-    //     sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_VULKAN,
-    // );
-
-    // if (window == null) {
-    //     std.debug.print("Failed to create window: {s}", .{sdl.SDL_GetError()});
-    //     return error.SDLWindow;
-    // }
 
     const engine = try Engine.init(allocator, .{
         .xr_extensions = xr_extensions,
