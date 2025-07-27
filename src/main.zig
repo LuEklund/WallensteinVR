@@ -7,9 +7,7 @@ const loader = @import("loader");
 const build_options = @import("build_options");
 const nz = @import("numz");
 const c = loader.c;
-const sdl = @cImport({
-    @cInclude("SDL3/SDL.h");
-});
+const sdl = @import("sdl3");
 var quit: std.atomic.Value(bool) = .init(false);
 
 var object_grabbed: u32 = 0;
@@ -658,23 +656,23 @@ pub fn main() !void {
     };
 
     //SDL window
-    const sdl_error: bool = sdl.SDL_Init(sdl.SDL_INIT_VIDEO);
-    if (sdl_error) {
-        std.log.err("Failed to initialize SDL: {s}", .{sdl.SDL_GetError()});
-        return error.SDLInitFailed;
-    }
+    // const sdl_error: bool = sdl.SDL_Init(sdl.SDL_INIT_VIDEO);
+    // if (sdl_error) {
+    //     std.log.err("Failed to initialize SDL: {s}", .{sdl.SDL_GetError()});
+    //     return error.SDLInitFailed;
+    // }
 
-    const window: ?*sdl.SDL_Window = sdl.SDL_CreateWindow(
-        "SDL APP".ptr,
-        windowWidth,
-        windowHeight,
-        sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_VULKAN,
-    );
+    // const window: ?*sdl.SDL_Window = sdl.SDL_CreateWindow(
+    //     "SDL APP".ptr,
+    //     windowWidth,
+    //     windowHeight,
+    //     sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_VULKAN,
+    // );
 
-    if (window == null) {
-        std.debug.print("Failed to create window: {s}", .{sdl.SDL_GetError()});
-        return error.SDLWindow;
-    }
+    // if (window == null) {
+    //     std.debug.print("Failed to create window: {s}", .{sdl.SDL_GetError()});
+    //     return error.SDLWindow;
+    // }
 
     const engine = try Engine.init(allocator, .{
         .xr_extensions = xr_extensions,
