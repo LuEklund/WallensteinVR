@@ -97,9 +97,14 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, graphics_queue_f
 
     const features = c.VkPhysicalDeviceFeatures{};
 
+    var multiview_features = c.VkPhysicalDeviceMultiviewFeatures{
+        .sType = c.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES,
+        .multiview = 1,
+    };
+
     const device_info = c.VkDeviceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = null,
+        .pNext = &multiview_features,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_info,
         .pEnabledFeatures = &features,
@@ -145,10 +150,10 @@ pub fn createCommandPool(device: c.VkDevice, graphicsQueueFamilyIndex: u32) !c.V
     return commandPool;
 }
 
-pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat) !c.VkRenderPass {
+pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat, sample_count: c.VkSampleCountFlagBits) !c.VkRenderPass {
     var attachment = c.VkAttachmentDescription{
         .format = format,
-        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .samples = sample_count,
         .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
         .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -168,8 +173,20 @@ pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat) !c.VkRenderPass 
         .pColorAttachments = &attachment_reference,
     };
 
+    const viewMask: c_int = 0b11;
+    const correlationMask: c_int = 0b11;
+
+    var multiview = c.VkRenderPassMultiviewCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO,
+        .subpassCount = 1,
+        .pViewMasks = @ptrCast(&viewMask),
+        .correlationMaskCount = 1,
+        .pCorrelationMasks = @ptrCast(&correlationMask),
+    };
+
     var create_info = c.VkRenderPassCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .pNext = &multiview,
         .flags = 0,
         .attachmentCount = 1,
         .pAttachments = &attachment,
@@ -236,7 +253,14 @@ pub fn createShader(allocator: std.mem.Allocator, device: c.VkDevice, file_path:
     return shader;
 }
 
-pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descriptor_set_layout: c.VkDescriptorSetLayout, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !struct { c.VkPipelineLayout, c.VkPipeline } {
+pub fn createPipeline(
+    device: c.VkDevice,
+    render_pass: c.VkRenderPass,
+    descriptor_set_layout: c.VkDescriptorSetLayout,
+    vertex_shader: c.VkShaderModule,
+    fragment_shader: c.VkShaderModule,
+    sample_count: c.VkSampleCountFlagBits,
+) !struct { c.VkPipelineLayout, c.VkPipeline } {
     var pipeline: c.VkPipeline = undefined;
 
     var layout_create_info = c.VkPipelineLayoutCreateInfo{
@@ -296,7 +320,7 @@ pub fn createPipeline(device: c.VkDevice, render_pass: c.VkRenderPass, descripto
 
     var multisample_stage = c.VkPipelineMultisampleStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
+        .rasterizationSamples = sample_count,
         .sampleShadingEnable = c.VK_FALSE,
         .minSampleShading = 0.25,
     };
@@ -397,20 +421,20 @@ pub const SwapchainImage = struct {
         command_pool: c.VkCommandPool,
         descriptor_pool: c.VkDescriptorPool,
         descriptor_set_layout: c.VkDescriptorSetLayout,
-        swapchain: *const xr.Swapchain,
+        swapchain: xr.Swapchain,
         image: c.XrSwapchainImageVulkanKHR,
     ) !Self {
         var image_view_create_info = c.VkImageViewCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = image.image,
-            .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
+            .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
             .format = swapchain.format,
             .subresourceRange = .{
                 .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = 0,
                 .levelCount = 1,
                 .baseArrayLayer = 0,
-                .layerCount = 1,
+                .layerCount = 2, //<-- eye count
             },
         };
 
@@ -432,7 +456,7 @@ pub const SwapchainImage = struct {
 
         var create_info = c.VkBufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = @sizeOf(f32) * 4 * 4 * 3, // :NOTE bufferSize <-- The toutorial is just this???,
+            .size = @sizeOf(f32) * 4 * 4 * 5, // :NOTE Matrix(f32)[4][4] * 5
             .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
         };
