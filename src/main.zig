@@ -51,7 +51,7 @@ pub const Engine = struct {
         const init_flags: sdl.InitFlags = .{ .video = true };
         try sdl.init(init_flags);
         defer sdl.quit(init_flags);
-        const window = try sdl.video.Window.init("Hello SDL3", windowWidth, windowHeight, .{});
+        const window: sdl.video.Window = try .init("Hello SDL3", windowWidth, windowHeight, .{ .vulkan = true });
         const vk_exts = try sdl.vulkan.getInstanceExtensions();
         for (0..vk_exts.len) |i| {
             std.debug.print("EXT_SDL: {s}\n", .{vk_exts[i]});
@@ -68,13 +68,17 @@ pub const Engine = struct {
         const vkid = try vk.Dispatcher.init(vk_instance);
         const vk_debug_messenger: c.VkDebugUtilsMessengerEXT = try vk.createDebugMessenger(vkid, vk_instance);
 
-        const surface: sdl.vulkan.Surface = try .init(window, @ptrCast(vk_instance), null);
+        const surface: sdl.vulkan.Surface = sdl.vulkan.Surface.init(window, @ptrCast(vk_instance), null) catch |err| {
+            std.debug.print("SDL Error: {s}\n", .{sdl.c.SDL_GetError()});
+            return err;
+        };
 
         const physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(xrd, allocator, xr_instance, xr_system_id, vk_instance);
-        const queue_family_index = vk.findGraphicsQueueFamily(physical_device, @ptrCast(surface.surface));
-        const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index.?, vk_device_extensions);
+        const queue_family_index = try vk.findGraphicsQueueFamily(physical_device, @ptrCast(surface.surface));
 
-        const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index.?);
+        const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index, vk_device_extensions);
+
+        const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index);
 
         return .{
             .allocator = allocator,
@@ -87,7 +91,7 @@ pub const Engine = struct {
             .vk_instance = vk_instance,
             .vk_debug_messenger = vk_debug_messenger,
             .vk_physical_device = physical_device,
-            .graphics_queue_family_index = queue_family_index.?,
+            .graphics_queue_family_index = queue_family_index,
             .vk_logical_device = logical_device,
             .vk_queue = queue,
             .vkid = vkid,

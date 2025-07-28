@@ -123,7 +123,7 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, graphics_queue_f
     return .{ logical_device, queue };
 }
 
-pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice, surface: c.VkSurfaceKHR) ?u32 {
+pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice, surface: c.VkSurfaceKHR) !u32 {
     var count: u32 = 0;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, null);
 
@@ -134,14 +134,14 @@ pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice, surface: c.VkSurfac
         const result: c.VkResult = c.vkGetPhysicalDeviceSurfaceSupportKHR(physical, @intCast(i), surface, &present);
         if (result != c.VK_SUCCESS) {
             std.log.err("Failed to get Vulkan physical device surface support: {d}", .{result});
-            return null;
+            return error.findGraphicsQueueFamily;
         }
-        if (result != 0 and qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
+        if (present != 0 and qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
             return @intCast(i);
         }
     }
 
-    return null;
+    return error.NoQueueFamily;
 }
 
 pub fn createCommandPool(device: c.VkDevice, graphicsQueueFamilyIndex: u32) !c.VkCommandPool {
