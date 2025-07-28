@@ -567,64 +567,98 @@ pub const SwapchainImage = struct {
     }
 };
 
-// VulkanSwapchain* createVulkanSwapchain(
-//     VkPhysicalDevice physicalDevice,
-//     VkDevice device,
-//     VkSurfaceKHR surface,
-//     unsigned width,
-//     unsigned height
-// )
-// {
-//     VkSwapchainKHR swapchain;
+pub const VulkanSwapchain = struct {
+    const Self = @This();
+    device: c.VkDevice,
+    swapchain: c.VkSwapchainKHR,
+    format: c.VkFormat,
+    width: u32,
+    height: u32,
 
-//     VkSurfaceCapabilitiesKHR capabilities;
-//     VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
+    pub fn init(physical_device: c.VkPhysicalDevice, device: c.VkDevice, surface: c.VkSurfaceKHR, width: u32, height: u32) !Self {
+        var swapchain: c.VkSwapchainKHR = undefined;
 
-//     uint32_t formatCount;
-//     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
+        var capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
+        try loader.vkCheck(c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
 
-//     vector<VkSurfaceFormatKHR> formats(formatCount);
-//     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, formats.data());
+        var formatCount: u32 = 0;
+        try loader.vkCheck(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, null));
 
-//     VkSurfaceFormatKHR chosenFormat = formats.front();
+        const formats: [16]c.VkSurfaceFormatKHR = undefined;
+        try loader.vkCheck(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, &formats[0]));
 
-//     for (const VkSurfaceFormatKHR& format : formats)
-//     {
-//         if (format.format == VK_FORMAT_R8G8B8A8_SRGB)
-//         {
-//             chosenFormat = format;
-//             break;
-//         }
-//     }
+        const chosenFormat: c.VkSurfaceFormatKHR = formats[0];
+        {
+            for (0..formatCount) |i|
+                if (formats[i].format == c.VK_FORMAT_R8G8B8A8_SRGB) {
+                    chosenFormat = formats[i];
+                    break;
+                };
+        }
 
-//     VkSwapchainCreateInfoKHR createInfo{};
-//     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-//     createInfo.surface = surface;
-//     createInfo.minImageCount = capabilities.minImageCount;
-//     createInfo.imageFormat = chosenFormat.format;
-//     createInfo.imageColorSpace = chosenFormat.colorSpace;
-//     createInfo.imageExtent = { width, height };
-//     createInfo.imageArrayLayers = 1;
-//     createInfo.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-//     createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-//     createInfo.preTransform = capabilities.currentTransform;
-//     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-//     createInfo.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
-//     createInfo.clipped = true;
+        var createInfo: c.VkSwapchainCreateInfoKHR = .{
+            .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .surface = c.surface,
+            .minImageCount = capabilities.minImageCount,
+            .imageFormat = chosenFormat.format,
+            .imageColorSpace = chosenFormat.colorSpace,
+            .imageExtent = .{ width, height },
+            .imageArrayLayers = 1,
+            .imageUsage = c.VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            .imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+            .preTransform = capabilities.currentTransform,
+            .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .presentMode = c.VK_PRESENT_MODE_MAILBOX_KHR,
+            .clipped = true,
+        };
 
-//     result = vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain);
+        try loader.vkCheck(c.vkCreateSwapchainKHR(device, &createInfo, null, &swapchain));
 
-//     if (result != VK_SUCCESS)
-//     {
-//         cerr << "Failed to create Vulkan swapchain: " << result << endl;
-//         return VK_NULL_HANDLE;
-//     }
+        return Self(device, swapchain, chosenFormat.format, width, height);
+    }
 
-//     return new VulkanSwapchain(
-//         device,
-//         swapchain,
-//         chosenFormat.format,
-//         width,
-//         height
-//     );
-// }
+    pub fn getVulkanSwapchainImages(allocator: std.mem.Allocator, device: c.VkDevice, swapchain: c.VkSwapchainKHR) ![]c.VkImage {
+        var image_count: u32 = 0;
+        try loader.vkCheck(c.vkGetSwapchainImagesKHR(device, swapchain, &image_count, null));
+
+        const images = allocator.alloc(c.VkImage, image_count);
+        try loader.vkCheck(c.vkGetSwapchainImagesKHR(device, swapchain, &image_count, images.ptr));
+
+        return images;
+    }
+};
+
+pub const VulkanSwapchainImage = struct {
+    const Self = @This();
+    image: c.VkImage,
+    commandBuffer: c.VkCommandBuffer,
+    renderDoneSemaphore: c.VkSemaphore,
+    device: c.VkDevice,
+    commandPool: c.VkCommandPool,
+
+    pub fn init(device: c.VkDevice, command_pool: c.VkCommandPool, image: c.VkImage) !Self {
+        var allocInfo: c.VkCommandBufferAllocateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = c.commandPool,
+            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+
+        var command_buffer: c.VkCommandBuffer = undefined;
+        try loader.vkCheck(c.vkAllocateCommandBuffers(device, &allocInfo, &command_buffer));
+
+        var semaphoreCreateInfo: c.VkSemaphoreCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        };
+
+        var render_done_semaphore: c.VkSemaphore = undefined;
+        try loader.vkCheck(c.vkCreateSemaphore(device, &semaphoreCreateInfo, null, &render_done_semaphore));
+
+        return Self(image, command_buffer, render_done_semaphore, device, command_pool);
+    }
+
+    pub fn deinit(self: Self) void {
+        c.vkDestroySemaphore(self.device, self.renderDoneSemaphore, null);
+        c.vkFreeCommandBuffers(self.device, self.commandPool, 1, &self.commandBuffer);
+    }
+};
