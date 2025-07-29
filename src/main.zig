@@ -132,14 +132,14 @@ pub const Engine = struct {
         defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
         defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
 
-        const acquireFence: c.VkFence = vk.createFence(self.vk_logical_device);
+        const acquireFence: c.VkFence = try vk.createFence(self.vk_logical_device);
 
-        const vulkanSwapchainImages: []c.VkImage = vulkanSwapchain.getVulkanSwapchainImages(self.vk_logical_device, vulkanSwapchain.swapchain);
+        const vulkanSwapchainImages: []c.VkImage = try vk.getVulkanSwapchainImages(self.allocator, self.vk_logical_device, vulkanSwapchain.swapchain);
 
         var wrappedVulkanSwapchainImages = try self.allocator.alloc(vk.VulkanSwapchainImage, vulkanSwapchainImages.len);
 
         for (0..vulkanSwapchainImages.len) |i| {
-            wrappedVulkanSwapchainImages[i] = vk.VulkanSwapchainImage.init(self.vk_logical_device, command_pool, vulkanSwapchainImages[i]);
+            wrappedVulkanSwapchainImages[i] = try vk.VulkanSwapchainImage.init(self.vk_logical_device, command_pool, vulkanSwapchainImages[i]);
         }
 
         //TODO : FIX EYE COUNT AND SwapChainCount
@@ -253,28 +253,24 @@ pub const Engine = struct {
         while (!quit.load(.acquire)) {
             // times += 1;
             std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
-            var sdl_event: sdl.c.SDL_Event = undefined;
-            while (sdl.c.SDL_PollEvent(&sdl_event)) {
-                switch (sdl_event.type) {
-                    sdl.c.SDL_QUIT => quit.store(true, .release),
-                    sdl.c.SDL_WINDOWEVENT => {
-                        switch (sdl_event.window.event) {
-                            sdl.c.SDL_WINDOWEVENT_SIZE_CHANGED => {
-                                vk.recreateSwapchain(
-                                    self.allocator,
-                                    self.surface,
-                                    self.physical_device,
-                                    self.device,
-                                    command_pool,
-                                    vulkanSwapchain,
-                                    wrappedVulkanSwapchainImages,
-                                    &imageIndex,
-                                    sdl_event.window.data1,
-                                    sdl_event.window.data2,
-                                );
-                            },
-                        }
+            while (sdl.events.poll()) |sdl_event| {
+                switch (sdl_event) {
+                    sdl.events.Type.quit => quit.store(true, .release),
+                    sdl.events.Type.window_resized => {
+                        vk.recreateSwapchain(
+                            self.allocator,
+                            self.sdl_surface,
+                            self.vk_physical_device,
+                            self.vk_logical_device,
+                            command_pool,
+                            vulkanSwapchain,
+                            wrappedVulkanSwapchainImages,
+                            &imageIndex,
+                            sdl_event.window.data1,
+                            sdl_event.window.data2,
+                        );
                     },
+                    else => {},
                 }
             }
             const vkResult = c.vkAcquireNextImageKHR(
