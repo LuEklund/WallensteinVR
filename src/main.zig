@@ -114,6 +114,7 @@ pub const Engine = struct {
 
     pub fn start(self: Self) !void {
         const eye_count = build_options.eye_count;
+        const vulkanSwapchain: vk.VulkanSwapchain = try .init(self.vk_physical_device, self.vk_logical_device, self.sdl_surface, windowWidth, windowHeight);
         const swapchain = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
         const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchain.format, swapchain.sample_count);
         defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
@@ -130,6 +131,16 @@ pub const Engine = struct {
         const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, swapchain.sample_count);
         defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
         defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
+
+        const acquireFence: c.VkFence = vk.createFence(self.vk_logical_device);
+
+        const vulkanSwapchainImages: []c.VkImage = vulkanSwapchain.getVulkanSwapchainImages(self.vk_logical_device, vulkanSwapchain.swapchain);
+
+        var wrappedVulkanSwapchainImages = try self.allocator.alloc(vk.VulkanSwapchainImage, vulkanSwapchainImages.len);
+
+        for (0..vulkanSwapchainImages.len) |i| {
+            wrappedVulkanSwapchainImages[i] = vk.VulkanSwapchainImage.init(self.vk_logical_device, command_pool, vulkanSwapchainImages[i]);
+        }
 
         //TODO : FIX EYE COUNT AND SwapChainCount
         const swapchains_images: []c.XrSwapchainImageVulkanKHR = try swapchain.getImages(self.allocator);
@@ -233,12 +244,188 @@ pub const Engine = struct {
 
         try xr.attachActionSet(self.xr_session, actionSet);
 
+        var imageIndex: u32 = 0;
+        var lastRenderedImageIndex: u32 = 0;
+
         var running: bool = true;
         // var times: u8 = 0;
         // while (times < 8 and !quit.load(.acquire)) {
         while (!quit.load(.acquire)) {
             // times += 1;
             std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
+            var sdl_event: sdl.c.SDL_Event = undefined;
+            while (sdl.c.SDL_PollEvent(&sdl_event)) {
+                switch (sdl_event.type) {
+                    sdl.c.SDL_QUIT => quit.store(true, .release),
+                    sdl.c.SDL_WINDOWEVENT => {
+                        switch (sdl_event.window.event) {
+                            sdl.c.SDL_WINDOWEVENT_SIZE_CHANGED => {
+                                vk.recreateSwapchain(
+                                    self.allocator,
+                                    self.surface,
+                                    self.physical_device,
+                                    self.device,
+                                    command_pool,
+                                    vulkanSwapchain,
+                                    wrappedVulkanSwapchainImages,
+                                    &imageIndex,
+                                    sdl_event.window.data1,
+                                    sdl_event.window.data2,
+                                );
+                            },
+                        }
+                    },
+                }
+            }
+            const vkResult = c.vkAcquireNextImageKHR(
+                self.device,
+                vulkanSwapchain.swapchain,
+                0,
+                null,
+                acquireFence,
+                &imageIndex,
+            );
+
+            if (vkResult == c.VK_ERROR_OUT_OF_DATE_KHR or vkResult == c.VK_SUBOPTIMAL_KHR) {
+                var width: u32 = 0;
+                var height: u32 = 0;
+                sdl.c.SDL_GetWindowSize(self.window, &width, &height);
+
+                vk.recreateSwapchain(
+                    self.allocator,
+                    self.surface,
+                    self.vk_physical_device,
+                    self.device,
+                    command_pool,
+                    vulkanSwapchain,
+                    wrappedVulkanSwapchainImages,
+                    &imageIndex,
+                    width,
+                    height,
+                );
+            }
+
+            try loader.vkCheck(c.vkWaitForFences(
+                self.device,
+                1,
+                &acquireFence,
+                true,
+                std.math.maxInt(u64),
+            ));
+            try loader.vkCheck(c.vkResetFences(
+                self.device,
+                1,
+                &acquireFence,
+            ));
+
+            const element: vk.VulkanSwapchainImage = wrappedVulkanSwapchainImages[imageIndex];
+            var beginInfo: c.VkCommandBufferBeginInfo = .{
+                .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            };
+            loader.vkCheck(c.vkBeginCommandBuffer(element.commandBuffer, &beginInfo));
+
+            const beforeDstBarrier: c.VkImageMemoryBarrier = .{
+                .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .srcAccessMask = c.VK_ACCESS_NONE,
+                .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+                .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                .image = element.image,
+                .subresourceRange = .{
+                    .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = .{0},
+                    .levelCount = .{1},
+                    .baseArrayLayer = .{0},
+                    .layerCount = .{1},
+                },
+            };
+
+            const beforeBarriers: []c.VkImageMemoryBarrier = .{beforeDstBarrier};
+
+            c.vkCmdPipelineBarrier(element.commandBuffer, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, @sizeOf(beforeBarriers) / @sizeOf(c.VkImageMemoryBarrier), beforeBarriers);
+
+            var region: c.VkImageBlit = .{
+                .srcSubresource = .{
+                    .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = .{0},
+                    .baseArrayLayer = .{0},
+                    .layerCount = .{1},
+                },
+                .srcOffsets = .{
+                    .{ 0, 0, 0 },
+                    .{ swapchain.width, swapchain.height, 1 },
+                },
+                .dstSubresource = .{
+                    .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = .{0},
+                    .baseArrayLayer = .{0},
+                    .layerCount = .{1},
+                },
+                .dstOffsets = .{
+                    .{ 0, 0, 0 },
+                    .{ vulkanSwapchain.width, vulkanSwapchain.height, 1 },
+                },
+            };
+
+            c.vkCmdBlitImage(element.commandBuffer, wrapped_swapchain_images[lastRenderedImageIndex].transferImage.image, c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, element.image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, c.VK_FILTER_LINEAR);
+
+            const afterDstBarrier: c.VkImageMemoryBarrier = .{
+                .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+                .dstAccessMask = c.VK_ACCESS_NONE,
+                .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                .newLayout = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .image = element.image,
+                .subresourceRange = .{
+                    .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = .{0},
+                    .levelCount = .{1},
+                    .baseArrayLayer = .{0},
+                    .layerCount = .{1},
+                },
+            };
+
+            const afterBarriers: []c.VkImageMemoryBarrier = .{afterDstBarrier};
+
+            c.vkCmdPipelineBarrier(element.commandBuffer, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, null, 0, null, @sizeOf(afterBarriers) / @sizeOf(c.VkImageMemoryBarrier), afterBarriers);
+
+            loader.vkCheck(c.vkEndCommandBuffer(element.commandBuffer));
+
+            var waitStage: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+            var submitInfo: c.VkSubmitInfo = .{
+                .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .pWaitDstStageMask = &waitStage,
+                .commandBufferCount = 1,
+                .pCommandBuffers = &element.commandBuffer,
+                .signalSemaphoreCount = 1,
+                .pSignalSemaphores = &element.renderDoneSemaphore,
+            };
+
+            try loader.vkCheck(c.vkQueueSubmit(self.vk_queue, 1, &submitInfo, c.VK_NULL_HANDLE));
+
+            var presentInfo: c.VkPresentInfoKHR = .{
+                .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = &element.renderDoneSemaphore,
+                .swapchainCount = 1,
+                .pSwapchains = &vulkanSwapchain.swapchain,
+                .pImageIndices = &imageIndex,
+            };
+
+            const vk_result: c.VkResult = c.vkQueuePresentKHR(self.vk_queue, &presentInfo);
+
+            if (vk_result == c.VK_ERROR_OUT_OF_DATE_KHR or vk_result == c.VK_SUBOPTIMAL_KHR) {
+                var width: u32 = 0;
+                var height: u32 = 0;
+                sdl.c.SDL_GetWindowSize(self.sdl_window, &width, &height);
+
+                vk.recreateSwapchain(self.sdl_surface, self.vk_physical_device, self.vk_logical_device, command_pool, &vulkanSwapchain, &wrappedVulkanSwapchainImages, &imageIndex, width, height);
+            } else if (vkResult < 0) {
+                std.log.err("Failed to present Vulkan queue: {any}", .{vk_result});
+            }
+
             var eventData = c.XrEventDataBuffer{
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
             };
@@ -280,7 +467,7 @@ pub const Engine = struct {
 
                         continue;
                     } else {
-                        should_quit = render(
+                        should_quit, const active_index = render(
                             self.allocator,
                             self.xr_session,
                             swapchain,
@@ -294,6 +481,7 @@ pub const Engine = struct {
                             pipeline,
                         ) catch true;
                         quit.store(should_quit, .release);
+                        lastRenderedImageIndex = active_index;
                     }
                 }
             } else if (result != c.XR_SUCCESS) {
@@ -422,7 +610,7 @@ pub const Engine = struct {
         render_pass: c.VkRenderPass,
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
-    ) !bool {
+    ) !.{ bool, u32 } {
         var view_locate_info = c.XrViewLocateInfo{
             .type = c.XR_TYPE_VIEW_LOCATE_INFO,
             .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
@@ -448,7 +636,7 @@ pub const Engine = struct {
             views.ptr,
         ));
 
-        const ok = try renderEye(
+        const ok, const active_index = try renderEye(
             swapchain,
             swapchain_images,
             views,
@@ -459,7 +647,7 @@ pub const Engine = struct {
             pipeline,
         );
         if (!ok) {
-            return true;
+            return .{ true, active_index };
         }
 
         var projected_views: [build_options.eye_count]c.XrCompositionLayerProjectionView = undefined;
@@ -501,7 +689,7 @@ pub const Engine = struct {
         };
         try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
 
-        return false;
+        return .{ false, active_index };
     }
 
     fn renderEye(
@@ -513,7 +701,7 @@ pub const Engine = struct {
         render_pass: c.VkRenderPass,
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
-    ) !bool {
+    ) !.{ bool, u32 } {
         // _ = render_pass;
         // _ = pipeline;
         // _ = pipeline_layout;
@@ -626,6 +814,118 @@ pub const Engine = struct {
         c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
         c.vkCmdEndRenderPass(image.command_buffer);
 
+        const beforeSrcBarrier: c.VkImageMemoryBarrier = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .image = image.image.image,
+            .subresourceRange = .{
+                .aspectMask = .{c.VK_IMAGE_ASPECT_COLOR_BIT},
+                .baseMipLevel = .{0},
+                .levelCount = .{1},
+                .baseArrayLayer = .{0},
+                .layerCount = .{1},
+            },
+        };
+
+        const beforeDstBarrier: c.VkImageMemoryBarrier = .{ .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = c.VK_ACCESS_NONE, .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT, .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, .image = image.transferImage.image, .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = .{0},
+            .levelCount = .{1},
+            .baseArrayLayer = .{0},
+            .layerCount = .{1},
+        } };
+
+        const beforeBarriers = [_]c.VkImageMemoryBarrier{
+            beforeSrcBarrier,
+            beforeDstBarrier,
+        };
+
+        c.CmdPipelineBarrier(
+            image.commandBuffer,
+            c.VK_PIPELiNE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            null,
+            0,
+            null,
+            @sizeOf(beforeBarriers) / @sizeOf(c.VkImageMemoryBarrier),
+            beforeBarriers,
+        );
+
+        var region: c.VkImageCopy = .{
+            .srcSubresource = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseArrayLayer = .{0},
+                .mipLevel = .{0},
+                .layerCount = .{1},
+            },
+            .srcOffset = .{ 0, 0, 0 },
+            .dstSubresource = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseArrayLayer = .{0},
+                .mipLevel = .{0},
+                .layerCount = .{1},
+            },
+            .dstOffset = .{ 0, 0, 0 },
+            .extent = .{ swapchain.width, swapchain.height, 1 },
+        };
+
+        c.vkCmdCopyImage(
+            image.commandBuffer,
+            image.image.image,
+            c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            image.transferImage.image,
+            c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &region,
+        );
+
+        const afterSrcBarrier: c.VkImageMemoryBarrier = .{ .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT, .dstAccessMask = c.VK_ACCESS_NONE, .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, .newLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, .image = image.image.image, .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = .{0},
+            .levelCount = .{1},
+            .baseArrayLayer = .{0},
+            .layerCount = .{1},
+        } };
+
+        const afterDstBarrier: c.VkImageMemoryBarrier = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .image = image.transferImage.image,
+            .subresourceRange = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = .{0},
+                .levelCount = .{1},
+                .baseArrayLayer = .{0},
+                .layerCount = .{1},
+            },
+        };
+
+        const afterBarriers = [_]c.VkImageMemoryBarrier{
+            afterSrcBarrier,
+            afterDstBarrier,
+        };
+
+        c.vkCmdPipelineBarrier(
+            image.commandBuffer,
+            c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            null,
+            0,
+            null,
+            @sizeOf(afterBarriers) / @sizeOf(c.VkImageMemoryBarrier),
+            afterBarriers,
+        );
+
         try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
 
         const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -644,7 +944,7 @@ pub const Engine = struct {
 
         try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
 
-        return true;
+        return .{ true, active_index };
     }
 
     fn onInterrupt(signum: c_int) callconv(.c) void {

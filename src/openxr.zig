@@ -345,8 +345,6 @@ pub const Swapchain = struct {
         var image_count: u32 = undefined;
         try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, 0, &image_count, null));
 
-        std.debug.print("\n\n===========image count: {d}\n\n", .{image_count});
-
         var images = try allocator.alloc(c.XrSwapchainImageVulkanKHR, image_count);
         @memset(images, .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });
 

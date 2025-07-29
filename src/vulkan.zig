@@ -413,6 +413,7 @@ pub const SwapchainImage = struct {
     descriptor_pool: c.VkDescriptorPool,
 
     image: c.XrSwapchainImageVulkanKHR,
+    vk_dup_image: c.VkImage,
     image_view: c.VkImageView,
     framebuffer: c.VkFramebuffer,
     memory: c.VkDeviceMemory,
@@ -541,11 +542,29 @@ pub const SwapchainImage = struct {
 
         c.vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, null);
 
+        var imageCreateInfo: c.VkImageCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = c.VK_IMAGE_TYPE_2D,
+            .extent = .{ swapchain.width, swapchain.height, 1 },
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .format = c.swapchain.format,
+            .samples = c.VK_SAMPLE_COUNT_1_BIT,
+            .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+            .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .usage = c.VK_IMAGE_USAGE_TRANSFER_SRC_BIT | c.VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        };
+
+        var vk_image: c.VkImage = undefined;
+        try loader.vkCheck(c.vkCreateImage(device, &imageCreateInfo, null, &vk_image));
+
         return .{
             .device = device,
             .command_pool = command_pool,
             .descriptor_pool = descriptor_pool,
             .image = image,
+            .vk_dup_image = vk_image,
             .image_view = image_view,
             .framebuffer = framebuffer,
             .memory = memory,
@@ -564,6 +583,7 @@ pub const SwapchainImage = struct {
         c.vkFreeMemory(self.device, self.memory, null);
         c.vkDestroyFramebuffer(self.device, self.framebuffer, null);
         c.vkDestroyImageView(self.device, self.image_view, null);
+        c.vkDestroyImage(self.device, self.image_view, null);
     }
 };
 
@@ -662,3 +682,53 @@ pub const VulkanSwapchainImage = struct {
         c.vkFreeCommandBuffers(self.device, self.commandPool, 1, &self.commandBuffer);
     }
 };
+
+pub fn createFence(device: c.VkDevice) c.VkFence {
+    var createInfo: c.VkFenceCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    };
+
+    var fence: c.VkFence = undefined;
+
+    loader.vkCheck(c.vkCreateFence(device, &createInfo, null, &fence));
+
+    return fence;
+}
+
+pub fn recreateSwapchain(
+    allocator: std.mem.Allocator,
+    surface: c.VkSurfaceKHR,
+    physicalDevice: c.VkPhysicalDevice,
+    device: c.VkDevice,
+    commandPool: c.VkCommandPool,
+    vulkanSwapchain: []c.VulkanSwapchain,
+    wrappedVulkanSwapchainImages: []VulkanSwapchainImage,
+    imageIndex: *u32,
+    width: u32,
+    height: u32,
+) !void {
+    loader.vkCheck(c.vkDeviceWaitIdle(device));
+
+    for (wrappedVulkanSwapchainImages) |image| {
+        image.deinit();
+    }
+    allocator.free(wrappedVulkanSwapchainImages);
+    allocator.free(vulkanSwapchain);
+
+    vulkanSwapchain = c.createVulkanSwapchain(
+        physicalDevice,
+        device,
+        surface,
+        width,
+        height,
+    );
+
+    const images: []c.VkImage = vulkanSwapchain.getVulkanSwapchainImages(device, vulkanSwapchain.swapchain);
+
+    wrappedVulkanSwapchainImages = allocator.alloc(VulkanSwapchainImage, images.len);
+    for (0..images.len) |i| {
+        wrappedVulkanSwapchainImages[i] = VulkanSwapchainImage.init(device, commandPool, images[i]);
+    }
+
+    imageIndex.* = 0;
+}
