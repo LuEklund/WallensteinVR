@@ -193,7 +193,8 @@ pub fn getVulkanInstanceRequirements(
         "VK_KHR_external_fence_capabilities",
         "VK_KHR_external_semaphore_capabilities",
         "VK_KHR_surface",
-        "VK_KHR_xlib_surface",
+        "VK_KHR_wayland_surface",
+        // "VK_KHR_xlib_surface",
         "VK_EXT_debug_utils", // TODO: <---- EXTRA EXT add manunally!!!!
     };
 

@@ -51,7 +51,7 @@ pub const Engine = struct {
         //SDL
         const init_flags: sdl.InitFlags = .{ .video = true };
         try sdl.init(init_flags);
-        defer sdl.quit(init_flags);
+        // defer sdl.quit(init_flags);
         const window: sdl.video.Window = try .init("Hello SDL3", windowWidth, windowHeight, .{ .vulkan = true });
         try window.show();
         const vk_exts = try sdl.vulkan.getInstanceExtensions();
@@ -74,8 +74,6 @@ pub const Engine = struct {
             std.debug.print("SDL Error: {s}\n", .{sdl.c.SDL_GetError()});
             return err;
         };
-
-        while (true) {}
 
         const physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(xrd, allocator, xr_instance, xr_system_id, vk_instance);
         const queue_family_index = try vk.findGraphicsQueueFamily(physical_device, @ptrCast(surface.surface));
