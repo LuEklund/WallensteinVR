@@ -98,6 +98,7 @@ pub fn recreate(
     width: u32,
     height: u32,
 ) !void {
+    if (true) return error.ReCreate;
     try loader.vkCheck(c.vkDeviceWaitIdle(self.device));
 
     for (0..self.image_count) |i| {

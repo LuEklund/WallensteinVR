@@ -414,6 +414,7 @@ pub const SwapchainImage = struct {
 
     image: c.XrSwapchainImageVulkanKHR,
     vk_dup_image: c.VkImage,
+    vk_image_memory: c.VkDeviceMemory,
     image_view: c.VkImageView,
     framebuffer: c.VkFramebuffer,
     memory: c.VkDeviceMemory,
@@ -558,13 +559,47 @@ pub const SwapchainImage = struct {
 
         var vk_image: c.VkImage = undefined;
         try loader.vkCheck(c.vkCreateImage(device, &imageCreateInfo, null, &vk_image));
+        var image_requirements: c.VkMemoryRequirements = undefined;
+        c.vkGetImageMemoryRequirements(device, vk_image, &image_requirements);
 
+        const image_memory_properties_flags: c.VkMemoryPropertyFlags = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+        var image_memory_type_index: u32 = 0;
+        c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
+
+        var found_image_memory_type = false;
+        for (0..properties.memoryTypeCount) |i| {
+            if ((image_requirements.memoryTypeBits & (shiftee << @intCast(i))) == 0) {
+                continue;
+            }
+            if ((properties.memoryTypes[i].propertyFlags & image_memory_properties_flags) != image_memory_properties_flags) {
+                continue;
+            }
+            image_memory_type_index = @intCast(i);
+            found_image_memory_type = true;
+            break;
+        }
+        if (!found_image_memory_type) {
+            std.log.err("Failed to find suitable memory type for vk_dup_image!", .{});
+            return error.NoSuitableImageMemory;
+        }
+        var image_allocate_info = c.VkMemoryAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .allocationSize = image_requirements.size,
+            .memoryTypeIndex = image_memory_type_index,
+        };
+
+        var image_memory: c.VkDeviceMemory = undefined;
+        try loader.vkCheck(c.vkAllocateMemory(device, &image_allocate_info, null, &image_memory));
+
+        try loader.vkCheck(c.vkBindImageMemory(device, vk_image, image_memory, 0));
         return .{
             .device = device,
             .command_pool = command_pool,
             .descriptor_pool = descriptor_pool,
             .image = image,
             .vk_dup_image = vk_image,
+            .vk_image_memory = image_memory,
             .image_view = image_view,
             .framebuffer = framebuffer,
             .memory = memory,
