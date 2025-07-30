@@ -4,6 +4,7 @@ const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
 const VulkanSwapchain = @import("VulkanSwapchain.zig");
+const XrSwapchain = @import("XrSwapchain.zig");
 const loader = @import("loader");
 const build_options = @import("build_options");
 const nz = @import("numz");
@@ -52,7 +53,7 @@ pub const Engine = struct {
         const init_flags: sdl.InitFlags = .{ .video = true };
         try sdl.init(init_flags);
         // defer sdl.quit(init_flags);
-        const window: sdl.video.Window = try .init("Hello SDL3", windowWidth, windowHeight, .{ .vulkan = true });
+        const window: sdl.video.Window = try .init("Hello SDL3", windowWidth, windowHeight, .{ .vulkan = true, .resizable = true });
         try window.show();
         const vk_exts = try sdl.vulkan.getInstanceExtensions();
         for (0..vk_exts.len) |i| {
@@ -117,8 +118,8 @@ pub const Engine = struct {
     pub fn start(self: Self) !void {
         const eye_count = build_options.eye_count;
         var vulkan_swapchain: VulkanSwapchain = try .init(self.vk_physical_device, self.vk_logical_device, self.sdl_surface, windowWidth, windowHeight);
-        const swapchain = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
-        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchain.format, swapchain.sample_count);
+        var xr_swapchain: XrSwapchain = try .init(eye_count, self.xr_instance, self.xr_system_id, self.xr_session);
+        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, xr_swapchain.format, xr_swapchain.sample_count);
         defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(self.vk_logical_device, self.graphics_queue_family_index);
         defer c.vkDestroyCommandPool(self.vk_logical_device, command_pool, null);
@@ -130,39 +131,21 @@ pub const Engine = struct {
         defer c.vkDestroyShaderModule(self.vk_logical_device, vertex_shader, null);
         const fragment_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "shaders/fragment.frag.spv");
         defer c.vkDestroyShaderModule(self.vk_logical_device, fragment_shader, null);
-        const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, swapchain.sample_count);
+        const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, xr_swapchain.sample_count);
         defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
         defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
 
         const acquireFence: c.VkFence = try vk.createFence(self.vk_logical_device);
 
         try vulkan_swapchain.createSwapchainImages(command_pool);
-
-        //TODO : FIX EYE COUNT AND SwapChainCount
-        const swapchains_images: []c.XrSwapchainImageVulkanKHR = try swapchain.getImages(self.allocator);
-        defer self.allocator.free(swapchains_images);
-
-        var wrapped_swapchain_images = std.ArrayList(vk.SwapchainImage).init(self.allocator);
-        for (0..swapchains_images.len) |i| {
-            try wrapped_swapchain_images.append(
-                try vk.SwapchainImage.init(
-                    self.vk_physical_device,
-                    self.vk_logical_device,
-                    render_pass,
-                    command_pool,
-                    descriptor_pool,
-                    descriptor_set_layout,
-                    swapchain,
-                    swapchains_images[i],
-                ),
-            );
-        }
-        defer {
-            for (wrapped_swapchain_images.items) |wrapped_swapchain_image| {
-                wrapped_swapchain_image.deinit();
-            }
-            wrapped_swapchain_images.deinit();
-        }
+        try xr_swapchain.createSwapchainImages(
+            self.vk_physical_device,
+            self.vk_logical_device,
+            render_pass,
+            command_pool,
+            descriptor_pool,
+            descriptor_set_layout,
+        );
 
         const isPosix: bool = switch (builtin.os.tag) {
             .linux,
@@ -346,7 +329,7 @@ pub const Engine = struct {
                     },
                     .srcOffsets = .{
                         .{ .x = 0, .y = 0, .z = 0 },
-                        .{ .x = @intCast(swapchain.width), .y = @intCast(swapchain.height), .z = 1 },
+                        .{ .x = @intCast(xr_swapchain.width), .y = @intCast(xr_swapchain.height), .z = 1 },
                     },
                     .dstSubresource = .{
                         .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
@@ -362,7 +345,7 @@ pub const Engine = struct {
 
                 c.vkCmdBlitImage(
                     element.command_buffer,
-                    wrapped_swapchain_images.items[lastRenderedImageIndex].vk_dup_image,
+                    xr_swapchain.swapchain_images[lastRenderedImageIndex].vk_dup_image,
                     c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                     element.image,
                     c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -489,8 +472,7 @@ pub const Engine = struct {
                         should_quit, const active_index = render(
                             self.allocator,
                             self.xr_session,
-                            swapchain,
-                            wrapped_swapchain_images,
+                            xr_swapchain,
                             space,
                             frame_state.predictedDisplayTime,
                             self.vk_logical_device,
@@ -620,8 +602,7 @@ pub const Engine = struct {
     fn render(
         allocator: std.mem.Allocator,
         session: c.XrSession,
-        swapchain: xr.Swapchain,
-        swapchain_images: std.ArrayList(vk.SwapchainImage),
+        swapchain: XrSwapchain,
         space: c.XrSpace,
         predicted_display_time: c.XrTime,
         device: c.VkDevice,
@@ -657,7 +638,6 @@ pub const Engine = struct {
 
         const ok, const active_index = try renderEye(
             swapchain,
-            swapchain_images,
             views,
             device,
             queue,
@@ -676,7 +656,7 @@ pub const Engine = struct {
             projected_views[i].pose = views[i].pose;
             projected_views[i].fov = views[i].fov;
             projected_views[i].subImage = .{
-                .swapchain = swapchain.swapchain,
+                .swapchain = swapchain.color_swapchain,
                 .imageRect = .{
                     .offset = .{ .x = 0, .y = 0 },
                     .extent = .{
@@ -712,8 +692,7 @@ pub const Engine = struct {
     }
 
     fn renderEye(
-        swapchain: xr.Swapchain,
-        images: std.ArrayList(vk.SwapchainImage),
+        xr_swapchain: XrSwapchain,
         view: []c.XrView,
         device: c.VkDevice,
         queue: c.VkQueue,
@@ -733,15 +712,15 @@ pub const Engine = struct {
         };
 
         var active_index: u32 = 0;
-        try loader.xrCheck(c.xrAcquireSwapchainImage(swapchain.swapchain, &acquire_image_info, &active_index));
+        try loader.xrCheck(c.xrAcquireSwapchainImage(xr_swapchain.color_swapchain, &acquire_image_info, &active_index));
 
         var wait_image_info = c.XrSwapchainImageWaitInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
             .timeout = std.math.maxInt(i64),
         };
 
-        try loader.xrCheck(c.xrWaitSwapchainImage(swapchain.swapchain, &wait_image_info));
-        const image: vk.SwapchainImage = images.items[active_index];
+        try loader.xrCheck(c.xrWaitSwapchainImage(xr_swapchain.color_swapchain, &wait_image_info));
+        const image: XrSwapchain.SwapchainImage = xr_swapchain.swapchain_images[active_index];
 
         var data: ?[*]f32 = null;
         try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
@@ -803,7 +782,7 @@ pub const Engine = struct {
             .framebuffer = image.framebuffer,
             .renderArea = .{
                 .offset = .{ .x = 0, .y = 0 },
-                .extent = .{ .width = swapchain.width, .height = swapchain.height },
+                .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
             },
             .clearValueCount = 1,
             .pClearValues = &clearValue,
@@ -814,8 +793,8 @@ pub const Engine = struct {
         const viewport = c.VkViewport{
             .x = 0,
             .y = 0,
-            .width = @floatFromInt(swapchain.width),
-            .height = @floatFromInt(swapchain.height),
+            .width = @floatFromInt(xr_swapchain.width),
+            .height = @floatFromInt(xr_swapchain.height),
             .minDepth = 0,
             .maxDepth = 1,
         };
@@ -824,7 +803,7 @@ pub const Engine = struct {
 
         const scissor = c.VkRect2D{
             .offset = .{ .x = 0, .y = 0 },
-            .extent = .{ .width = swapchain.width, .height = swapchain.height },
+            .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
         };
 
         c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
@@ -898,7 +877,7 @@ pub const Engine = struct {
                 .layerCount = 1,
             },
             .dstOffset = .{},
-            .extent = .{ .width = swapchain.width, .height = swapchain.height, .depth = 1 },
+            .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height, .depth = 1 },
         };
 
         c.vkCmdCopyImage(
@@ -969,7 +948,7 @@ pub const Engine = struct {
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
         };
 
-        try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
+        try loader.xrCheck(c.xrReleaseSwapchainImage(xr_swapchain.color_swapchain, &release_image_info));
 
         return .{ true, active_index };
     }
@@ -996,7 +975,7 @@ pub fn main() !void {
     };
     const xr_layers = &[_][*:0]const u8{
         "XR_APILAYER_LUNARG_core_validation",
-        // "XR_APILAYER_LUNARG_api_dump",
+        "XR_APILAYER_LUNARG_api_dump",
     };
 
     const vk_layers = &[_][*:0]const u8{
