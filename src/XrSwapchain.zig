@@ -6,14 +6,16 @@ const c = loader.c;
 
 const XrSwapchain = @This();
 
-swapchain: c.XrSwapchain,
+color_swapchain: c.XrSwapchain,
 depth_swapchain: c.XrSwapchain,
+swapchain_images: [16]SwapchainImage,
+xr_vk_images: [16]c.XrSwapchainImageVulkanKHR,
+image_count: u32,
 format: c.VkFormat,
 sample_count: u32,
 width: u32,
 height: u32,
 
-// Same as createSwapchains
 pub fn init(eye_count: comptime_int, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) !@This() {
     var config_views = [_]c.XrViewConfigurationView{
         .{ .type = c.XR_TYPE_VIEW_CONFIGURATION_VIEW },
@@ -78,8 +80,11 @@ pub fn init(eye_count: comptime_int, instance: c.XrInstance, system_id: c.XrSyst
     try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &depth_swapchain));
 
     return .{
-        .swapchain = swapchain,
+        .color_swapchain = swapchain,
         .depth_swapchain = depth_swapchain,
+        .swapchain_images = undefined,
+        .xr_vk_images = undefined,
+        .image_count = undefined,
         .format = @intCast(color_fotmat),
         .sample_count = config_views[0].recommendedSwapchainSampleCount,
         .width = config_views[0].recommendedImageRectWidth,
@@ -87,19 +92,42 @@ pub fn init(eye_count: comptime_int, instance: c.XrInstance, system_id: c.XrSyst
     };
 }
 
-pub fn createSwapchainImages(self: @This(), allocator: std.mem.Allocator) ![]c.XrSwapchainImageVulkanKHR {
-    var image_count: u32 = undefined;
-    try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, 0, &image_count, null));
+pub fn createSwapchainImages(
+    self: *@This(),
+    physical_device: c.VkPhysicalDevice,
+    device: c.VkDevice,
+    render_pass: c.VkRenderPass,
+    command_pool: c.VkCommandPool,
+    descriptor_pool: c.VkDescriptorPool,
+    descriptor_set_layout: c.VkDescriptorSetLayout,
+) !void {
+    try loader.xrCheck(c.xrEnumerateSwapchainImages(self.color_swapchain, 0, &self.image_count, null));
+    if (self.image_count > 16) @panic("More than 16 XrSwapchainImagesVulkanKHR\n");
 
-    var images = try allocator.alloc(c.XrSwapchainImageVulkanKHR, image_count);
-    @memset(images, .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });
+    for (0..self.image_count) |i| {
+        self.xr_vk_images[i].type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR;
+        self.xr_vk_images[i].image = null;
+        self.xr_vk_images[i].next = null;
+    }
 
-    try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, image_count, &image_count, @ptrCast(&images[0])));
+    try loader.xrCheck(c.xrEnumerateSwapchainImages(self.color_swapchain, self.image_count, &self.image_count, @ptrCast(&self.xr_vk_images[0])));
 
-    return images;
+    for (0..self.image_count) |i| {
+        self.swapchain_images[i] = try .init(
+            physical_device,
+            device,
+            render_pass,
+            command_pool,
+            descriptor_pool,
+            descriptor_set_layout,
+            self.format,
+            self.width,
+            self.height,
+            self.xr_vk_images[i],
+        );
+    }
 }
 
-// NOTE: Named SwapchainImage in the toutorial
 pub const SwapchainImage = struct {
     const Self = @This();
 
@@ -124,14 +152,16 @@ pub const SwapchainImage = struct {
         command_pool: c.VkCommandPool,
         descriptor_pool: c.VkDescriptorPool,
         descriptor_set_layout: c.VkDescriptorSetLayout,
-        swapchain: XrSwapchain,
+        format: c_uint,
+        width: u32,
+        height: u32,
         image: c.XrSwapchainImageVulkanKHR,
     ) !Self {
         var image_view_create_info = c.VkImageViewCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = image.image,
             .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-            .format = swapchain.format,
+            .format = format,
             .subresourceRange = .{
                 .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = 0,
@@ -149,8 +179,8 @@ pub const SwapchainImage = struct {
             .renderPass = render_pass,
             .attachmentCount = 1,
             .pAttachments = &image_view,
-            .width = swapchain.width,
-            .height = swapchain.height,
+            .width = width,
+            .height = height,
             .layers = 1,
         };
 
@@ -241,10 +271,10 @@ pub const SwapchainImage = struct {
         var imageCreateInfo: c.VkImageCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
             .imageType = c.VK_IMAGE_TYPE_2D,
-            .extent = .{ .width = swapchain.width, .height = swapchain.height, .depth = 1 },
+            .extent = .{ .width = width, .height = height, .depth = 1 },
             .mipLevels = 1,
             .arrayLayers = 1,
-            .format = swapchain.format,
+            .format = format,
             .samples = c.VK_SAMPLE_COUNT_1_BIT,
             .tiling = c.VK_IMAGE_TILING_OPTIMAL,
             .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,

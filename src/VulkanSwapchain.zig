@@ -79,7 +79,7 @@ pub fn createSwapchainImages(
     command_pool: c.VkCommandPool,
 ) !void {
     try loader.vkCheck(c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &self.image_count, null));
-    if (self.image_count > 16) @panic("More than 16 VkImages");
+    if (self.image_count > 16) @panic("More than 16 VkImages\n");
 
     try loader.vkCheck(c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &self.image_count, &self.vk_images[0]));
 
