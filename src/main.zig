@@ -4,6 +4,7 @@ const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
 const VulkanSwapchain = @import("VulkanSwapchain.zig");
+const XrSwapchain = @import("XrSwapchain.zig");
 const loader = @import("loader");
 const build_options = @import("build_options");
 const nz = @import("numz");
@@ -52,7 +53,7 @@ pub const Engine = struct {
         const init_flags: sdl.InitFlags = .{ .video = true };
         try sdl.init(init_flags);
         // defer sdl.quit(init_flags);
-        const window: sdl.video.Window = try .init("Hello SDL3", windowWidth, windowHeight, .{ .vulkan = true });
+        const window: sdl.video.Window = try .init("Hello SDL3", windowWidth, windowHeight, .{ .vulkan = true, .resizable = true });
         try window.show();
         const vk_exts = try sdl.vulkan.getInstanceExtensions();
         for (0..vk_exts.len) |i| {
@@ -117,8 +118,8 @@ pub const Engine = struct {
     pub fn start(self: Self) !void {
         const eye_count = build_options.eye_count;
         var vulkan_swapchain: VulkanSwapchain = try .init(self.vk_physical_device, self.vk_logical_device, self.sdl_surface, windowWidth, windowHeight);
-        const swapchain = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
-        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchain.format, swapchain.sample_count);
+        const xr_swapchain: XrSwapchain = try .init(eye_count, self.xr_instance, self.xr_system_id, self.xr_session);
+        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, xr_swapchain.format, xr_swapchain.sample_count);
         defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(self.vk_logical_device, self.graphics_queue_family_index);
         defer c.vkDestroyCommandPool(self.vk_logical_device, command_pool, null);
@@ -130,7 +131,7 @@ pub const Engine = struct {
         defer c.vkDestroyShaderModule(self.vk_logical_device, vertex_shader, null);
         const fragment_shader: c.VkShaderModule = try vk.createShader(self.allocator, self.vk_logical_device, "shaders/fragment.frag.spv");
         defer c.vkDestroyShaderModule(self.vk_logical_device, fragment_shader, null);
-        const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, swapchain.sample_count);
+        const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, xr_swapchain.sample_count);
         defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
         defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
 
@@ -139,7 +140,7 @@ pub const Engine = struct {
         try vulkan_swapchain.createSwapchainImages(command_pool);
 
         //TODO : FIX EYE COUNT AND SwapChainCount
-        const swapchains_images: []c.XrSwapchainImageVulkanKHR = try swapchain.getImages(self.allocator);
+        const swapchains_images: []c.XrSwapchainImageVulkanKHR = try xr_swapchain.getImages(self.allocator);
         defer self.allocator.free(swapchains_images);
 
         var wrapped_swapchain_images = std.ArrayList(vk.SwapchainImage).init(self.allocator);
@@ -152,7 +153,7 @@ pub const Engine = struct {
                     command_pool,
                     descriptor_pool,
                     descriptor_set_layout,
-                    swapchain,
+                    xr_swapchain,
                     swapchains_images[i],
                 ),
             );
@@ -346,7 +347,7 @@ pub const Engine = struct {
                     },
                     .srcOffsets = .{
                         .{ .x = 0, .y = 0, .z = 0 },
-                        .{ .x = @intCast(swapchain.width), .y = @intCast(swapchain.height), .z = 1 },
+                        .{ .x = @intCast(xr_swapchain.width), .y = @intCast(xr_swapchain.height), .z = 1 },
                     },
                     .dstSubresource = .{
                         .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
@@ -489,7 +490,7 @@ pub const Engine = struct {
                         should_quit, const active_index = render(
                             self.allocator,
                             self.xr_session,
-                            swapchain,
+                            xr_swapchain,
                             wrapped_swapchain_images,
                             space,
                             frame_state.predictedDisplayTime,
@@ -620,7 +621,7 @@ pub const Engine = struct {
     fn render(
         allocator: std.mem.Allocator,
         session: c.XrSession,
-        swapchain: xr.Swapchain,
+        swapchain: XrSwapchain,
         swapchain_images: std.ArrayList(vk.SwapchainImage),
         space: c.XrSpace,
         predicted_display_time: c.XrTime,
@@ -712,7 +713,7 @@ pub const Engine = struct {
     }
 
     fn renderEye(
-        swapchain: xr.Swapchain,
+        swapchain: XrSwapchain,
         images: std.ArrayList(vk.SwapchainImage),
         view: []c.XrView,
         device: c.VkDevice,
@@ -996,7 +997,7 @@ pub fn main() !void {
     };
     const xr_layers = &[_][*:0]const u8{
         "XR_APILAYER_LUNARG_core_validation",
-        // "XR_APILAYER_LUNARG_api_dump",
+        "XR_APILAYER_LUNARG_api_dump",
     };
 
     const vk_layers = &[_][*:0]const u8{

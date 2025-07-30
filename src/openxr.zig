@@ -286,75 +286,6 @@ pub fn createSession(
     return session;
 }
 
-// Swapchain isnt just helper functions since its cool like this also no idea if this works, it seems very weird
-pub const Swapchain = struct {
-    const Self = @This();
-
-    swapchain: c.XrSwapchain,
-    format: c.VkFormat,
-    sample_count: u32,
-    width: u32,
-    height: u32,
-
-    // Same as createSwapchains
-    pub fn init(eye_count: comptime_int, allocator: std.mem.Allocator, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) !Self {
-        var config_views = [_]c.XrViewConfigurationView{
-            .{ .type = c.XR_TYPE_VIEW_CONFIGURATION_VIEW },
-        } ** eye_count;
-
-        var config_view_count: u32 = eye_count;
-        try loader.xrCheck(c.xrEnumerateViewConfigurationViews(instance, system_id, c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, config_view_count, &config_view_count, &config_views[0]));
-
-        const format: i64 = blk: {
-            var format_count: u32 = 0;
-            try loader.xrCheck(c.xrEnumerateSwapchainFormats(session, 0, &format_count, null));
-
-            const formats = try allocator.alloc(i64, format_count);
-            defer allocator.free(formats);
-            try loader.xrCheck(c.xrEnumerateSwapchainFormats(session, format_count, &format_count, formats.ptr));
-
-            for (formats) |fmt| {
-                if (fmt == c.VK_FORMAT_R8G8B8A8_SRGB) break :blk fmt;
-            }
-            unreachable;
-        };
-
-        var swapchain_create_info = c.XrSwapchainCreateInfo{
-            .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
-            .usageFlags = c.XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
-            .format = format,
-            .sampleCount = c.VK_SAMPLE_COUNT_1_BIT,
-            .width = config_views[0].recommendedImageRectWidth,
-            .height = config_views[0].recommendedImageRectHeight,
-            .faceCount = 1,
-            .arraySize = eye_count,
-            .mipCount = 1,
-        };
-        var swapchain: c.XrSwapchain = undefined;
-        try loader.xrCheck(c.xrCreateSwapchain(session, &swapchain_create_info, &swapchain));
-
-        return Self{
-            .swapchain = swapchain,
-            .format = @intCast(format),
-            .sample_count = config_views[0].recommendedSwapchainSampleCount,
-            .width = config_views[0].recommendedImageRectWidth,
-            .height = config_views[0].recommendedImageRectHeight,
-        };
-    }
-
-    pub fn getImages(self: Self, allocator: std.mem.Allocator) ![]c.XrSwapchainImageVulkanKHR {
-        var image_count: u32 = undefined;
-        try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, 0, &image_count, null));
-
-        var images = try allocator.alloc(c.XrSwapchainImageVulkanKHR, image_count);
-        @memset(images, .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });
-
-        try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, image_count, &image_count, @ptrCast(&images[0])));
-
-        return images;
-    }
-};
-
 // More shit here https://amini-allight.org/post/openxr-tutorial-part-8
 
 // NOTE: Use     xrDestroySpace(space);
@@ -395,7 +326,7 @@ pub fn validateExtensions(allocator: std.mem.Allocator, extentions: []const [*:0
             }
         } else {
             log.err("Failed to find OpenXR extension: {s}\n", .{extention});
-            return error.MissingLayers;
+            return error.MissingExtension;
         }
     }
 }

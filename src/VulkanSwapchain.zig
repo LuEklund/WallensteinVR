@@ -31,12 +31,11 @@ pub fn init(physical_device: c.VkPhysicalDevice, device: c.VkDevice, surface: c.
     try loader.vkCheck(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, &formats[0]));
 
     var chosenFormat: c.VkSurfaceFormatKHR = formats[0];
-    {
-        for (0..formatCount) |i|
-            if (formats[i].format == c.VK_FORMAT_R8G8B8A8_SRGB) {
-                chosenFormat = formats[i];
-                break;
-            };
+    for (0..formatCount) |i| {
+        if (formats[i].format == c.VK_FORMAT_R8G8B8A8_SRGB) {
+            chosenFormat = formats[i];
+            break;
+        }
     }
 
     var createInfo: c.VkSwapchainCreateInfoKHR = .{
@@ -51,7 +50,7 @@ pub fn init(physical_device: c.VkPhysicalDevice, device: c.VkDevice, surface: c.
         .imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
         .preTransform = capabilities.currentTransform,
         .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode = c.VK_PRESENT_MODE_MAILBOX_KHR,
+        .presentMode = c.VK_PRESENT_MODE_IMMEDIATE_KHR, //TODO: MAILBOX
         .clipped = 1,
     };
 
@@ -98,7 +97,6 @@ pub fn recreate(
     width: u32,
     height: u32,
 ) !void {
-    if (true) return error.ReCreate;
     try loader.vkCheck(c.vkDeviceWaitIdle(self.device));
 
     for (0..self.image_count) |i| {
