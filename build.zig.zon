@@ -9,6 +9,10 @@
             .url = "git+https://github.com/HaraldWik/numz#09ab1b2f10f7142bf356111d4b08857b359eefb7",
             .hash = "numz-0.0.0-oTBeDBxNAABufiHTzxEuz5P8g8EgKFLhnU4HKcRK9glZ",
         },
+        .sdl3 = .{
+            .url = "git+https://github.com/Gota7/zig-sdl3?ref=zig-master#5a4b5bf84af49eb7dc24df259d132452590dadc5",
+            .hash = "sdl3-0.0.1-NmT1Q-qUIAC-3us24WvLloIULrRGSis5IRqF7AXTeltB",
+        },
     },
 
     .paths = .{

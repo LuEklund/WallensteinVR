@@ -3,16 +3,19 @@ const log = @import("std").log;
 const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
+const VulkanSwapchain = @import("VulkanSwapchain.zig");
 const loader = @import("loader");
 const build_options = @import("build_options");
 const nz = @import("numz");
 const c = loader.c;
+const sdl = @import("sdl3");
 var quit: std.atomic.Value(bool) = .init(false);
 
 var object_grabbed: u32 = 0;
 var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
 var grab_distance: f32 = 1;
-const swapchain_count = 3;
+const windowWidth: c_int = 1600;
+const windowHeight: c_int = 900;
 
 pub const Engine = struct {
     const Self = @This();
@@ -32,6 +35,8 @@ pub const Engine = struct {
     vk_logical_device: c.VkDevice,
     vk_queue: c.VkQueue,
     vkid: vk.Dispatcher,
+    sdl_window: sdl.video.Window,
+    sdl_surface: c.VkSurfaceKHR,
 
     pub const Config = struct {
         xr_extensions: []const [*:0]const u8,
@@ -42,6 +47,17 @@ pub const Engine = struct {
     pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
         try xr.validateExtensions(allocator, config.xr_extensions);
         try xr.validateLayers(allocator, config.xr_layers);
+
+        //SDL
+        const init_flags: sdl.InitFlags = .{ .video = true };
+        try sdl.init(init_flags);
+        // defer sdl.quit(init_flags);
+        const window: sdl.video.Window = try .init("Hello SDL3", windowWidth, windowHeight, .{ .vulkan = true });
+        try window.show();
+        const vk_exts = try sdl.vulkan.getInstanceExtensions();
+        for (0..vk_exts.len) |i| {
+            std.debug.print("EXT_SDL: {s}\n", .{vk_exts[i]});
+        }
 
         const xr_instance: c.XrInstance = try xr.createInstance(config.xr_extensions, config.xr_layers);
         const xrd = try xr.Dispatcher.init(xr_instance);
@@ -54,11 +70,17 @@ pub const Engine = struct {
         const vkid = try vk.Dispatcher.init(vk_instance);
         const vk_debug_messenger: c.VkDebugUtilsMessengerEXT = try vk.createDebugMessenger(vkid, vk_instance);
 
-        const physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(xrd, allocator, xr_instance, xr_system_id, vk_instance);
-        const queue_family_index = vk.findGraphicsQueueFamily(physical_device);
-        const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index.?, vk_device_extensions);
+        const surface = sdl.vulkan.Surface.init(window, @ptrCast(vk_instance), null) catch |err| {
+            std.debug.print("SDL Error: {s}\n", .{sdl.c.SDL_GetError()});
+            return err;
+        };
 
-        const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index.?);
+        const physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(xrd, allocator, xr_instance, xr_system_id, vk_instance);
+        const queue_family_index = try vk.findGraphicsQueueFamily(physical_device, @ptrCast(surface.surface));
+
+        const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index, vk_device_extensions);
+
+        const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index);
 
         return .{
             .allocator = allocator,
@@ -71,10 +93,12 @@ pub const Engine = struct {
             .vk_instance = vk_instance,
             .vk_debug_messenger = vk_debug_messenger,
             .vk_physical_device = physical_device,
-            .graphics_queue_family_index = queue_family_index.?,
+            .graphics_queue_family_index = queue_family_index,
             .vk_logical_device = logical_device,
             .vk_queue = queue,
             .vkid = vkid,
+            .sdl_window = window,
+            .sdl_surface = @ptrCast(surface.surface),
         };
     }
 
@@ -87,10 +111,12 @@ pub const Engine = struct {
 
         _ = c.vkDestroyDevice(self.vk_logical_device, null);
         _ = c.vkDestroyInstance(self.vk_instance, null);
+        self.sdl_window.deinit();
     }
 
     pub fn start(self: Self) !void {
         const eye_count = build_options.eye_count;
+        var vulkan_swapchain: VulkanSwapchain = try .init(self.vk_physical_device, self.vk_logical_device, self.sdl_surface, windowWidth, windowHeight);
         const swapchain = try xr.Swapchain.init(eye_count, self.allocator, self.xr_instance, self.xr_system_id, self.xr_session);
         const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, swapchain.format, swapchain.sample_count);
         defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
@@ -107,6 +133,10 @@ pub const Engine = struct {
         const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(self.vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, swapchain.sample_count);
         defer c.vkDestroyPipelineLayout(self.vk_logical_device, pipeline_layout, null);
         defer c.vkDestroyPipeline(self.vk_logical_device, pipeline, null);
+
+        const acquireFence: c.VkFence = try vk.createFence(self.vk_logical_device);
+
+        try vulkan_swapchain.createSwapchainImages(command_pool);
 
         //TODO : FIX EYE COUNT AND SwapChainCount
         const swapchains_images: []c.XrSwapchainImageVulkanKHR = try swapchain.getImages(self.allocator);
@@ -210,12 +240,211 @@ pub const Engine = struct {
 
         try xr.attachActionSet(self.xr_session, actionSet);
 
+        var imageIndex: u32 = 0;
+        var lastRenderedImageIndex: u32 = 0;
+
         var running: bool = true;
         // var times: u8 = 0;
         // while (times < 8 and !quit.load(.acquire)) {
         while (!quit.load(.acquire)) {
             // times += 1;
             std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
+            while (sdl.events.poll()) |sdl_event| {
+                switch (sdl_event) {
+                    .quit => quit.store(true, .release),
+                    .window_resized => |wr| {
+                        try vulkan_swapchain.recreate(
+                            self.sdl_surface,
+                            self.vk_physical_device,
+                            command_pool,
+                            &imageIndex,
+                            @intCast(wr.width),
+                            @intCast(wr.height),
+                        );
+                    },
+                    else => {},
+                }
+            }
+            const vkResult = c.vkAcquireNextImageKHR(
+                self.vk_logical_device,
+                vulkan_swapchain.swapchain,
+                0,
+                null,
+                acquireFence,
+                &imageIndex,
+            );
+
+            if (vkResult == c.VK_ERROR_OUT_OF_DATE_KHR or vkResult == c.VK_SUBOPTIMAL_KHR) {
+                const win_size = try self.sdl_window.getSize();
+
+                try vulkan_swapchain.recreate(
+                    self.sdl_surface,
+                    self.vk_physical_device,
+                    command_pool,
+                    &imageIndex,
+                    @intCast(win_size.width),
+                    @intCast(win_size.height),
+                );
+            } else if (vkResult == c.VK_SUCCESS) {
+                try loader.vkCheck(c.vkWaitForFences(
+                    self.vk_logical_device,
+                    1,
+                    &acquireFence,
+                    1,
+                    std.math.maxInt(u64),
+                ));
+                try loader.vkCheck(c.vkResetFences(
+                    self.vk_logical_device,
+                    1,
+                    &acquireFence,
+                ));
+
+                const element: VulkanSwapchain.SwapchainImage = vulkan_swapchain.swapchain_images[imageIndex];
+                var beginInfo: c.VkCommandBufferBeginInfo = .{
+                    .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                    .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                };
+                try loader.vkCheck(c.vkBeginCommandBuffer(element.command_buffer, &beginInfo));
+
+                const beforeDstBarrier: c.VkImageMemoryBarrier = .{
+                    .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                    .srcAccessMask = c.VK_ACCESS_NONE,
+                    .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+                    .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+                    .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    .image = element.image,
+                    .subresourceRange = .{
+                        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                        .baseMipLevel = 0,
+                        .levelCount = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1,
+                    },
+                };
+
+                const beforeBarriers: [1]c.VkImageMemoryBarrier = .{beforeDstBarrier};
+
+                c.vkCmdPipelineBarrier(
+                    element.command_buffer,
+                    c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                    c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    0,
+                    0,
+                    null,
+                    0,
+                    null,
+                    beforeBarriers.len,
+                    &beforeBarriers,
+                );
+
+                var region: c.VkImageBlit = .{
+                    .srcSubresource = .{
+                        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                        .mipLevel = 0,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1,
+                    },
+                    .srcOffsets = .{
+                        .{ .x = 0, .y = 0, .z = 0 },
+                        .{ .x = @intCast(swapchain.width), .y = @intCast(swapchain.height), .z = 1 },
+                    },
+                    .dstSubresource = .{
+                        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                        .mipLevel = 0,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1,
+                    },
+                    .dstOffsets = .{
+                        .{ .x = 0, .y = 0, .z = 0 },
+                        .{ .x = @intCast(vulkan_swapchain.width), .y = @intCast(vulkan_swapchain.height), .z = 1 },
+                    },
+                };
+
+                c.vkCmdBlitImage(
+                    element.command_buffer,
+                    wrapped_swapchain_images.items[lastRenderedImageIndex].vk_dup_image,
+                    c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    element.image,
+                    c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    1,
+                    &region,
+                    c.VK_FILTER_LINEAR,
+                );
+
+                const afterDstBarrier: c.VkImageMemoryBarrier = .{
+                    .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                    .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+                    .dstAccessMask = c.VK_ACCESS_NONE,
+                    .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    .newLayout = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    .image = element.image,
+                    .subresourceRange = .{
+                        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                        .baseMipLevel = 0,
+                        .levelCount = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1,
+                    },
+                };
+
+                const afterBarriers: [1]c.VkImageMemoryBarrier = .{afterDstBarrier};
+
+                c.vkCmdPipelineBarrier(
+                    element.command_buffer,
+                    c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    c.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                    0,
+                    0,
+                    null,
+                    0,
+                    null,
+                    afterBarriers.len,
+                    &afterBarriers,
+                );
+
+                try loader.vkCheck(c.vkEndCommandBuffer(element.command_buffer));
+
+                var waitStage: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+                var submitInfo: c.VkSubmitInfo = .{
+                    .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                    .pWaitDstStageMask = &waitStage,
+                    .commandBufferCount = 1,
+                    .pCommandBuffers = &element.command_buffer,
+                    .signalSemaphoreCount = 1,
+                    .pSignalSemaphores = &element.render_done_semaphore,
+                };
+
+                try loader.vkCheck(c.vkQueueSubmit(self.vk_queue, 1, &submitInfo, null));
+
+                var presentInfo: c.VkPresentInfoKHR = .{
+                    .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                    .waitSemaphoreCount = 1,
+                    .pWaitSemaphores = &element.render_done_semaphore,
+                    .swapchainCount = 1,
+                    .pSwapchains = &vulkan_swapchain.swapchain,
+                    .pImageIndices = &imageIndex,
+                };
+
+                const vk_result: c.VkResult = c.vkQueuePresentKHR(self.vk_queue, &presentInfo);
+
+                if (vk_result == c.VK_ERROR_OUT_OF_DATE_KHR or vk_result == c.VK_SUBOPTIMAL_KHR) {
+                    const win_size = try self.sdl_window.getSize();
+                    try vulkan_swapchain.recreate(
+                        self.sdl_surface,
+                        self.vk_physical_device,
+                        command_pool,
+                        &imageIndex,
+                        @intCast(win_size.width),
+                        @intCast(win_size.height),
+                    );
+                } else if (vk_result < 0) {
+                    std.log.err("Failed to present Vulkan queue: {any}\n", .{vk_result});
+                }
+            } else if (vkResult != c.VK_TIMEOUT) {
+                std.log.err("Failed to acquire next Vulkan swapchain image:{any}\n", .{vkResult});
+            }
+
             var eventData = c.XrEventDataBuffer{
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
             };
@@ -257,7 +486,7 @@ pub const Engine = struct {
 
                         continue;
                     } else {
-                        should_quit = render(
+                        should_quit, const active_index = render(
                             self.allocator,
                             self.xr_session,
                             swapchain,
@@ -269,8 +498,9 @@ pub const Engine = struct {
                             render_pass,
                             pipeline_layout,
                             pipeline,
-                        ) catch true;
+                        ) catch .{ true, 0 };
                         quit.store(should_quit, .release);
+                        lastRenderedImageIndex = active_index;
                     }
                 }
             } else if (result != c.XR_SUCCESS) {
@@ -399,7 +629,7 @@ pub const Engine = struct {
         render_pass: c.VkRenderPass,
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
-    ) !bool {
+    ) !struct { bool, u32 } {
         var view_locate_info = c.XrViewLocateInfo{
             .type = c.XR_TYPE_VIEW_LOCATE_INFO,
             .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
@@ -425,7 +655,7 @@ pub const Engine = struct {
             views.ptr,
         ));
 
-        const ok = try renderEye(
+        const ok, const active_index = try renderEye(
             swapchain,
             swapchain_images,
             views,
@@ -436,7 +666,7 @@ pub const Engine = struct {
             pipeline,
         );
         if (!ok) {
-            return true;
+            return .{ true, active_index };
         }
 
         var projected_views: [build_options.eye_count]c.XrCompositionLayerProjectionView = undefined;
@@ -478,7 +708,7 @@ pub const Engine = struct {
         };
         try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
 
-        return false;
+        return .{ false, active_index };
     }
 
     fn renderEye(
@@ -490,7 +720,7 @@ pub const Engine = struct {
         render_pass: c.VkRenderPass,
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
-    ) !bool {
+    ) !struct { bool, u32 } {
         // _ = render_pass;
         // _ = pipeline;
         // _ = pipeline_layout;
@@ -603,6 +833,126 @@ pub const Engine = struct {
         c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
         c.vkCmdEndRenderPass(image.command_buffer);
 
+        const beforeSrcBarrier: c.VkImageMemoryBarrier = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .image = image.image.image,
+            .subresourceRange = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+
+        const beforeDstBarrier: c.VkImageMemoryBarrier = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = c.VK_ACCESS_NONE,
+            .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .image = image.vk_dup_image,
+            .subresourceRange = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+
+        const beforeBarriers = [_]c.VkImageMemoryBarrier{
+            beforeSrcBarrier,
+            beforeDstBarrier,
+        };
+
+        c.vkCmdPipelineBarrier(
+            image.command_buffer,
+            c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            null,
+            0,
+            null,
+            beforeBarriers.len,
+            &beforeBarriers,
+        );
+
+        var region: c.VkImageCopy = .{
+            .srcSubresource = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseArrayLayer = 0,
+                .mipLevel = 0,
+                .layerCount = 1,
+            },
+            .srcOffset = .{},
+            .dstSubresource = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseArrayLayer = 0,
+                .mipLevel = 0,
+                .layerCount = 1,
+            },
+            .dstOffset = .{},
+            .extent = .{ .width = swapchain.width, .height = swapchain.height, .depth = 1 },
+        };
+
+        c.vkCmdCopyImage(
+            image.command_buffer,
+            image.image.image,
+            c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            image.vk_dup_image,
+            c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &region,
+        );
+
+        const afterSrcBarrier: c.VkImageMemoryBarrier = .{ .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT, .dstAccessMask = c.VK_ACCESS_NONE, .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, .newLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, .image = image.image.image, .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        } };
+
+        const afterDstBarrier: c.VkImageMemoryBarrier = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .image = image.vk_dup_image,
+            .subresourceRange = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+
+        const afterBarriers = [_]c.VkImageMemoryBarrier{
+            afterSrcBarrier,
+            afterDstBarrier,
+        };
+
+        c.vkCmdPipelineBarrier(
+            image.command_buffer,
+            c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            null,
+            0,
+            null,
+            afterBarriers.len,
+            &afterBarriers,
+        );
+
         try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
 
         const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -621,7 +971,7 @@ pub const Engine = struct {
 
         try loader.xrCheck(c.xrReleaseSwapchainImage(swapchain.swapchain, &release_image_info));
 
-        return true;
+        return .{ true, active_index };
     }
 
     fn onInterrupt(signum: c_int) callconv(.c) void {
@@ -646,12 +996,14 @@ pub fn main() !void {
     };
     const xr_layers = &[_][*:0]const u8{
         "XR_APILAYER_LUNARG_core_validation",
-        "XR_APILAYER_LUNARG_api_dump",
+        // "XR_APILAYER_LUNARG_api_dump",
     };
 
     const vk_layers = &[_][*:0]const u8{
         "VK_LAYER_KHRONOS_validation",
     };
+
+    defer sdl.shutdown();
 
     const engine = try Engine.init(allocator, .{
         .xr_extensions = xr_extensions,

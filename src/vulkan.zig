@@ -123,19 +123,25 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, graphics_queue_f
     return .{ logical_device, queue };
 }
 
-pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice) ?u32 {
+pub fn findGraphicsQueueFamily(physical: c.VkPhysicalDevice, surface: c.VkSurfaceKHR) !u32 {
     var count: u32 = 0;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, null);
 
     var props: [16]c.VkQueueFamilyProperties = undefined;
     c.vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, &props);
     for (props[0..count], 0..) |qf, i| {
-        if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
+        var present: c.VkBool32 = 0;
+        const result: c.VkResult = c.vkGetPhysicalDeviceSurfaceSupportKHR(physical, @intCast(i), surface, &present);
+        if (result != c.VK_SUCCESS) {
+            std.log.err("Failed to get Vulkan physical device surface support: {d}", .{result});
+            return error.findGraphicsQueueFamily;
+        }
+        if (present != 0 and qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
             return @intCast(i);
         }
     }
 
-    return null;
+    return error.NoQueueFamily;
 }
 
 pub fn createCommandPool(device: c.VkDevice, graphicsQueueFamilyIndex: u32) !c.VkCommandPool {
@@ -407,6 +413,8 @@ pub const SwapchainImage = struct {
     descriptor_pool: c.VkDescriptorPool,
 
     image: c.XrSwapchainImageVulkanKHR,
+    vk_dup_image: c.VkImage,
+    vk_image_memory: c.VkDeviceMemory,
     image_view: c.VkImageView,
     framebuffer: c.VkFramebuffer,
     memory: c.VkDeviceMemory,
@@ -535,11 +543,63 @@ pub const SwapchainImage = struct {
 
         c.vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, null);
 
+        var imageCreateInfo: c.VkImageCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = c.VK_IMAGE_TYPE_2D,
+            .extent = .{ .width = swapchain.width, .height = swapchain.height, .depth = 1 },
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .format = swapchain.format,
+            .samples = c.VK_SAMPLE_COUNT_1_BIT,
+            .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+            .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .usage = c.VK_IMAGE_USAGE_TRANSFER_SRC_BIT | c.VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        };
+
+        var vk_image: c.VkImage = undefined;
+        try loader.vkCheck(c.vkCreateImage(device, &imageCreateInfo, null, &vk_image));
+        var image_requirements: c.VkMemoryRequirements = undefined;
+        c.vkGetImageMemoryRequirements(device, vk_image, &image_requirements);
+
+        const image_memory_properties_flags: c.VkMemoryPropertyFlags = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+        var image_memory_type_index: u32 = 0;
+        c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
+
+        var found_image_memory_type = false;
+        for (0..properties.memoryTypeCount) |i| {
+            if ((image_requirements.memoryTypeBits & (shiftee << @intCast(i))) == 0) {
+                continue;
+            }
+            if ((properties.memoryTypes[i].propertyFlags & image_memory_properties_flags) != image_memory_properties_flags) {
+                continue;
+            }
+            image_memory_type_index = @intCast(i);
+            found_image_memory_type = true;
+            break;
+        }
+        if (!found_image_memory_type) {
+            std.log.err("Failed to find suitable memory type for vk_dup_image!", .{});
+            return error.NoSuitableImageMemory;
+        }
+        var image_allocate_info = c.VkMemoryAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .allocationSize = image_requirements.size,
+            .memoryTypeIndex = image_memory_type_index,
+        };
+
+        var image_memory: c.VkDeviceMemory = undefined;
+        try loader.vkCheck(c.vkAllocateMemory(device, &image_allocate_info, null, &image_memory));
+
+        try loader.vkCheck(c.vkBindImageMemory(device, vk_image, image_memory, 0));
         return .{
             .device = device,
             .command_pool = command_pool,
             .descriptor_pool = descriptor_pool,
             .image = image,
+            .vk_dup_image = vk_image,
+            .vk_image_memory = image_memory,
             .image_view = image_view,
             .framebuffer = framebuffer,
             .memory = memory,
@@ -558,5 +618,18 @@ pub const SwapchainImage = struct {
         c.vkFreeMemory(self.device, self.memory, null);
         c.vkDestroyFramebuffer(self.device, self.framebuffer, null);
         c.vkDestroyImageView(self.device, self.image_view, null);
+        c.vkDestroyImage(self.device, self.vk_dup_image, null);
     }
 };
+
+pub fn createFence(device: c.VkDevice) !c.VkFence {
+    var createInfo: c.VkFenceCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    };
+
+    var fence: c.VkFence = undefined;
+
+    try loader.vkCheck(c.vkCreateFence(device, &createInfo, null, &fence));
+
+    return fence;
+}

@@ -191,8 +191,10 @@ pub fn getVulkanInstanceRequirements(
         "VK_KHR_external_memory_capabilities",
         "VK_KHR_get_physical_device_properties2",
         "VK_KHR_external_fence_capabilities",
-        "VK_KHR_surface",
         "VK_KHR_external_semaphore_capabilities",
+        "VK_KHR_surface",
+        // "VK_KHR_wayland_surface",
+        "VK_KHR_xlib_surface",
         "VK_EXT_debug_utils", // TODO: <---- EXTRA EXT add manunally!!!!
     };
 
@@ -244,6 +246,8 @@ pub fn getVulkanDeviceRequirements(
     const extensions = &[_][*:0]const u8{
         "VK_KHR_external_fence_fd",
         "VK_KHR_external_semaphore_fd",
+        "VK_KHR_swapchain",
+
         // "VK_KHR_external_memory",
         // "VK_KHR_external_memory_fd",
         // "VK_KHR_get_memory_requirements2",
@@ -341,8 +345,6 @@ pub const Swapchain = struct {
     pub fn getImages(self: Self, allocator: std.mem.Allocator) ![]c.XrSwapchainImageVulkanKHR {
         var image_count: u32 = undefined;
         try loader.xrCheck(c.xrEnumerateSwapchainImages(self.swapchain, 0, &image_count, null));
-
-        std.debug.print("\n\n===========image count: {d}\n\n", .{image_count});
 
         var images = try allocator.alloc(c.XrSwapchainImageVulkanKHR, image_count);
         @memset(images, .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });

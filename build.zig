@@ -58,10 +58,18 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    const sdl3 = b.dependency("sdl3", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    exe.root_module.addImport("sdl3", sdl3.module("sdl3"));
+
     const numz_dep = b.dependency("numz", .{
         .target = target,
         .optimize = optimize,
     });
+
     exe.root_module.addImport("numz", numz_dep.module("numz"));
 
     const build_options = b.addOptions();
