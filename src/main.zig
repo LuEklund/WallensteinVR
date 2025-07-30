@@ -711,8 +711,10 @@ pub const Engine = struct {
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
         };
 
-        var active_index: u32 = 0;
-        try loader.xrCheck(c.xrAcquireSwapchainImage(xr_swapchain.color_swapchain, &acquire_image_info, &active_index));
+        var color_active_index: u32 = 0;
+        var depth_active_index: u32 = 0;
+        try loader.xrCheck(c.xrAcquireSwapchainImage(xr_swapchain.color_swapchain, &acquire_image_info, &color_active_index));
+        try loader.xrCheck(c.xrAcquireSwapchainImage(xr_swapchain.depth_swapchain, &acquire_image_info, &depth_active_index));
 
         var wait_image_info = c.XrSwapchainImageWaitInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
@@ -720,7 +722,8 @@ pub const Engine = struct {
         };
 
         try loader.xrCheck(c.xrWaitSwapchainImage(xr_swapchain.color_swapchain, &wait_image_info));
-        const image: XrSwapchain.SwapchainImage = xr_swapchain.swapchain_images[active_index];
+        try loader.xrCheck(c.xrWaitSwapchainImage(xr_swapchain.depth_swapchain, &wait_image_info));
+        const image: XrSwapchain.SwapchainImage = xr_swapchain.swapchain_images[color_active_index];
 
         var data: ?[*]f32 = null;
         try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
@@ -949,8 +952,9 @@ pub const Engine = struct {
         };
 
         try loader.xrCheck(c.xrReleaseSwapchainImage(xr_swapchain.color_swapchain, &release_image_info));
+        try loader.xrCheck(c.xrReleaseSwapchainImage(xr_swapchain.depth_swapchain, &release_image_info));
 
-        return .{ true, active_index };
+        return .{ true, color_active_index };
     }
 
     fn onInterrupt(signum: c_int) callconv(.c) void {
