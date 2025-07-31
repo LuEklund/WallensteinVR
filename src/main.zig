@@ -894,6 +894,7 @@ pub const Engine = struct {
 
         c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
 
+        //TODO: HERE WE DO THE CUBEOIDS!
         c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
         c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
