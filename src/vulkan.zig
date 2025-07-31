@@ -280,12 +280,25 @@ pub fn createPipeline(
     var pipeline_layout: c.VkPipelineLayout = undefined;
     try loader.vkCheck(c.vkCreatePipelineLayout(device, &layout_create_info, null, &pipeline_layout));
 
+    var vertex_binding: c.VkVertexInputBindingDescription = .{
+        .binding = 0,
+        .stride = @sizeOf(c.XrVector4f),
+        .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+
+    var vertex_input: c.VkVertexInputAttributeDescription = .{
+        .binding = 0,
+        .location = 0,
+        .offset = @sizeOf(c.XrVector4f),
+        .format = c.VK_FORMAT_R32G32B32A32_SFLOAT,
+    };
+
     var vertex_input_stage = c.VkPipelineVertexInputStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = 0,
-        .pVertexBindingDescriptions = null,
-        .vertexAttributeDescriptionCount = 0,
-        .pVertexAttributeDescriptions = null,
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &vertex_binding,
+        .vertexAttributeDescriptionCount = 1,
+        .pVertexAttributeDescriptions = &vertex_input,
     };
 
     var input_assembly_stage = c.VkPipelineInputAssemblyStateCreateInfo{
@@ -416,4 +429,68 @@ pub fn createFence(device: c.VkDevice) !c.VkFence {
     try loader.vkCheck(c.vkCreateFence(device, &createInfo, null, &fence));
 
     return fence;
+}
+
+pub const VulkanBuffer = struct {
+    buffer: c.VkBuffer,
+    memory: c.VkDeviceMemory,
+};
+
+pub fn createBuffer(
+    physical_device: c.VkPhysicalDevice,
+    device: c.VkDevice,
+    usage_type: u32,
+    len: u32,
+    type_size: u32,
+    data: *void,
+) !VulkanBuffer {
+    //(bufferCI.type == BufferCreateInfo::Type::VERTEX ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT : 0) | (bufferCI.type == BufferCreateInfo::Type::INDEX ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT : 0) | (bufferCI.type == BufferCreateInfo::Type::UNIFORM ? VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT : 0),
+    var buffer_create_info: c.VkBufferCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .size = len * type_size,
+        .usage = usage_type,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = null,
+    };
+    var buffer: c.VkBuffer = 0;
+    c.vkCreateBuffer(device, &buffer_create_info, null, &buffer);
+
+    var memoryRequirements: c.VkMemoryRequirements = 0;
+    c.vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
+
+    var properties: c.VkPhysicalDeviceMemoryProperties = 0;
+    c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
+    const flags: c.VkMemoryPropertyFlags = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    var memory_type_index: u32 = 0;
+    const shiftee: u32 = 1;
+
+    for (0..properties.memoryTypeCount) |i| {
+        if ((properties.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
+            continue;
+        memory_type_index = @intCast(i);
+        break;
+    } else return error.MemoryRequirements;
+
+    var allocate_info: c.VkMemoryAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = null,
+        .allocationSize = memoryRequirements.size,
+        .memoryTypeIndex = memory_type_index,
+    };
+
+    var memory: c.VkDeviceMemory = 0;
+    try loader.vkCheck(c.vkAllocateMemory(device, &allocate_info, null, &memory));
+    try loader.vkCheck(c.vkBindBufferMemory(device, buffer, memory, 0));
+
+    var mappedData: *void = null;
+    try loader.vkCheck(c.vkMapMemory(device, memory, 0, buffer_create_info.size, 0, &mappedData));
+    if (mappedData and data) {
+        @memcpy(mappedData[0..buffer_create_info.size], data);
+    }
+    c.vkUnmapMemory(device, memory);
+
+    return .{ buffer, memory };
 }
