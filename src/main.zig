@@ -18,27 +18,27 @@ var grab_distance: f32 = 1;
 const windowWidth: c_int = 1600;
 const windowHeight: c_int = 900;
 
-const normals: [6]c.XrVector4f = .{
-    .{ 1.00, 0.00, 0.00, 0 },
-    .{ -1.00, 0.00, 0.00, 0 },
-    .{ 0.00, 1.00, 0.00, 0 },
-    .{ 0.00, -1.00, 0.00, 0 },
-    .{ 0.00, 0.00, 1.00, 0 },
-    .{ 0.00, 0.0, -1.00, 0 },
+// var normals: [6]c.XrVector4f = .{
+// .{ .x = 1.00, .y = 0.00, .z = 0.00, .w = 0 },
+// .{ .x = -1.00, .y = 0.00, .z = 0.00, .w = 0 },
+// .{ .x = 0.00, .y = 1.00, .z = 0.00, .w = 0 },
+// .{ .x = 0.00, .y = -1.00, .z = 0.00, .w = 0 },
+// .{ .x = 0.00, .y = 0.00, .z = 1.00, .w = 0 },
+// .{ .x = 0.00, .y = 0.0, .z = -1.00, .w = 0 },
+// };
+//
+var cube_vertecies: [8]c.XrVector4f = .{
+    .{ .x = 0.5, .y = 0.5, .z = 0.5 + 4, .w = 1.0 }, // 0: Top-Front-Right
+    .{ .x = 0.5, .y = 0.5, .z = -0.5 + 4, .w = 1.0 }, // 1: Top-Back-Right
+    .{ .x = 0.5, .y = -0.5, .z = 0.5 + 4, .w = 1.0 }, // 2: Bottom-Front-Right
+    .{ .x = 0.5, .y = -0.5, .z = -0.5 + 4, .w = 1.0 }, // 3: Bottom-Back-Right
+    .{ .x = -0.5, .y = 0.5, .z = 0.5 + 4, .w = 1.0 }, // 4: Top-Front-Left
+    .{ .x = -0.5, .y = 0.5, .z = -0.5 + 4, .w = 1.0 }, // 5: Top-Back-Left
+    .{ .x = -0.5, .y = -0.5, .z = 0.5 + 4, .w = 1.0 }, // 6: Bottom-Front-Left
+    .{ .x = -0.5, .y = -0.5, .z = -0.5 + 4, .w = 1.0 }, // 7: Bottom-Back-Left
 };
 
-const cube_vertecies: [8]c.XrVector4f = .{
-    .{ 0.5, 0.5, 0.5, 1.0 }, // 0: Top-Front-Right
-    .{ 0.5, 0.5, -0.5, 1.0 }, // 1: Top-Back-Right
-    .{ 0.5, -0.5, 0.5, 1.0 }, // 2: Bottom-Front-Right
-    .{ 0.5, -0.5, -0.5, 1.0 }, // 3: Bottom-Back-Right
-    .{ -0.5, 0.5, 0.5, 1.0 }, // 4: Top-Front-Left
-    .{ -0.5, 0.5, -0.5, 1.0 }, // 5: Top-Back-Left
-    .{ -0.5, -0.5, 0.5, 1.0 }, // 6: Bottom-Front-Left
-    .{ -0.5, -0.5, -0.5, 1.0 }, // 7: Bottom-Back-Left
-};
-
-const cube_indecies: [36]u32 = .{
+var cube_indecies: [36]u32 = .{
     // Front face
     4, 6, 0,
     0, 6, 2,
@@ -58,6 +58,10 @@ const cube_indecies: [36]u32 = .{
     6, 7, 2,
     2, 7, 3,
 };
+
+var index_buffer: vk.VulkanBuffer = undefined;
+var vertex_buffer: vk.VulkanBuffer = undefined;
+// var normal_buffer: vk.VulkanBuffer = undefined;
 
 pub const Engine = struct {
     const Self = @This();
@@ -81,10 +85,6 @@ pub const Engine = struct {
     sdl_surface: c.VkSurfaceKHR,
 
     //TODO: Move OUT!
-
-    index_buffer: vk.VulkanBuffer,
-    vertex_buffer: vk.VulkanBuffer,
-    normal_buffer: vk.VulkanBuffer,
 
     pub const Config = struct {
         xr_extensions: []const [*:0]const u8,
@@ -131,30 +131,30 @@ pub const Engine = struct {
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index);
 
         //TODO: MOVE OUT!
-        const vertex_buffer = vk.createBuffer(
+        vertex_buffer = try vk.createBuffer(
             physical_device,
             logical_device,
             c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
             cube_vertecies.len,
             @sizeOf(c.XrVector4f),
-            &cube_vertecies,
+            @ptrCast(&cube_vertecies),
         );
-        const index_buffer = vk.createBuffer(
+        index_buffer = try vk.createBuffer(
             physical_device,
             logical_device,
             c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
             cube_indecies.len,
             @sizeOf(c.XrVector4f),
-            &cube_indecies,
+            @ptrCast(&cube_indecies),
         );
-        const normal_buffer = vk.createBuffer(
-            physical_device,
-            logical_device,
-            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            normals.len,
-            @sizeOf(c.XrVector4f),
-            &normals,
-        );
+        // normal_buffer = try vk.createBuffer(
+        //     physical_device,
+        //     logical_device,
+        //     c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        //     normals.len,
+        //     @sizeOf(c.XrVector4f),
+        //     @ptrCast(&normals),
+        // );
         return .{
             .allocator = allocator,
             .xr_instance = xr_instance,
@@ -172,9 +172,6 @@ pub const Engine = struct {
             .vkid = vkid,
             .sdl_window = window,
             .sdl_surface = @ptrCast(surface.surface),
-            .vertex_buffer = vertex_buffer,
-            .index_buffer = index_buffer,
-            .normal_buffer = normal_buffer,
         };
     }
 
@@ -185,13 +182,13 @@ pub const Engine = struct {
         _ = c.xrDestroySession(self.xr_session);
         _ = c.xrDestroyInstance(self.xr_instance);
 
-        _ = c.vkDestroyBuffer(self.vk_logical_device, self.vertex_buffer.buffer, null);
-        _ = c.vkDestroyBuffer(self.vk_logical_device, self.index_buffer.buffer, null);
-        _ = c.vkDestroyBuffer(self.vk_logical_device, self.normal_buffer.buffer, null);
+        _ = c.vkDestroyBuffer(self.vk_logical_device, vertex_buffer.buffer, null);
+        _ = c.vkDestroyBuffer(self.vk_logical_device, index_buffer.buffer, null);
+        // _ = c.vkDestroyBuffer(self.vk_logical_device, normal_buffer.buffer, null);
 
-        _ = c.vkFreeMemory(self.vk_logical_device, self.vertex_buffer.memory, null);
-        _ = c.vkFreeMemory(self.vk_logical_device, self.index_buffer.memory, null);
-        _ = c.vkFreeMemory(self.vk_logical_device, self.normal_buffer.memory, null);
+        _ = c.vkFreeMemory(self.vk_logical_device, vertex_buffer.memory, null);
+        _ = c.vkFreeMemory(self.vk_logical_device, index_buffer.memory, null);
+        // _ = c.vkFreeMemory(self.vk_logical_device, normal_buffer.memory, null);
 
         _ = c.vkDestroyDevice(self.vk_logical_device, null);
         _ = c.vkDestroyInstance(self.vk_instance, null);
@@ -895,9 +892,24 @@ pub const Engine = struct {
         c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
 
         //TODO: HERE WE DO THE CUBEOIDS!
+
         c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
-        c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
+
+        var offsets: [1]c.VkDeviceSize = .{0};
+        var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};
+        c.vkCmdBindVertexBuffers(image.command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
+        c.vkCmdBindIndexBuffer(image.command_buffer, index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
+        c.vkCmdDrawIndexed(
+            image.command_buffer,
+            cube_indecies.len,
+            1,
+            0,
+            0,
+            0,
+        );
+
+        // c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
         c.vkCmdEndRenderPass(image.command_buffer);
 
         const beforeSrcBarrier: c.VkImageMemoryBarrier = .{

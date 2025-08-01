@@ -209,7 +209,7 @@ pub const SwapchainImage = struct {
         const shiftee: u32 = 1;
 
         for (0..properties.memoryTypeCount) |i| {
-            if ((requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0 or properties.memoryTypes[i].propertyFlags & flags) != flags)
+            if ((requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
                 continue;
             memory_type_index = @intCast(i);
             break;

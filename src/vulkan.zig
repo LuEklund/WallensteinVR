@@ -289,7 +289,7 @@ pub fn createPipeline(
     var vertex_input: c.VkVertexInputAttributeDescription = .{
         .binding = 0,
         .location = 0,
-        .offset = @sizeOf(c.XrVector4f),
+        .offset = 0,
         .format = c.VK_FORMAT_R32G32B32A32_SFLOAT,
     };
 
@@ -442,7 +442,7 @@ pub fn createBuffer(
     usage_type: u32,
     len: u32,
     type_size: u32,
-    data: *void,
+    data: *anyopaque,
 ) !VulkanBuffer {
     //(bufferCI.type == BufferCreateInfo::Type::VERTEX ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT : 0) | (bufferCI.type == BufferCreateInfo::Type::INDEX ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT : 0) | (bufferCI.type == BufferCreateInfo::Type::UNIFORM ? VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT : 0),
     var buffer_create_info: c.VkBufferCreateInfo = .{
@@ -455,20 +455,20 @@ pub fn createBuffer(
         .queueFamilyIndexCount = 0,
         .pQueueFamilyIndices = null,
     };
-    var buffer: c.VkBuffer = 0;
-    c.vkCreateBuffer(device, &buffer_create_info, null, &buffer);
+    var buffer: c.VkBuffer = undefined;
+    try loader.vkCheck(c.vkCreateBuffer(device, &buffer_create_info, null, &buffer));
 
-    var memoryRequirements: c.VkMemoryRequirements = 0;
+    var memoryRequirements: c.VkMemoryRequirements = undefined;
     c.vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
 
-    var properties: c.VkPhysicalDeviceMemoryProperties = 0;
+    var properties: c.VkPhysicalDeviceMemoryProperties = undefined;
     c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
     const flags: c.VkMemoryPropertyFlags = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     var memory_type_index: u32 = 0;
     const shiftee: u32 = 1;
 
     for (0..properties.memoryTypeCount) |i| {
-        if ((properties.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
+        if ((memoryRequirements.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
             continue;
         memory_type_index = @intCast(i);
         break;
@@ -481,16 +481,20 @@ pub fn createBuffer(
         .memoryTypeIndex = memory_type_index,
     };
 
-    var memory: c.VkDeviceMemory = 0;
+    var memory: c.VkDeviceMemory = undefined;
     try loader.vkCheck(c.vkAllocateMemory(device, &allocate_info, null, &memory));
     try loader.vkCheck(c.vkBindBufferMemory(device, buffer, memory, 0));
 
-    var mappedData: *void = null;
-    try loader.vkCheck(c.vkMapMemory(device, memory, 0, buffer_create_info.size, 0, &mappedData));
-    if (mappedData and data) {
-        @memcpy(mappedData[0..buffer_create_info.size], data);
-    }
-    c.vkUnmapMemory(device, memory);
+    var mappedData: *anyopaque = undefined;
+    try loader.vkCheck(c.vkMapMemory(device, memory, 0, buffer_create_info.size, 0, @ptrCast(&mappedData)));
+    const dest_bytes: [*]u8 = @ptrCast(mappedData);
+    const src_bytes: [*]const u8 = @ptrCast(data);
+    const dest_slice = dest_bytes[0..buffer_create_info.size];
+    const src_slice = src_bytes[0..buffer_create_info.size];
+    @memcpy(dest_slice, src_slice);
 
-    return .{ buffer, memory };
+    return .{
+        .buffer = buffer,
+        .memory = memory,
+    };
 }
