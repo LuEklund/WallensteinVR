@@ -209,15 +209,11 @@ pub const SwapchainImage = struct {
         const shiftee: u32 = 1;
 
         for (0..properties.memoryTypeCount) |i| {
-            if ((requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0)) {
+            if ((requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
                 continue;
-            }
-            if ((properties.memoryTypes[i].propertyFlags & flags) != flags) {
-                continue;
-            }
             memory_type_index = @intCast(i);
             break;
-        }
+        } else return error.MemoryRequirements;
 
         var allocate_info = c.VkMemoryAllocateInfo{
             .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -303,7 +299,7 @@ pub const SwapchainImage = struct {
             image_memory_type_index = @intCast(i);
             found_image_memory_type = true;
             break;
-        }
+        } else return error.MemoryRequirements;
         if (!found_image_memory_type) {
             std.log.err("Failed to find suitable memory type for vk_dup_image!", .{});
             return error.NoSuitableImageMemory;
