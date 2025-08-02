@@ -13,7 +13,7 @@ const sdl = @import("sdl3");
 var quit: std.atomic.Value(bool) = .init(false);
 
 var object_grabbed: u32 = 0;
-var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
+var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = -2 };
 var grab_distance: f32 = 1;
 const windowWidth: c_int = 1600;
 const windowHeight: c_int = 900;
@@ -198,8 +198,8 @@ pub const Engine = struct {
     pub fn start(self: Self) !void {
         const eye_count = build_options.eye_count;
         var vulkan_swapchain: VulkanSwapchain = try .init(self.vk_physical_device, self.vk_logical_device, self.sdl_surface, windowWidth, windowHeight);
-        var xr_swapchain: XrSwapchain = try .init(eye_count, self.xr_instance, self.xr_system_id, self.xr_session);
-        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, xr_swapchain.format, xr_swapchain.sample_count);
+        var xr_swapchain: XrSwapchain = try .init(eye_count, self.vk_physical_device, self.xr_instance, self.xr_system_id, self.xr_session);
+        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, xr_swapchain.format, xr_swapchain.depth_format, xr_swapchain.sample_count);
         defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(self.vk_logical_device, self.graphics_queue_family_index);
         defer c.vkDestroyCommandPool(self.vk_logical_device, command_pool, null);
@@ -855,10 +855,12 @@ pub const Engine = struct {
 
         try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
 
-        const clearValue = c.VkClearValue{
-            .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } },
-        };
-
+        // const clearValue = c.VkClearValue{
+        //     .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } },
+        // };
+        var clear_values: [2]c.VkClearValue = undefined;
+        clear_values[0].color.float32 = .{ 0.0, 0.0, 0.0, 1.0 };
+        clear_values[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
         const begin_render_pass_info = c.VkRenderPassBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
             .renderPass = render_pass,
@@ -867,8 +869,8 @@ pub const Engine = struct {
                 .offset = .{ .x = 0, .y = 0 },
                 .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
             },
-            .clearValueCount = 1,
-            .pClearValues = &clearValue,
+            .clearValueCount = clear_values.len,
+            .pClearValues = &clear_values[0],
         };
 
         c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);

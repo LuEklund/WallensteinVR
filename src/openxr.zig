@@ -292,7 +292,7 @@ pub fn createSession(
 pub fn createSpace(session: c.XrSession) !c.XrSpace {
     var space_create_info = c.XrReferenceSpaceCreateInfo{
         .type = c.XR_TYPE_REFERENCE_SPACE_CREATE_INFO,
-        .referenceSpaceType = c.XR_REFERENCE_SPACE_TYPE_STAGE,
+        .referenceSpaceType = c.XR_REFERENCE_SPACE_TYPE_VIEW,
         .poseInReferenceSpace = .{ .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1 }, .position = .{ .x = 0, .y = 0, .z = 0 } },
     };
 

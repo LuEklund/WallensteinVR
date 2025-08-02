@@ -22,6 +22,9 @@ layout(binding = 0) uniform Matrices {
 void main()
 {
     gl_Position = matrices.projection[gl_ViewIndex] * matrices.view[gl_ViewIndex] * matrices.model * vertex;
-    color =  vec3(sin(gl_VertexIndex), cos(gl_VertexIndex), tan(gl_VertexIndex));
+    float greenChannel = (sin(gl_VertexIndex) + 1) / 2;
+    float redChannel = (cos(gl_VertexIndex) + 1) / 2;
+    float blueChannel = (tan(gl_VertexIndex) + 1) / 2;
+    color =  vec3(redChannel, greenChannel, blueChannel);
     //color = abs(vertices[gl_VertexIndex]);
 }

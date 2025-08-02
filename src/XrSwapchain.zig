@@ -10,13 +10,15 @@ color_swapchain: c.XrSwapchain,
 depth_swapchain: c.XrSwapchain,
 swapchain_images: [16]SwapchainImage,
 xr_vk_images: [16]c.XrSwapchainImageVulkanKHR,
+xr_vk_depth_images: [16]c.XrSwapchainImageVulkanKHR,
 image_count: u32,
 format: c.VkFormat,
+depth_format: c.VkFormat,
 sample_count: u32,
 width: u32,
 height: u32,
 
-pub fn init(eye_count: comptime_int, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) !@This() {
+pub fn init(eye_count: comptime_int, physical_deivce: c.VkPhysicalDevice, instance: c.XrInstance, system_id: c.XrSystemId, session: c.XrSession) !@This() {
     var config_views = [_]c.XrViewConfigurationView{
         .{ .type = c.XR_TYPE_VIEW_CONFIGURATION_VIEW },
     } ** eye_count;
@@ -31,20 +33,31 @@ pub fn init(eye_count: comptime_int, instance: c.XrInstance, system_id: c.XrSyst
     var formats: [16]i64 = undefined;
     try loader.xrCheck(c.xrEnumerateSwapchainFormats(session, format_count, &format_count, &formats[0]));
 
-    var color_fotmat: i64 = undefined;
+    var color_format: i64 = undefined;
     for (formats) |fmt| {
         if (fmt == c.VK_FORMAT_R8G8B8A8_SRGB) {
-            color_fotmat = fmt;
+            color_format = fmt;
             break;
         }
     } else {
         @panic("Did not find supported color format\n");
     }
 
-    var depth_fotmat: i64 = undefined;
+    var depth_format: i64 = undefined;
+    const features: c.VkFormatFeatureFlags = c.VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    const tiling: c.VkImageTiling = c.VK_IMAGE_TILING_OPTIMAL;
     for (formats) |fmt| {
-        if (fmt == c.VK_FORMAT_D32_SFLOAT) {
-            depth_fotmat = fmt;
+        if (fmt != c.VK_FORMAT_D32_SFLOAT) {
+            continue;
+        }
+        var props: c.VkFormatProperties = undefined;
+        c.vkGetPhysicalDeviceFormatProperties(physical_deivce, @intCast(fmt), &props);
+
+        if (tiling == c.VK_IMAGE_TILING_LINEAR and (props.linearTilingFeatures & features) == features) {
+            depth_format = fmt;
+            break;
+        } else if (tiling == c.VK_IMAGE_TILING_OPTIMAL and (props.optimalTilingFeatures & features) == features) {
+            depth_format = fmt;
             break;
         }
     } else {
@@ -54,7 +67,7 @@ pub fn init(eye_count: comptime_int, instance: c.XrInstance, system_id: c.XrSyst
     var swapchain_create_info = c.XrSwapchainCreateInfo{
         .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
         .usageFlags = c.XR_SWAPCHAIN_USAGE_SAMPLED_BIT | c.XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT,
-        .format = color_fotmat,
+        .format = color_format,
         .sampleCount = config_views[0].recommendedSwapchainSampleCount,
         .width = config_views[0].recommendedImageRectWidth,
         .height = config_views[0].recommendedImageRectHeight,
@@ -68,7 +81,7 @@ pub fn init(eye_count: comptime_int, instance: c.XrInstance, system_id: c.XrSyst
     swapchain_create_info = c.XrSwapchainCreateInfo{
         .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
         .usageFlags = c.XR_SWAPCHAIN_USAGE_SAMPLED_BIT | c.XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-        .format = depth_fotmat,
+        .format = depth_format,
         .sampleCount = config_views[0].recommendedSwapchainSampleCount,
         .width = config_views[0].recommendedImageRectWidth,
         .height = config_views[0].recommendedImageRectHeight,
@@ -84,8 +97,10 @@ pub fn init(eye_count: comptime_int, instance: c.XrInstance, system_id: c.XrSyst
         .depth_swapchain = depth_swapchain,
         .swapchain_images = undefined,
         .xr_vk_images = undefined,
+        .xr_vk_depth_images = undefined,
         .image_count = undefined,
-        .format = @intCast(color_fotmat),
+        .format = @intCast(color_format),
+        .depth_format = @intCast(depth_format),
         .sample_count = config_views[0].recommendedSwapchainSampleCount,
         .width = config_views[0].recommendedImageRectWidth,
         .height = config_views[0].recommendedImageRectHeight,
@@ -109,8 +124,14 @@ pub fn createSwapchainImages(
         self.xr_vk_images[i].image = null;
         self.xr_vk_images[i].next = null;
     }
-
     try loader.xrCheck(c.xrEnumerateSwapchainImages(self.color_swapchain, self.image_count, &self.image_count, @ptrCast(&self.xr_vk_images[0])));
+
+    for (0..self.image_count) |i| {
+        self.xr_vk_depth_images[i].type = c.XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR;
+        self.xr_vk_depth_images[i].image = null;
+        self.xr_vk_depth_images[i].next = null;
+    }
+    try loader.xrCheck(c.xrEnumerateSwapchainImages(self.depth_swapchain, self.image_count, &self.image_count, @ptrCast(&self.xr_vk_depth_images[0])));
 
     for (0..self.image_count) |i| {
         self.swapchain_images[i] = try .init(
@@ -120,10 +141,9 @@ pub fn createSwapchainImages(
             command_pool,
             descriptor_pool,
             descriptor_set_layout,
-            self.format,
-            self.width,
-            self.height,
+            self,
             self.xr_vk_images[i],
+            self.xr_vk_depth_images[i],
         );
     }
 }
@@ -152,16 +172,30 @@ pub const SwapchainImage = struct {
         command_pool: c.VkCommandPool,
         descriptor_pool: c.VkDescriptorPool,
         descriptor_set_layout: c.VkDescriptorSetLayout,
-        format: c_uint,
-        width: u32,
-        height: u32,
+        my_xr_swapchain: *XrSwapchain,
         image: c.XrSwapchainImageVulkanKHR,
+        depth_iamge: c.XrSwapchainImageVulkanKHR,
     ) !Self {
+        const width = my_xr_swapchain.width;
+        const height = my_xr_swapchain.height;
         var image_view_create_info = c.VkImageViewCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = image.image,
             .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-            .format = format,
+            .format = my_xr_swapchain.format,
+            .subresourceRange = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 2, //<-- eye count
+            },
+        };
+        var depth_image_view_create_info = c.VkImageViewCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = depth_iamge.image,
+            .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+            .format = my_xr_swapchain.depth_format,
             .subresourceRange = .{
                 .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = 0,
@@ -173,12 +207,19 @@ pub const SwapchainImage = struct {
 
         var image_view: c.VkImageView = undefined;
         try loader.vkCheck(c.vkCreateImageView(device, &image_view_create_info, null, &image_view));
+        var depth_image_view: c.VkImageView = undefined;
+        try loader.vkCheck(c.vkCreateImageView(device, &depth_image_view_create_info, null, &depth_image_view));
+
+        var image_views: [2]c.VkImageView = .{
+            image_view,
+            depth_image_view,
+        };
 
         var framebuffer_create_info = c.VkFramebufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = render_pass,
-            .attachmentCount = 1,
-            .pAttachments = &image_view,
+            .attachmentCount = image_views.len,
+            .pAttachments = &image_views[0],
             .width = width,
             .height = height,
             .layers = 1,
@@ -270,7 +311,7 @@ pub const SwapchainImage = struct {
             .extent = .{ .width = width, .height = height, .depth = 1 },
             .mipLevels = 1,
             .arrayLayers = 1,
-            .format = format,
+            .format = my_xr_swapchain.format,
             .samples = c.VK_SAMPLE_COUNT_1_BIT,
             .tiling = c.VK_IMAGE_TILING_OPTIMAL,
             .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,

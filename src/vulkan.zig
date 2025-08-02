@@ -158,9 +158,9 @@ pub fn createCommandPool(device: c.VkDevice, graphicsQueueFamilyIndex: u32) !c.V
     return commandPool;
 }
 
-pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat, sample_count: c.VkSampleCountFlagBits) !c.VkRenderPass {
-    var attachment = c.VkAttachmentDescription{
-        .format = format,
+pub fn createRenderPass(device: c.VkDevice, color_format: c.VkFormat, depth_format: c.VkFormat, sample_count: c.VkSampleCountFlagBits) !c.VkRenderPass {
+    const color_attachment = c.VkAttachmentDescription{
+        .format = color_format,
         .samples = sample_count,
         .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
@@ -170,15 +170,31 @@ pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat, sample_count: c.
         .finalLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
 
-    var attachment_reference = c.VkAttachmentReference{
+    var color_attachment_reference = c.VkAttachmentReference{
         .attachment = 0,
         .layout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+    const depth_attachment = c.VkAttachmentDescription{
+        .format = depth_format,
+        .samples = sample_count,
+        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
+
+    var depth_attachment_reference = c.VkAttachmentReference{
+        .attachment = 1,
+        .layout = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
 
     var subpass = c.VkSubpassDescription{
         .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1,
-        .pColorAttachments = &attachment_reference,
+        .pColorAttachments = &color_attachment_reference,
+        .pDepthStencilAttachment = &depth_attachment_reference,
     };
 
     const viewMask: c_int = 0b11;
@@ -192,14 +208,30 @@ pub fn createRenderPass(device: c.VkDevice, format: c.VkFormat, sample_count: c.
         .pCorrelationMasks = @ptrCast(&correlationMask),
     };
 
+    var attachments: [2]c.VkAttachmentDescription = .{
+        color_attachment,
+        depth_attachment,
+    };
+
+    var dependency: c.VkSubpassDependency = .{
+        .srcSubpass = c.VK_SUBPASS_EXTERNAL,
+        .dstSubpass = 0,
+        .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        .srcAccessMask = c.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+        .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | c.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+    };
+
     var create_info = c.VkRenderPassCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .pNext = &multiview,
         .flags = 0,
-        .attachmentCount = 1,
-        .pAttachments = &attachment,
+        .attachmentCount = attachments.len,
+        .pAttachments = &attachments,
         .subpassCount = 1,
         .pSubpasses = &subpass,
+        .dependencyCount = 1,
+        .pDependencies = &dependency,
     };
 
     var render_pass: c.VkRenderPass = undefined;
