@@ -13,7 +13,7 @@ const sdl = @import("sdl3");
 var quit: std.atomic.Value(bool) = .init(false);
 
 var object_grabbed: u32 = 0;
-var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = -2 };
+var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
 var grab_distance: f32 = 1;
 const windowWidth: c_int = 1600;
 const windowHeight: c_int = 900;
@@ -28,14 +28,14 @@ const windowHeight: c_int = 900;
 // };
 //
 var cube_vertecies: [8]c.XrVector4f = .{
-    .{ .x = 0.5, .y = 0.5, .z = 0.5 + 4, .w = 1.0 }, // 0: Top-Front-Right
-    .{ .x = 0.5, .y = 0.5, .z = -0.5 + 4, .w = 1.0 }, // 1: Top-Back-Right
-    .{ .x = 0.5, .y = -0.5, .z = 0.5 + 4, .w = 1.0 }, // 2: Bottom-Front-Right
-    .{ .x = 0.5, .y = -0.5, .z = -0.5 + 4, .w = 1.0 }, // 3: Bottom-Back-Right
-    .{ .x = -0.5, .y = 0.5, .z = 0.5 + 4, .w = 1.0 }, // 4: Top-Front-Left
-    .{ .x = -0.5, .y = 0.5, .z = -0.5 + 4, .w = 1.0 }, // 5: Top-Back-Left
-    .{ .x = -0.5, .y = -0.5, .z = 0.5 + 4, .w = 1.0 }, // 6: Bottom-Front-Left
-    .{ .x = -0.5, .y = -0.5, .z = -0.5 + 4, .w = 1.0 }, // 7: Bottom-Back-Left
+    .{ .x = 0.5, .y = 0.5, .z = 0.5, .w = 1.0 }, // 0: Top-Front-Right
+    .{ .x = 0.5, .y = 0.5, .z = -0.5, .w = 1.0 }, // 1: Top-Back-Right
+    .{ .x = 0.5, .y = -0.5, .z = 0.5, .w = 1.0 }, // 2: Bottom-Front-Right
+    .{ .x = 0.5, .y = -0.5, .z = -0.5, .w = 1.0 }, // 3: Bottom-Back-Right
+    .{ .x = -0.5, .y = 0.5, .z = 0.5, .w = 1.0 }, // 4: Top-Front-Left
+    .{ .x = -0.5, .y = 0.5, .z = -0.5, .w = 1.0 }, // 5: Top-Back-Left
+    .{ .x = -0.5, .y = -0.5, .z = 0.5, .w = 1.0 }, // 6: Bottom-Front-Left
+    .{ .x = -0.5, .y = -0.5, .z = -0.5, .w = 1.0 }, // 7: Bottom-Back-Left
 };
 
 var cube_indecies: [36]u32 = .{
@@ -60,7 +60,9 @@ var cube_indecies: [36]u32 = .{
 };
 
 var index_buffer: vk.VulkanBuffer = undefined;
+var index_buffer2: vk.VulkanBuffer = undefined;
 var vertex_buffer: vk.VulkanBuffer = undefined;
+var vertex_buffer2: vk.VulkanBuffer = undefined;
 // var normal_buffer: vk.VulkanBuffer = undefined;
 
 pub const Engine = struct {
@@ -80,6 +82,12 @@ pub const Engine = struct {
     graphics_queue_family_index: u32,
     vk_logical_device: c.VkDevice,
     vk_queue: c.VkQueue,
+    action_set: c.XrActionSet,
+    l_action: c.XrAction,
+    r_action: c.XrAction,
+    l_action_g: c.XrAction,
+    r_action_g: c.XrAction,
+    hand_poses_space: [2]c.XrSpace,
     vkid: vk.Dispatcher,
     sdl_window: sdl.video.Window,
     sdl_surface: c.VkSurfaceKHR,
@@ -111,6 +119,29 @@ pub const Engine = struct {
         const xrd = try xr.Dispatcher.init(xr_instance);
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xrd, xr_instance);
         const xr_system_id: c.XrSystemId = try xr.getSystem(xr_instance);
+
+        const action_set: c.XrActionSet = try xr.createActionSet(xr_instance);
+        defer _ = c.xrDestroyActionSet(action_set);
+        const leftHandAction: c.XrAction = try xr.createAction(action_set, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        defer _ = c.xrDestroyAction(leftHandAction);
+        const rightHandAction: c.XrAction = try xr.createAction(action_set, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        defer _ = c.xrDestroyAction(leftHandAction);
+        // const hand_poses: [2]c.XrPosef = .{
+        //     .{
+        //         .orientation = .{ 1.0, 0.0, 0.0, 0.0 },
+        //         .position = .{ 0.0, 0.0, -100 },
+        //     },
+        //     .{
+        //         .orientation = .{ 1.0, 0.0, 0.0, 0.0 },
+        //         .position = .{ 0.0, 0.0, -100 },
+        //     },
+        // };
+        // _ = hand_poses;
+        const leftGrabAction: c.XrAction = try xr.createAction(action_set, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        defer _ = c.xrDestroyAction(leftGrabAction);
+        const right_grab_action: c.XrAction = try xr.createAction(action_set, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        defer _ = c.xrDestroyAction(right_grab_action);
+
         const xr_graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const xr_instance_extensions: []const [*:0]const u8 =
             try xr.getVulkanInstanceRequirements(xrd, allocator, xr_instance, xr_system_id);
 
@@ -129,6 +160,14 @@ pub const Engine = struct {
         const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index, vk_device_extensions);
 
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index);
+        const leftHandSpace: c.XrSpace = try xr.createActionSpace(xr_session, leftHandAction);
+        defer _ = c.xrDestroySpace(leftHandSpace);
+        const rightHandSpace: c.XrSpace = try xr.createActionSpace(xr_session, rightHandAction);
+        defer _ = c.xrDestroySpace(rightHandSpace);
+
+        try xr.suggestBindings(xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
+
+        try xr.attachActionSet(xr_session, action_set);
 
         //TODO: MOVE OUT!
         vertex_buffer = try vk.createBuffer(
@@ -140,6 +179,22 @@ pub const Engine = struct {
             @ptrCast(&cube_vertecies),
         );
         index_buffer = try vk.createBuffer(
+            physical_device,
+            logical_device,
+            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            cube_indecies.len,
+            @sizeOf(c.XrVector4f),
+            @ptrCast(&cube_indecies),
+        );
+        vertex_buffer2 = try vk.createBuffer(
+            physical_device,
+            logical_device,
+            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            cube_vertecies.len,
+            @sizeOf(c.XrVector4f),
+            @ptrCast(&cube_vertecies),
+        );
+        index_buffer2 = try vk.createBuffer(
             physical_device,
             logical_device,
             c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
@@ -169,6 +224,12 @@ pub const Engine = struct {
             .graphics_queue_family_index = queue_family_index,
             .vk_logical_device = logical_device,
             .vk_queue = queue,
+            .action_set = action_set,
+            .l_action = leftHandAction,
+            .l_action_g = leftGrabAction,
+            .r_action_g = right_grab_action,
+            .r_action = rightHandAction,
+            .hand_poses_space = .{ leftHandSpace, rightHandSpace },
             .vkid = vkid,
             .sdl_window = window,
             .sdl_surface = @ptrCast(surface.surface),
@@ -284,29 +345,11 @@ pub const Engine = struct {
 
         const space: c.XrSpace = try xr.createSpace(self.xr_session);
 
-        const actionSet: c.XrActionSet = try xr.createActionSet(self.xr_instance);
-        defer _ = c.xrDestroyActionSet(actionSet);
-        const leftHandAction: c.XrAction = try xr.createAction(actionSet, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        defer _ = c.xrDestroyAction(leftHandAction);
-        const rightHandAction: c.XrAction = try xr.createAction(actionSet, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        defer _ = c.xrDestroyAction(leftHandAction);
-        const leftGrabAction: c.XrAction = try xr.createAction(actionSet, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        defer _ = c.xrDestroyAction(leftGrabAction);
-        const right_grab_action: c.XrAction = try xr.createAction(actionSet, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        defer _ = c.xrDestroyAction(right_grab_action);
-        const leftHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, leftHandAction);
-        defer _ = c.xrDestroySpace(leftHandSpace);
-        const rightHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, rightHandAction);
-        defer _ = c.xrDestroySpace(rightHandSpace);
-
-        try xr.suggestBindings(self.xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
-
-        try xr.attachActionSet(self.xr_session, actionSet);
-
         var imageIndex: u32 = 0;
         var lastRenderedImageIndex: u32 = 0;
 
         var running: bool = true;
+
         // var times: u8 = 0;
         // while (times < 8 and !quit.load(.acquire)) {
         while (!quit.load(.acquire)) {
@@ -527,15 +570,15 @@ pub const Engine = struct {
                     try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
                     var should_quit = input(
                         self.xr_session,
-                        actionSet,
+                        self.action_set,
                         space,
                         frame_state.predictedDisplayTime,
-                        leftHandAction,
-                        rightHandAction,
-                        leftGrabAction,
-                        right_grab_action,
-                        leftHandSpace,
-                        rightHandSpace,
+                        self.l_action,
+                        self.r_action,
+                        self.l_action_g,
+                        self.r_action_g,
+                        self.hand_poses_space[0],
+                        self.hand_poses_space[1],
                     ) catch true;
                     if (frame_state.shouldRender == c.VK_FALSE) {
                         var end_frame_info = c.XrFrameEndInfo{
@@ -563,6 +606,10 @@ pub const Engine = struct {
                         ) catch .{ true, 0 };
                         quit.store(should_quit, .release);
                         lastRenderedImageIndex = active_index;
+
+                        std.debug.print("\n\n\n\n\n\n\n", .{});
+                        try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
+                        std.debug.print("\n\n\n\n\n\n\n", .{});
                     }
                 }
             } else if (result != c.XR_SUCCESS) {
@@ -574,7 +621,10 @@ pub const Engine = struct {
                         std.debug.print("OpenXR instance is shutting down.\n", .{});
                         quit.store(true, .release);
                     },
-                    c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => std.debug.print("The interaction profile has changed.\n", .{}),
+                    c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => {
+                        try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
+                        std.debug.print("The interaction profile has changed.\n", .{});
+                    },
                     c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
                     c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
                         const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
@@ -780,13 +830,6 @@ pub const Engine = struct {
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
     ) !struct { bool, u32 } {
-        // _ = render_pass;
-        // _ = pipeline;
-        // _ = pipeline_layout;
-        // _ = view;
-        // _ = device;
-        // _ = images;
-        // _ = queue;
         var acquire_image_info = c.XrSwapchainImageAcquireInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
         };
@@ -826,24 +869,26 @@ pub const Engine = struct {
             projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
             projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
             projection_matrix.d[11] = -1;
+
+            // projection_matrix = nz.Mat4(f32).perspective(angle_height, angle_width, near_distance, far_distance);
+
             @memcpy(data.?[ptr_start .. ptr_start + 16], projection_matrix.d[0..]);
             ptr_start += 16;
         }
 
         for (0..2) |i| {
-            const view_matrix: nz.Mat4(f32) = .mul(
+            const view_matrix: nz.Mat4(f32) = .inverse(.mul(
                 .translate(.{ view[i].pose.position.x, view[i].pose.position.y, view[i].pose.position.z }),
-                .fromQuaternion(.{ view[i].pose.orientation.w, view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z }),
-            );
+                .fromQuaternion(.{ view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z, view[i].pose.orientation.w }),
+            ));
             @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
             ptr_start += 16;
         }
 
         var model_matrix = nz.Mat4(f32).identity(1);
-        model_matrix.d[12] = object_pos.x;
-        model_matrix.d[13] = object_pos.y;
-        model_matrix.d[14] = object_pos.z;
-        model_matrix.d[15] = 1;
+        // model.scale(scale).rotate(pose.orientation).translate(pose.position);
+
+        // renderCuboid(model_matrix, )
         @memcpy(data.?[ptr_start .. ptr_start + 16], model_matrix.d[0..]);
 
         c.vkUnmapMemory(device, image.memory);
@@ -855,9 +900,6 @@ pub const Engine = struct {
 
         try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
 
-        // const clearValue = c.VkClearValue{
-        //     .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } },
-        // };
         var clear_values: [2]c.VkClearValue = undefined;
         clear_values[0].color.float32 = .{ 0.0, 0.0, 0.0, 1.0 };
         clear_values[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
@@ -893,8 +935,6 @@ pub const Engine = struct {
 
         c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
 
-        //TODO: HERE WE DO THE CUBEOIDS!
-
         c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
 
@@ -911,7 +951,6 @@ pub const Engine = struct {
             0,
         );
 
-        // c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
         c.vkCmdEndRenderPass(image.command_buffer);
 
         const beforeSrcBarrier: c.VkImageMemoryBarrier = .{

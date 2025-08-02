@@ -197,7 +197,7 @@ pub const SwapchainImage = struct {
             .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
             .format = my_xr_swapchain.depth_format,
             .subresourceRange = .{
-                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .aspectMask = c.VK_IMAGE_ASPECT_DEPTH_BIT,
                 .baseMipLevel = 0,
                 .levelCount = 1,
                 .baseArrayLayer = 0,
@@ -248,7 +248,6 @@ pub const SwapchainImage = struct {
 
         var memory_type_index: u32 = 0;
         const shiftee: u32 = 1;
-
         for (0..properties.memoryTypeCount) |i| {
             if ((requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
                 continue;
