@@ -486,7 +486,7 @@ pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance)
             &interactionProfile,
         ),
     );
-    if (interactionProfile.interactionProfile == c.XR_NULL_HANDLE) {
+    if (interactionProfile.interactionProfile != c.XR_NULL_HANDLE) {
         try loader.xrCheck(c.xrPathToString(
             xr_instance,
             interactionProfile.interactionProfile,
@@ -494,7 +494,7 @@ pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance)
             &strl,
             &text[0],
         ));
-        std.debug.print("\n\n====[1]=====\n\n", .{});
+        std.debug.print("\n\n====[LEFT]]=====\n\n", .{});
         std.debug.print("user/hand/left ActiveProfile : {any}", .{text});
     } else std.debug.print("\noh shit\n", .{});
     try loader.xrCheck(
@@ -512,8 +512,8 @@ pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance)
             &strl,
             &text[0],
         ));
-        std.debug.print("\n\n====[1]=====\n\n", .{});
-        std.debug.print("user/hand/left ActiveProfile : {any}", .{text});
+        std.debug.print("\n\n====[RIGHT]=====\n\n", .{});
+        std.debug.print("user/hand/right ActiveProfile : {any}", .{text});
     } else std.debug.print("\noh shit\n", .{});
 }
 

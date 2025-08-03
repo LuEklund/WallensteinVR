@@ -121,11 +121,11 @@ pub const Engine = struct {
         const xr_system_id: c.XrSystemId = try xr.getSystem(xr_instance);
 
         const action_set: c.XrActionSet = try xr.createActionSet(xr_instance);
-        defer _ = c.xrDestroyActionSet(action_set);
+        // defer _ = c.xrDestroyActionSet(action_set);
         const leftHandAction: c.XrAction = try xr.createAction(action_set, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        defer _ = c.xrDestroyAction(leftHandAction);
+        // defer _ = c.xrDestroyAction(leftHandAction);
         const rightHandAction: c.XrAction = try xr.createAction(action_set, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        defer _ = c.xrDestroyAction(leftHandAction);
+        // defer _ = c.xrDestroyAction(leftHandAction);
         // const hand_poses: [2]c.XrPosef = .{
         //     .{
         //         .orientation = .{ 1.0, 0.0, 0.0, 0.0 },
@@ -138,9 +138,9 @@ pub const Engine = struct {
         // };
         // _ = hand_poses;
         const leftGrabAction: c.XrAction = try xr.createAction(action_set, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        defer _ = c.xrDestroyAction(leftGrabAction);
+        // defer _ = c.xrDestroyAction(leftGrabAction);
         const right_grab_action: c.XrAction = try xr.createAction(action_set, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        defer _ = c.xrDestroyAction(right_grab_action);
+        // defer _ = c.xrDestroyAction(right_grab_action);
 
         const xr_graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const xr_instance_extensions: []const [*:0]const u8 =
             try xr.getVulkanInstanceRequirements(xrd, allocator, xr_instance, xr_system_id);
@@ -161,9 +161,9 @@ pub const Engine = struct {
 
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index);
         const leftHandSpace: c.XrSpace = try xr.createActionSpace(xr_session, leftHandAction);
-        defer _ = c.xrDestroySpace(leftHandSpace);
+        // defer _ = c.xrDestroySpace(leftHandSpace);
         const rightHandSpace: c.XrSpace = try xr.createActionSpace(xr_session, rightHandAction);
-        defer _ = c.xrDestroySpace(rightHandSpace);
+        // defer _ = c.xrDestroySpace(rightHandSpace);
 
         try xr.suggestBindings(xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
 
@@ -565,7 +565,6 @@ pub const Engine = struct {
                 c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => {
                     try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
                     std.debug.print("The interaction profile has changed.\n", .{});
-                    return error.XD;
                 },
                 c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
                 c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
@@ -596,12 +595,12 @@ pub const Engine = struct {
                             quit.store(true, .release);
                         },
                         else => {
-                            log.err("Unknown event STATE type received: {any}", .{eventData.type});
+                            log.err("Unknown event STATE received: {any}", .{event.state});
                         },
                     }
                 },
                 else => {
-                    log.err("Unknown event type received: {any}", .{eventData.type});
+                    log.err("Unknown event TYPE received: {any}", .{eventData.type});
                 },
             }
             // if (result == c.XR_EVENT_UNAVAILABLE) {
