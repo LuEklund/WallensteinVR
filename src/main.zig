@@ -3,6 +3,7 @@ const log = @import("std").log;
 const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
+const input = @import("input.zig");
 const VulkanSwapchain = @import("VulkanSwapchain.zig");
 const XrSwapchain = @import("XrSwapchain.zig");
 const loader = @import("loader");
@@ -12,11 +13,34 @@ const c = loader.c;
 const sdl = @import("sdl3");
 var quit: std.atomic.Value(bool) = .init(false);
 
-var object_grabbed: u32 = 0;
-var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
-var grab_distance: f32 = 1;
+// var object_grabbed: u32 = 0;
+// var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
+// var grab_distance: f32 = 1;
+var grabbed_block: [2]u32 = .{ -1, -1 };
+var near_block: [2]u32 = .{ -1, -1 };
 const windowWidth: c_int = 1600;
 const windowHeight: c_int = 900;
+var blocks: std.ArrayList(input.Block) = undefined;
+
+// The XrPaths for left and right hand hands or controllers.
+var m_grabState: [2]c.XrActionStateBoolean = .{ .{ .type = c.XR_TYPE_ACTION_STATE_BOOLEAN }, .{ .type = c.XR_TYPE_ACTION_STATE_BOOLEAN } };
+var m_handPaths: [2]c.XrPath = .{ 0, 0 };
+var hand_pose_space: [2]c.XrSpace = undefined;
+var hand_pose: [2]c.XrPosef = .{
+    .{
+        .orientation = .{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 0.0 },
+        .position = .{ .x = 0.0, .z = 0.0, .y = -100 },
+    },
+    .{
+        .orientation = .{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 0.0 },
+        .position = .{ .x = 0.0, .z = 0.0, .y = -100 },
+    },
+};
+
+var m_handPoseState: [2]c.XrActionStatePose = .{
+    .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
+    .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
+};
 
 // var normals: [6]c.XrVector4f = .{
 // .{ .x = 1.00, .y = 0.00, .z = 0.00, .w = 0 },
@@ -27,6 +51,7 @@ const windowHeight: c_int = 900;
 // .{ .x = 0.00, .y = 0.0, .z = -1.00, .w = 0 },
 // };
 //
+
 var cube_vertecies: [8]c.XrVector4f = .{
     .{ .x = 0.5, .y = 0.5, .z = 0.5, .w = 1.0 }, // 0: Top-Front-Right
     .{ .x = 0.5, .y = 0.5, .z = -0.5, .w = 1.0 }, // 1: Top-Back-Right
@@ -60,9 +85,7 @@ var cube_indecies: [36]u32 = .{
 };
 
 var index_buffer: vk.VulkanBuffer = undefined;
-var index_buffer2: vk.VulkanBuffer = undefined;
 var vertex_buffer: vk.VulkanBuffer = undefined;
-var vertex_buffer2: vk.VulkanBuffer = undefined;
 // var normal_buffer: vk.VulkanBuffer = undefined;
 
 pub const Engine = struct {
@@ -87,7 +110,6 @@ pub const Engine = struct {
     r_action: c.XrAction,
     l_action_g: c.XrAction,
     r_action_g: c.XrAction,
-    hand_poses_space: [2]c.XrSpace,
     vkid: vk.Dispatcher,
     sdl_window: sdl.video.Window,
     sdl_surface: c.VkSurfaceKHR,
@@ -120,22 +142,13 @@ pub const Engine = struct {
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xrd, xr_instance);
         const xr_system_id: c.XrSystemId = try xr.getSystem(xr_instance);
 
-        const action_set: c.XrActionSet = try xr.createActionSet(xr_instance);
+        const action_set: c.XrActionSet = try xr.createActionSet(xr_instance, &m_handPaths);
         // defer _ = c.xrDestroyActionSet(action_set);
         const leftHandAction: c.XrAction = try xr.createAction(action_set, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
         // defer _ = c.xrDestroyAction(leftHandAction);
         const rightHandAction: c.XrAction = try xr.createAction(action_set, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
         // defer _ = c.xrDestroyAction(leftHandAction);
-        // const hand_poses: [2]c.XrPosef = .{
-        //     .{
-        //         .orientation = .{ 1.0, 0.0, 0.0, 0.0 },
-        //         .position = .{ 0.0, 0.0, -100 },
-        //     },
-        //     .{
-        //         .orientation = .{ 1.0, 0.0, 0.0, 0.0 },
-        //         .position = .{ 0.0, 0.0, -100 },
-        //     },
-        // };
+        // const hand_poses: [2]c.XrPosef
         // _ = hand_poses;
         const leftGrabAction: c.XrAction = try xr.createAction(action_set, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
         // defer _ = c.xrDestroyAction(leftGrabAction);
@@ -160,9 +173,9 @@ pub const Engine = struct {
         const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index, vk_device_extensions);
 
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index);
-        const leftHandSpace: c.XrSpace = try xr.createActionSpace(xr_session, leftHandAction);
+        hand_pose_space[0] = try xr.createActionSpace(xr_session, leftHandAction);
         // defer _ = c.xrDestroySpace(leftHandSpace);
-        const rightHandSpace: c.XrSpace = try xr.createActionSpace(xr_session, rightHandAction);
+        hand_pose_space[1] = try xr.createActionSpace(xr_session, rightHandAction);
         // defer _ = c.xrDestroySpace(rightHandSpace);
 
         try xr.suggestBindings(xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
@@ -186,30 +199,6 @@ pub const Engine = struct {
             @sizeOf(c.XrVector4f),
             @ptrCast(&cube_indecies),
         );
-        vertex_buffer2 = try vk.createBuffer(
-            physical_device,
-            logical_device,
-            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            cube_vertecies.len,
-            @sizeOf(c.XrVector4f),
-            @ptrCast(&cube_vertecies),
-        );
-        index_buffer2 = try vk.createBuffer(
-            physical_device,
-            logical_device,
-            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            cube_indecies.len,
-            @sizeOf(c.XrVector4f),
-            @ptrCast(&cube_indecies),
-        );
-        // normal_buffer = try vk.createBuffer(
-        //     physical_device,
-        //     logical_device,
-        //     c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        //     normals.len,
-        //     @sizeOf(c.XrVector4f),
-        //     @ptrCast(&normals),
-        // );
         return .{
             .allocator = allocator,
             .xr_instance = xr_instance,
@@ -229,7 +218,6 @@ pub const Engine = struct {
             .l_action_g = leftGrabAction,
             .r_action_g = right_grab_action,
             .r_action = rightHandAction,
-            .hand_poses_space = .{ leftHandSpace, rightHandSpace },
             .vkid = vkid,
             .sdl_window = window,
             .sdl_surface = @ptrCast(surface.surface),
@@ -287,6 +275,8 @@ pub const Engine = struct {
             descriptor_pool,
             descriptor_set_layout,
         );
+
+        try createResources(self.allocator);
 
         const isPosix: bool = switch (builtin.os.tag) {
             .linux,
@@ -349,6 +339,8 @@ pub const Engine = struct {
         var lastRenderedImageIndex: u32 = 0;
 
         var running: bool = false;
+
+        // if (true) return error.xD;
 
         // var times: u8 = 0;
         // while (times < 8 and !quit.load(.acquire)) {
@@ -616,7 +608,7 @@ pub const Engine = struct {
                     .type = c.XR_TYPE_FRAME_BEGIN_INFO,
                 };
                 try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
-                var should_quit = input(
+                var should_quit = input.pollAction(
                     self.xr_session,
                     self.action_set,
                     space,
@@ -625,8 +617,10 @@ pub const Engine = struct {
                     self.r_action,
                     self.l_action_g,
                     self.r_action_g,
-                    self.hand_poses_space[0],
-                    self.hand_poses_space[1],
+                    m_handPaths,
+                    hand_pose_space,
+                    &m_handPoseState,
+                    &hand_pose,
                 ) catch true;
                 if (frame_state.shouldRender == c.VK_FALSE) {
                     var end_frame_info = c.XrFrameEndInfo{
@@ -654,9 +648,6 @@ pub const Engine = struct {
                     ) catch .{ true, 0 };
                     quit.store(should_quit, .release);
                     lastRenderedImageIndex = active_index;
-
-                    // try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
-                    // return error.XDDDDD;
                 }
             }
         }
@@ -668,66 +659,6 @@ pub const Engine = struct {
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
     }
 
-    fn input(
-        session: c.XrSession,
-        actionSet: c.XrActionSet,
-        roomSpace: c.XrSpace,
-        predictedDisplayTime: c.XrTime,
-        leftHandAction: c.XrAction,
-        rightHandAction: c.XrAction,
-        leftGrabAction: c.XrAction,
-        rightGrabAction: c.XrAction,
-        leftHandSpace: c.XrSpace,
-        rightHandSpace: c.XrSpace,
-    ) !bool {
-        var activeActionSet = c.XrActiveActionSet{
-            .actionSet = actionSet,
-            .subactionPath = c.XR_NULL_PATH,
-        };
-
-        var syncInfo = c.XrActionsSyncInfo{
-            .type = c.XR_TYPE_ACTIONS_SYNC_INFO,
-            .countActiveActionSets = 1,
-            .activeActionSets = &activeActionSet,
-        };
-
-        const result: c.XrResult = (c.xrSyncActions(session, &syncInfo));
-
-        if (result == c.XR_SESSION_NOT_FOCUSED) {
-            return false;
-        } else if (result != c.XR_SUCCESS) {
-            std.log.err("Failed to synchronize actions: {any}\n", .{result});
-            return true;
-        }
-
-        const leftHand: c.XrPosef = try xr.getActionPose(session, leftHandAction, leftHandSpace, roomSpace, predictedDisplayTime);
-        const rightHand: c.XrPosef = try xr.getActionPose(session, rightHandAction, rightHandSpace, roomSpace, predictedDisplayTime);
-        const leftGrab: c.XrBool32 = try xr.getActionBoolean(session, leftGrabAction);
-        const rightGrab: c.XrBool32 = try xr.getActionBoolean(session, rightGrabAction);
-
-        std.debug.print("\n\n=========[RIGHT: {any}]===========\n\n", .{rightHand});
-        std.debug.print("\n\n=========[LEFT: {any}]===========\n\n", .{leftHand});
-
-        if (leftGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - leftHand.position.x, 2) + std.math.pow(f32, object_pos.y - leftHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
-            object_grabbed = 1;
-        } else if (leftGrab != 0 and object_grabbed == 1) {
-            object_grabbed = 0;
-        }
-
-        if (rightGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - rightHand.position.x, 2) + std.math.pow(f32, object_pos.y - rightHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
-            object_grabbed = 2;
-        } else if (rightGrab != 0 and object_grabbed == 2) {
-            object_grabbed = 0;
-        }
-
-        switch (object_grabbed) {
-            1 => object_pos = leftHand.position,
-            2 => object_pos = rightHand.position,
-            else => return false,
-        }
-
-        return false;
-    }
     fn render(
         allocator: std.mem.Allocator,
         session: c.XrSession,
@@ -884,10 +815,10 @@ pub const Engine = struct {
             ptr_start += 16;
         }
 
-        var model_matrix = nz.Mat4(f32).identity(1);
-        model_matrix.d[14] = -1;
+        // var model_matrix = nz.Mat4(f32).identity(1);
+        // model_matrix.d[14] = -1;
 
-        @memcpy(data.?[ptr_start .. ptr_start + 16], model_matrix.d[0..]);
+        // @memcpy(data.?[ptr_start .. ptr_start + 16], model_matrix.d[0..]);
 
         c.vkUnmapMemory(device, image.memory);
 
@@ -936,18 +867,9 @@ pub const Engine = struct {
         c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
 
-        var offsets: [1]c.VkDeviceSize = .{0};
-        var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};
-        c.vkCmdBindVertexBuffers(image.command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
-        c.vkCmdBindIndexBuffer(image.command_buffer, index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
-        c.vkCmdDrawIndexed(
-            image.command_buffer,
-            cube_indecies.len,
-            1,
-            0,
-            0,
-            0,
-        );
+        for (blocks.items) |block| {
+            renderCuboid(block, image.command_buffer, pipeline_layout);
+        }
 
         c.vkCmdEndRenderPass(image.command_buffer);
 
@@ -1098,7 +1020,70 @@ pub const Engine = struct {
         std.debug.print("SIGINT received. Initiating graceful shutdown...\n", .{});
         quit.store(true, .release); // Set quit_requested to true
     }
+    pub fn createResources(allocator: std.mem.Allocator) !void {
+        var prng = std.Random.DefaultPrng.init(blk: {
+            var seed: u64 = undefined;
+            try std.posix.getrandom(std.mem.asBytes(&seed));
+            break :blk seed;
+        });
+        const rand = prng.random();
+
+        blocks = .init(allocator);
+        const scale: f32 = 0.2;
+        // Center the blocks a little way from the origin.
+        const center: c.XrVector3f = .{ .x = 0.0, .y = -0.2, .z = -0.7 };
+        for (0..4) |i| {
+            const x: f32 = scale * (@as(f32, @floatFromInt(i)) - 1.5) + center.x;
+            for (0..4) |j| {
+                const y: f32 = scale * (@as(f32, @floatFromInt(j)) - 1.5) + center.y;
+                for (0..4) |k| {
+                    // const angleRad: f32 = 0;
+                    const z: f32 = scale * (@as(f32, @floatFromInt(k)) - 1.5) + center.z;
+                    const q: c.XrQuaternionf = .{ .x = 0.0, .z = 0.0, .y = 0.0, .w = 1.0 };
+                    const color: c.XrVector3f = .{
+                        .x = rand.float(f32),
+                        .y = rand.float(f32),
+                        .z = rand.float(f32),
+                    };
+                    const block: input.Block = .{
+                        .orientation = q,
+                        .position = .{ .x = x, .y = y, .z = z },
+                        .scale = .{ .x = 0.095, .y = 0.095, .z = 0.095 },
+                        .color = color,
+                    };
+                    try blocks.append(block);
+                }
+            }
+        }
+    }
 };
+
+pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
+    // XrMatrix4x4f_CreateTranslationRotationScale(&cameraConstants.model, &pose.position, &pose.orientation, &scale);
+    // XrMatrix4x4f_Multiply(&cameraConstants.modelViewProj, &cameraConstants.viewProj, &cameraConstants.model);
+    // cameraConstants.color = {color.x, color.y, color.z, 1.0};
+    // size_t offsetCameraUB = sizeof(CameraConstants) * renderCuboidIndex;
+
+    var push: nz.Mat4(f32) = .identity(1);
+    push.d[12] = block.position.x;
+    push.d[13] = block.position.y;
+    push.d[14] = block.position.z - 1;
+
+    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(nz.Mat4(f32)), &push);
+
+    var offsets: [1]c.VkDeviceSize = .{0};
+    var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};
+    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
+    c.vkCmdBindIndexBuffer(command_buffer, index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
+    c.vkCmdDrawIndexed(
+        command_buffer,
+        cube_indecies.len,
+        1,
+        0,
+        0,
+        0,
+    );
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{

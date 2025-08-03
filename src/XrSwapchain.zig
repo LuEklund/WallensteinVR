@@ -230,7 +230,7 @@ pub const SwapchainImage = struct {
 
         var create_info = c.VkBufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = @sizeOf(f32) * 4 * 4 * 5, // :NOTE Matrix(f32)[4][4] * 5
+            .size = @sizeOf(f32) * 4 * 4 * 4, // :NOTE Matrix(f32)[4][4] * 4
             .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
         };

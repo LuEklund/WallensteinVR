@@ -359,7 +359,7 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
     }
 }
 
-pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
+pub fn createActionSet(instance: c.XrInstance, hand_path: *[2]c.XrPath) !c.XrActionSet {
     const buffer_size = 64;
     const buffer = [buffer_size]u8;
     var set_name: buffer = .{0} ** buffer_size;
@@ -379,6 +379,9 @@ pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
 
     var actionSet: c.XrActionSet = undefined;
     try loader.xrCheck(c.xrCreateActionSet(instance, &actionSetCreateInfo, &actionSet));
+
+    hand_path[0] = try createXrPath(instance, "/user/hand/left".ptr);
+    hand_path[1] = try createXrPath(instance, "/user/hand/right".ptr);
 
     return actionSet;
 }
@@ -410,7 +413,7 @@ pub fn createActionSpace(session: c.XrSession, action: c.XrAction) !c.XrSpace {
         .type = c.XR_TYPE_ACTION_SPACE_CREATE_INFO,
         .poseInActionSpace = .{
             .position = .{ .x = 0, .y = 0, .z = 0 },
-            .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1 },
+            .orientation = .{ .x = 1, .y = 0, .z = 0, .w = 0 },
         },
         .action = action,
     };
@@ -527,10 +530,11 @@ pub fn attachActionSet(session: c.XrSession, actionSet: c.XrActionSet) !void {
     try loader.xrCheck(c.xrAttachSessionActionSets(session, &actionSetsAttachInfo));
 }
 
-pub fn getActionBoolean(session: c.XrSession, action: c.XrAction) !c.XrBool32 {
+pub fn getActionBoolean(session: c.XrSession, action: c.XrAction, path: c.XrPath) !c.XrBool32 {
     var getInfo = c.XrActionStateGetInfo{
         .type = c.XR_TYPE_ACTION_STATE_GET_INFO,
         .action = action,
+        .subactionPath = path,
     };
 
     var state = c.XrActionStateBoolean{
@@ -574,7 +578,7 @@ pub fn getActionPose(session: c.XrSession, action: c.XrAction, space: c.XrSpace,
 
     return location.pose;
 }
-pub fn createXrPath(xr_instance: c.XrInstance, path_string: [*:0]u8) !c.XrPath {
+pub fn createXrPath(xr_instance: c.XrInstance, path_string: [*:0]const u8) !c.XrPath {
     var xrPath: c.XrPath = undefined;
     try loader.xrCheck(c.xrStringToPath(xr_instance, path_string, &xrPath));
     return xrPath;

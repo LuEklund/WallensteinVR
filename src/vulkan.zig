@@ -303,10 +303,17 @@ pub fn createPipeline(
 ) !struct { c.VkPipelineLayout, c.VkPipeline } {
     var pipeline: c.VkPipeline = undefined;
 
+    var push_constant_range: c.VkPushConstantRange = .{
+        .offset = 0,
+        .size = 64,
+        .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+    };
     var layout_create_info = c.VkPipelineLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
         .pSetLayouts = &descriptor_set_layout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_constant_range,
     };
 
     var pipeline_layout: c.VkPipelineLayout = undefined;
