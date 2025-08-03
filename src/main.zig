@@ -348,7 +348,7 @@ pub const Engine = struct {
         var imageIndex: u32 = 0;
         var lastRenderedImageIndex: u32 = 0;
 
-        var running: bool = true;
+        var running: bool = false;
 
         // var times: u8 = 0;
         // while (times < 8 and !quit.load(.acquire)) {
@@ -555,115 +555,115 @@ pub const Engine = struct {
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
             };
             var result: c.XrResult = c.xrPollEvent(self.xr_instance, &eventData);
-            if (result == c.XR_EVENT_UNAVAILABLE) {
-                if (running) {
-                    var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
-                    var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
-                    result = c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state);
-                    if (result != c.XR_SUCCESS) {
-                        std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{});
-                        break;
+
+            switch (eventData.type) {
+                c.XR_TYPE_EVENT_DATA_EVENTS_LOST => std.debug.print("Event queue overflowed and events were lost.\n", .{}),
+                c.XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING => {
+                    std.debug.print("OpenXR instance is shutting down.\n", .{});
+                    quit.store(true, .release);
+                },
+                c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => {
+                    try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
+                    std.debug.print("The interaction profile has changed.\n", .{});
+                    return error.XD;
+                },
+                c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
+                c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
+                    const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
+
+                    switch (event.state) {
+                        c.XR_SESSION_STATE_UNKNOWN, c.XR_SESSION_STATE_MAX_ENUM => std.debug.print("Unknown session state entered: {any}\n", .{event.state}),
+                        c.XR_SESSION_STATE_IDLE => running = false,
+                        c.XR_SESSION_STATE_READY => {
+                            const sessionBeginInfo = c.XrSessionBeginInfo{
+                                .type = c.XR_TYPE_SESSION_BEGIN_INFO,
+                                .primaryViewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+                            };
+                            try loader.xrCheck(c.xrBeginSession(self.xr_session, &sessionBeginInfo));
+                            running = true;
+                        },
+                        c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => running = true,
+                        c.XR_SESSION_STATE_STOPPING => {
+                            try loader.xrCheck(c.xrEndSession(self.xr_session));
+                            running = false;
+                        },
+                        c.XR_SESSION_STATE_LOSS_PENDING => {
+                            std.debug.print("OpenXR session is shutting down.\n", .{});
+                            quit.store(true, .release);
+                        },
+                        c.XR_SESSION_STATE_EXITING => {
+                            std.debug.print("OpenXR runtime requested shutdown.\n", .{});
+                            quit.store(true, .release);
+                        },
+                        else => {
+                            log.err("Unknown event STATE type received: {any}", .{eventData.type});
+                        },
                     }
-                    var begin_frame_info = c.XrFrameBeginInfo{
-                        .type = c.XR_TYPE_FRAME_BEGIN_INFO,
+                },
+                else => {
+                    log.err("Unknown event type received: {any}", .{eventData.type});
+                },
+            }
+            // if (result == c.XR_EVENT_UNAVAILABLE) {
+            if (running) {
+                var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
+                var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
+                result = c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state);
+                if (result != c.XR_SUCCESS) {
+                    std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{});
+                    break;
+                }
+                var begin_frame_info = c.XrFrameBeginInfo{
+                    .type = c.XR_TYPE_FRAME_BEGIN_INFO,
+                };
+                try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
+                var should_quit = input(
+                    self.xr_session,
+                    self.action_set,
+                    space,
+                    frame_state.predictedDisplayTime,
+                    self.l_action,
+                    self.r_action,
+                    self.l_action_g,
+                    self.r_action_g,
+                    self.hand_poses_space[0],
+                    self.hand_poses_space[1],
+                ) catch true;
+                if (frame_state.shouldRender == c.VK_FALSE) {
+                    var end_frame_info = c.XrFrameEndInfo{
+                        .type = c.XR_TYPE_FRAME_END_INFO,
+                        .displayTime = frame_state.predictedDisplayTime,
+                        .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+                        .layerCount = 0,
+                        .layers = null,
                     };
-                    try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
-                    var should_quit = input(
+                    try loader.xrCheck(c.xrEndFrame(self.xr_session, &end_frame_info));
+
+                    continue;
+                } else {
+                    should_quit, const active_index = render(
+                        self.allocator,
                         self.xr_session,
-                        self.action_set,
+                        xr_swapchain,
                         space,
                         frame_state.predictedDisplayTime,
-                        self.l_action,
-                        self.r_action,
-                        self.l_action_g,
-                        self.r_action_g,
-                        self.hand_poses_space[0],
-                        self.hand_poses_space[1],
-                    ) catch true;
-                    if (frame_state.shouldRender == c.VK_FALSE) {
-                        var end_frame_info = c.XrFrameEndInfo{
-                            .type = c.XR_TYPE_FRAME_END_INFO,
-                            .displayTime = frame_state.predictedDisplayTime,
-                            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
-                            .layerCount = 0,
-                            .layers = null,
-                        };
-                        try loader.xrCheck(c.xrEndFrame(self.xr_session, &end_frame_info));
+                        self.vk_logical_device,
+                        self.vk_queue,
+                        render_pass,
+                        pipeline_layout,
+                        pipeline,
+                    ) catch .{ true, 0 };
+                    quit.store(should_quit, .release);
+                    lastRenderedImageIndex = active_index;
 
-                        continue;
-                    } else {
-                        should_quit, const active_index = render(
-                            self.allocator,
-                            self.xr_session,
-                            xr_swapchain,
-                            space,
-                            frame_state.predictedDisplayTime,
-                            self.vk_logical_device,
-                            self.vk_queue,
-                            render_pass,
-                            pipeline_layout,
-                            pipeline,
-                        ) catch .{ true, 0 };
-                        quit.store(should_quit, .release);
-                        lastRenderedImageIndex = active_index;
-
-                        std.debug.print("\n\n\n\n\n\n\n", .{});
-                        try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
-                        std.debug.print("\n\n\n\n\n\n\n", .{});
-                    }
-                }
-            } else if (result != c.XR_SUCCESS) {
-                try loader.xrCheck(result);
-            } else {
-                switch (eventData.type) {
-                    c.XR_TYPE_EVENT_DATA_EVENTS_LOST => std.debug.print("Event queue overflowed and events were lost.\n", .{}),
-                    c.XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING => {
-                        std.debug.print("OpenXR instance is shutting down.\n", .{});
-                        quit.store(true, .release);
-                    },
-                    c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => {
-                        try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
-                        std.debug.print("The interaction profile has changed.\n", .{});
-                    },
-                    c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
-                    c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
-                        const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
-
-                        switch (event.state) {
-                            c.XR_SESSION_STATE_UNKNOWN, c.XR_SESSION_STATE_MAX_ENUM => std.debug.print("Unknown session state entered: {any}\n", .{event.state}),
-                            c.XR_SESSION_STATE_IDLE => running = false,
-                            c.XR_SESSION_STATE_READY => {
-                                const sessionBeginInfo = c.XrSessionBeginInfo{
-                                    .type = c.XR_TYPE_SESSION_BEGIN_INFO,
-                                    .primaryViewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-                                };
-                                try loader.xrCheck(c.xrBeginSession(self.xr_session, &sessionBeginInfo));
-                                running = true;
-                            },
-                            c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => running = true,
-                            c.XR_SESSION_STATE_STOPPING => {
-                                try loader.xrCheck(c.xrEndSession(self.xr_session));
-                                running = false;
-                            },
-                            c.XR_SESSION_STATE_LOSS_PENDING => {
-                                std.debug.print("OpenXR session is shutting down.\n", .{});
-                                quit.store(true, .release);
-                            },
-                            c.XR_SESSION_STATE_EXITING => {
-                                std.debug.print("OpenXR runtime requested shutdown.\n", .{});
-                                quit.store(true, .release);
-                            },
-                            else => {
-                                log.err("Unknown event STATE type received: {any}", .{eventData.type});
-                            },
-                        }
-                    },
-                    else => {
-                        log.err("Unknown event type received: {any}", .{eventData.type});
-                    },
+                    // try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
+                    // return error.XDDDDD;
                 }
             }
         }
+        // } else if (result != c.XR_SUCCESS) {
+        //     try loader.xrCheck(result);
+        // }
 
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
@@ -886,9 +886,8 @@ pub const Engine = struct {
         }
 
         var model_matrix = nz.Mat4(f32).identity(1);
-        // model.scale(scale).rotate(pose.orientation).translate(pose.position);
+        model_matrix.d[14] = -1;
 
-        // renderCuboid(model_matrix, )
         @memcpy(data.?[ptr_start .. ptr_start + 16], model_matrix.d[0..]);
 
         c.vkUnmapMemory(device, image.memory);

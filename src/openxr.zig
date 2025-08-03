@@ -360,8 +360,6 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
 }
 
 pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
-    var actionSet: c.XrActionSet = undefined;
-
     const buffer_size = 64;
     const buffer = [buffer_size]u8;
     var set_name: buffer = .{0} ** buffer_size;
@@ -379,6 +377,7 @@ pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
         .priority = 0,
     };
 
+    var actionSet: c.XrActionSet = undefined;
     try loader.xrCheck(c.xrCreateActionSet(instance, &actionSetCreateInfo, &actionSet));
 
     return actionSet;
@@ -513,7 +512,7 @@ pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance)
             &strl,
             &text[0],
         ));
-        std.debug.print("\n\n====[2]=====\n\n", .{});
+        std.debug.print("\n\n====[1]=====\n\n", .{});
         std.debug.print("user/hand/left ActiveProfile : {any}", .{text});
     } else std.debug.print("\noh shit\n", .{});
 }
@@ -574,4 +573,15 @@ pub fn getActionPose(session: c.XrSession, action: c.XrAction, space: c.XrSpace,
     }
 
     return location.pose;
+}
+pub fn createXrPath(xr_instance: c.XrInstance, path_string: [*:0]u8) !c.XrPath {
+    var xrPath: c.XrPath = undefined;
+    try loader.xrCheck(c.xrStringToPath(xr_instance, path_string, &xrPath));
+    return xrPath;
+}
+pub fn fromXrPath(xr_instance: c.XrInstance, path: c.XrPath) ![*:0]u8 {
+    var strl: i32 = undefined;
+    const text: [c.XR_MAX_PATH_LENGTH]u8 = undefined;
+    try loader.xrCheck(c.xrPathToString(xr_instance, path, c.XR_MAX_PATH_LENGTH, &strl, text));
+    return text;
 }
