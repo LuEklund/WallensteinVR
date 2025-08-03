@@ -3,6 +3,7 @@ const log = @import("std").log;
 const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
+const input = @import("input.zig");
 const VulkanSwapchain = @import("VulkanSwapchain.zig");
 const XrSwapchain = @import("XrSwapchain.zig");
 const loader = @import("loader");
@@ -12,11 +13,34 @@ const c = loader.c;
 const sdl = @import("sdl3");
 var quit: std.atomic.Value(bool) = .init(false);
 
-var object_grabbed: u32 = 0;
-var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
-var grab_distance: f32 = 1;
+// var object_grabbed: u32 = 0;
+// var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
+// var grab_distance: f32 = 1;
+var grabbed_block: [2]u32 = .{ -1, -1 };
+var near_block: [2]u32 = .{ -1, -1 };
 const windowWidth: c_int = 1600;
 const windowHeight: c_int = 900;
+var blocks: std.ArrayList(input.Block) = undefined;
+
+// The XrPaths for left and right hand hands or controllers.
+var m_grabState: [2]c.XrActionStateBoolean = .{ .{ .type = c.XR_TYPE_ACTION_STATE_BOOLEAN }, .{ .type = c.XR_TYPE_ACTION_STATE_BOOLEAN } };
+var m_handPaths: [2]c.XrPath = .{ 0, 0 };
+var hand_pose_space: [2]c.XrSpace = undefined;
+var hand_pose: [2]c.XrPosef = .{
+    .{
+        .orientation = .{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 0.0 },
+        .position = .{ .x = 0.0, .z = 0.0, .y = -100 },
+    },
+    .{
+        .orientation = .{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 0.0 },
+        .position = .{ .x = 0.0, .z = 0.0, .y = -100 },
+    },
+};
+
+var m_handPoseState: [2]c.XrActionStatePose = .{
+    .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
+    .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
+};
 
 // var normals: [6]c.XrVector4f = .{
 // .{ .x = 1.00, .y = 0.00, .z = 0.00, .w = 0 },
@@ -27,15 +51,16 @@ const windowHeight: c_int = 900;
 // .{ .x = 0.00, .y = 0.0, .z = -1.00, .w = 0 },
 // };
 //
+
 var cube_vertecies: [8]c.XrVector4f = .{
-    .{ .x = 0.5, .y = 0.5, .z = 0.5 + 4, .w = 1.0 }, // 0: Top-Front-Right
-    .{ .x = 0.5, .y = 0.5, .z = -0.5 + 4, .w = 1.0 }, // 1: Top-Back-Right
-    .{ .x = 0.5, .y = -0.5, .z = 0.5 + 4, .w = 1.0 }, // 2: Bottom-Front-Right
-    .{ .x = 0.5, .y = -0.5, .z = -0.5 + 4, .w = 1.0 }, // 3: Bottom-Back-Right
-    .{ .x = -0.5, .y = 0.5, .z = 0.5 + 4, .w = 1.0 }, // 4: Top-Front-Left
-    .{ .x = -0.5, .y = 0.5, .z = -0.5 + 4, .w = 1.0 }, // 5: Top-Back-Left
-    .{ .x = -0.5, .y = -0.5, .z = 0.5 + 4, .w = 1.0 }, // 6: Bottom-Front-Left
-    .{ .x = -0.5, .y = -0.5, .z = -0.5 + 4, .w = 1.0 }, // 7: Bottom-Back-Left
+    .{ .x = 0.5, .y = 0.5, .z = 0.5, .w = 1.0 }, // 0: Top-Front-Right
+    .{ .x = 0.5, .y = 0.5, .z = -0.5, .w = 1.0 }, // 1: Top-Back-Right
+    .{ .x = 0.5, .y = -0.5, .z = 0.5, .w = 1.0 }, // 2: Bottom-Front-Right
+    .{ .x = 0.5, .y = -0.5, .z = -0.5, .w = 1.0 }, // 3: Bottom-Back-Right
+    .{ .x = -0.5, .y = 0.5, .z = 0.5, .w = 1.0 }, // 4: Top-Front-Left
+    .{ .x = -0.5, .y = 0.5, .z = -0.5, .w = 1.0 }, // 5: Top-Back-Left
+    .{ .x = -0.5, .y = -0.5, .z = 0.5, .w = 1.0 }, // 6: Bottom-Front-Left
+    .{ .x = -0.5, .y = -0.5, .z = -0.5, .w = 1.0 }, // 7: Bottom-Back-Left
 };
 
 var cube_indecies: [36]u32 = .{
@@ -80,6 +105,11 @@ pub const Engine = struct {
     graphics_queue_family_index: u32,
     vk_logical_device: c.VkDevice,
     vk_queue: c.VkQueue,
+    action_set: c.XrActionSet,
+    l_action: c.XrAction,
+    r_action: c.XrAction,
+    l_action_g: c.XrAction,
+    r_action_g: c.XrAction,
     vkid: vk.Dispatcher,
     sdl_window: sdl.video.Window,
     sdl_surface: c.VkSurfaceKHR,
@@ -111,6 +141,20 @@ pub const Engine = struct {
         const xrd = try xr.Dispatcher.init(xr_instance);
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xrd, xr_instance);
         const xr_system_id: c.XrSystemId = try xr.getSystem(xr_instance);
+
+        const action_set: c.XrActionSet = try xr.createActionSet(xr_instance, &m_handPaths);
+        // defer _ = c.xrDestroyActionSet(action_set);
+        const leftHandAction: c.XrAction = try xr.createAction(action_set, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        // defer _ = c.xrDestroyAction(leftHandAction);
+        const rightHandAction: c.XrAction = try xr.createAction(action_set, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
+        // defer _ = c.xrDestroyAction(leftHandAction);
+        // const hand_poses: [2]c.XrPosef
+        // _ = hand_poses;
+        const leftGrabAction: c.XrAction = try xr.createAction(action_set, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        // defer _ = c.xrDestroyAction(leftGrabAction);
+        const right_grab_action: c.XrAction = try xr.createAction(action_set, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
+        // defer _ = c.xrDestroyAction(right_grab_action);
+
         const xr_graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const xr_instance_extensions: []const [*:0]const u8 =
             try xr.getVulkanInstanceRequirements(xrd, allocator, xr_instance, xr_system_id);
 
@@ -129,6 +173,14 @@ pub const Engine = struct {
         const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index, vk_device_extensions);
 
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index);
+        hand_pose_space[0] = try xr.createActionSpace(xr_session, leftHandAction);
+        // defer _ = c.xrDestroySpace(leftHandSpace);
+        hand_pose_space[1] = try xr.createActionSpace(xr_session, rightHandAction);
+        // defer _ = c.xrDestroySpace(rightHandSpace);
+
+        try xr.suggestBindings(xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
+
+        try xr.attachActionSet(xr_session, action_set);
 
         //TODO: MOVE OUT!
         vertex_buffer = try vk.createBuffer(
@@ -147,14 +199,6 @@ pub const Engine = struct {
             @sizeOf(c.XrVector4f),
             @ptrCast(&cube_indecies),
         );
-        // normal_buffer = try vk.createBuffer(
-        //     physical_device,
-        //     logical_device,
-        //     c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        //     normals.len,
-        //     @sizeOf(c.XrVector4f),
-        //     @ptrCast(&normals),
-        // );
         return .{
             .allocator = allocator,
             .xr_instance = xr_instance,
@@ -169,6 +213,11 @@ pub const Engine = struct {
             .graphics_queue_family_index = queue_family_index,
             .vk_logical_device = logical_device,
             .vk_queue = queue,
+            .action_set = action_set,
+            .l_action = leftHandAction,
+            .l_action_g = leftGrabAction,
+            .r_action_g = right_grab_action,
+            .r_action = rightHandAction,
             .vkid = vkid,
             .sdl_window = window,
             .sdl_surface = @ptrCast(surface.surface),
@@ -198,8 +247,8 @@ pub const Engine = struct {
     pub fn start(self: Self) !void {
         const eye_count = build_options.eye_count;
         var vulkan_swapchain: VulkanSwapchain = try .init(self.vk_physical_device, self.vk_logical_device, self.sdl_surface, windowWidth, windowHeight);
-        var xr_swapchain: XrSwapchain = try .init(eye_count, self.xr_instance, self.xr_system_id, self.xr_session);
-        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, xr_swapchain.format, xr_swapchain.sample_count);
+        var xr_swapchain: XrSwapchain = try .init(eye_count, self.vk_physical_device, self.xr_instance, self.xr_system_id, self.xr_session);
+        const render_pass: c.VkRenderPass = try vk.createRenderPass(self.vk_logical_device, xr_swapchain.format, xr_swapchain.depth_format, xr_swapchain.sample_count);
         defer c.vkDestroyRenderPass(self.vk_logical_device, render_pass, null);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(self.vk_logical_device, self.graphics_queue_family_index);
         defer c.vkDestroyCommandPool(self.vk_logical_device, command_pool, null);
@@ -226,6 +275,8 @@ pub const Engine = struct {
             descriptor_pool,
             descriptor_set_layout,
         );
+
+        try createResources(self.allocator);
 
         const isPosix: bool = switch (builtin.os.tag) {
             .linux,
@@ -284,29 +335,13 @@ pub const Engine = struct {
 
         const space: c.XrSpace = try xr.createSpace(self.xr_session);
 
-        const actionSet: c.XrActionSet = try xr.createActionSet(self.xr_instance);
-        defer _ = c.xrDestroyActionSet(actionSet);
-        const leftHandAction: c.XrAction = try xr.createAction(actionSet, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        defer _ = c.xrDestroyAction(leftHandAction);
-        const rightHandAction: c.XrAction = try xr.createAction(actionSet, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        defer _ = c.xrDestroyAction(leftHandAction);
-        const leftGrabAction: c.XrAction = try xr.createAction(actionSet, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        defer _ = c.xrDestroyAction(leftGrabAction);
-        const right_grab_action: c.XrAction = try xr.createAction(actionSet, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        defer _ = c.xrDestroyAction(right_grab_action);
-        const leftHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, leftHandAction);
-        defer _ = c.xrDestroySpace(leftHandSpace);
-        const rightHandSpace: c.XrSpace = try xr.createActionSpace(self.xr_session, rightHandAction);
-        defer _ = c.xrDestroySpace(rightHandSpace);
-
-        try xr.suggestBindings(self.xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
-
-        try xr.attachActionSet(self.xr_session, actionSet);
-
         var imageIndex: u32 = 0;
         var lastRenderedImageIndex: u32 = 0;
 
-        var running: bool = true;
+        var running: bool = false;
+
+        // if (true) return error.xD;
+
         // var times: u8 = 0;
         // while (times < 8 and !quit.load(.acquire)) {
         while (!quit.load(.acquire)) {
@@ -512,173 +547,118 @@ pub const Engine = struct {
                 .type = c.XR_TYPE_EVENT_DATA_BUFFER,
             };
             var result: c.XrResult = c.xrPollEvent(self.xr_instance, &eventData);
-            if (result == c.XR_EVENT_UNAVAILABLE) {
-                if (running) {
-                    var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
-                    var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
-                    result = c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state);
-                    if (result != c.XR_SUCCESS) {
-                        std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{});
-                        break;
+
+            switch (eventData.type) {
+                c.XR_TYPE_EVENT_DATA_EVENTS_LOST => std.debug.print("Event queue overflowed and events were lost.\n", .{}),
+                c.XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING => {
+                    std.debug.print("OpenXR instance is shutting down.\n", .{});
+                    quit.store(true, .release);
+                },
+                c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => {
+                    try xr.recordCurrentBindings(self.xr_session, self.xr_instance);
+                    std.debug.print("The interaction profile has changed.\n", .{});
+                },
+                c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
+                c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
+                    const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
+
+                    switch (event.state) {
+                        c.XR_SESSION_STATE_UNKNOWN, c.XR_SESSION_STATE_MAX_ENUM => std.debug.print("Unknown session state entered: {any}\n", .{event.state}),
+                        c.XR_SESSION_STATE_IDLE => running = false,
+                        c.XR_SESSION_STATE_READY => {
+                            const sessionBeginInfo = c.XrSessionBeginInfo{
+                                .type = c.XR_TYPE_SESSION_BEGIN_INFO,
+                                .primaryViewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+                            };
+                            try loader.xrCheck(c.xrBeginSession(self.xr_session, &sessionBeginInfo));
+                            running = true;
+                        },
+                        c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => running = true,
+                        c.XR_SESSION_STATE_STOPPING => {
+                            try loader.xrCheck(c.xrEndSession(self.xr_session));
+                            running = false;
+                        },
+                        c.XR_SESSION_STATE_LOSS_PENDING => {
+                            std.debug.print("OpenXR session is shutting down.\n", .{});
+                            quit.store(true, .release);
+                        },
+                        c.XR_SESSION_STATE_EXITING => {
+                            std.debug.print("OpenXR runtime requested shutdown.\n", .{});
+                            quit.store(true, .release);
+                        },
+                        else => {
+                            log.err("Unknown event STATE received: {any}", .{event.state});
+                        },
                     }
-                    var begin_frame_info = c.XrFrameBeginInfo{
-                        .type = c.XR_TYPE_FRAME_BEGIN_INFO,
+                },
+                else => {
+                    log.err("Unknown event TYPE received: {any}", .{eventData.type});
+                },
+            }
+            // if (result == c.XR_EVENT_UNAVAILABLE) {
+            if (running) {
+                var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
+                var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
+                result = c.xrWaitFrame(self.xr_session, &frame_wait_info, &frame_state);
+                if (result != c.XR_SUCCESS) {
+                    std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{});
+                    break;
+                }
+                var begin_frame_info = c.XrFrameBeginInfo{
+                    .type = c.XR_TYPE_FRAME_BEGIN_INFO,
+                };
+                try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
+                var should_quit = input.pollAction(
+                    self.xr_session,
+                    self.action_set,
+                    space,
+                    frame_state.predictedDisplayTime,
+                    self.l_action,
+                    self.r_action,
+                    self.l_action_g,
+                    self.r_action_g,
+                    m_handPaths,
+                    hand_pose_space,
+                    &m_handPoseState,
+                    &hand_pose,
+                ) catch true;
+                if (frame_state.shouldRender == c.VK_FALSE) {
+                    var end_frame_info = c.XrFrameEndInfo{
+                        .type = c.XR_TYPE_FRAME_END_INFO,
+                        .displayTime = frame_state.predictedDisplayTime,
+                        .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+                        .layerCount = 0,
+                        .layers = null,
                     };
-                    try loader.xrCheck(c.xrBeginFrame(self.xr_session, &begin_frame_info));
-                    var should_quit = input(
+                    try loader.xrCheck(c.xrEndFrame(self.xr_session, &end_frame_info));
+
+                    continue;
+                } else {
+                    should_quit, const active_index = render(
+                        self.allocator,
                         self.xr_session,
-                        actionSet,
+                        xr_swapchain,
                         space,
                         frame_state.predictedDisplayTime,
-                        leftHandAction,
-                        rightHandAction,
-                        leftGrabAction,
-                        right_grab_action,
-                        leftHandSpace,
-                        rightHandSpace,
-                    ) catch true;
-                    if (frame_state.shouldRender == c.VK_FALSE) {
-                        var end_frame_info = c.XrFrameEndInfo{
-                            .type = c.XR_TYPE_FRAME_END_INFO,
-                            .displayTime = frame_state.predictedDisplayTime,
-                            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
-                            .layerCount = 0,
-                            .layers = null,
-                        };
-                        try loader.xrCheck(c.xrEndFrame(self.xr_session, &end_frame_info));
-
-                        continue;
-                    } else {
-                        should_quit, const active_index = render(
-                            self.allocator,
-                            self.xr_session,
-                            xr_swapchain,
-                            space,
-                            frame_state.predictedDisplayTime,
-                            self.vk_logical_device,
-                            self.vk_queue,
-                            render_pass,
-                            pipeline_layout,
-                            pipeline,
-                        ) catch .{ true, 0 };
-                        quit.store(should_quit, .release);
-                        lastRenderedImageIndex = active_index;
-                    }
-                }
-            } else if (result != c.XR_SUCCESS) {
-                try loader.xrCheck(result);
-            } else {
-                switch (eventData.type) {
-                    c.XR_TYPE_EVENT_DATA_EVENTS_LOST => std.debug.print("Event queue overflowed and events were lost.\n", .{}),
-                    c.XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING => {
-                        std.debug.print("OpenXR instance is shutting down.\n", .{});
-                        quit.store(true, .release);
-                    },
-                    c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => std.debug.print("The interaction profile has changed.\n", .{}),
-                    c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
-                    c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
-                        const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
-
-                        switch (event.state) {
-                            c.XR_SESSION_STATE_UNKNOWN, c.XR_SESSION_STATE_MAX_ENUM => std.debug.print("Unknown session state entered: {any}\n", .{event.state}),
-                            c.XR_SESSION_STATE_IDLE => running = false,
-                            c.XR_SESSION_STATE_READY => {
-                                const sessionBeginInfo = c.XrSessionBeginInfo{
-                                    .type = c.XR_TYPE_SESSION_BEGIN_INFO,
-                                    .primaryViewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-                                };
-                                try loader.xrCheck(c.xrBeginSession(self.xr_session, &sessionBeginInfo));
-                                running = true;
-                            },
-                            c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => running = true,
-                            c.XR_SESSION_STATE_STOPPING => {
-                                try loader.xrCheck(c.xrEndSession(self.xr_session));
-                                running = false;
-                            },
-                            c.XR_SESSION_STATE_LOSS_PENDING => {
-                                std.debug.print("OpenXR session is shutting down.\n", .{});
-                                quit.store(true, .release);
-                            },
-                            c.XR_SESSION_STATE_EXITING => {
-                                std.debug.print("OpenXR runtime requested shutdown.\n", .{});
-                                quit.store(true, .release);
-                            },
-                            else => {
-                                log.err("Unknown event STATE type received: {any}", .{eventData.type});
-                            },
-                        }
-                    },
-                    else => {
-                        log.err("Unknown event type received: {any}", .{eventData.type});
-                    },
+                        self.vk_logical_device,
+                        self.vk_queue,
+                        render_pass,
+                        pipeline_layout,
+                        pipeline,
+                    ) catch .{ true, 0 };
+                    quit.store(should_quit, .release);
+                    lastRenderedImageIndex = active_index;
                 }
             }
         }
+        // } else if (result != c.XR_SUCCESS) {
+        //     try loader.xrCheck(result);
+        // }
 
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
     }
 
-    fn input(
-        session: c.XrSession,
-        actionSet: c.XrActionSet,
-        roomSpace: c.XrSpace,
-        predictedDisplayTime: c.XrTime,
-        leftHandAction: c.XrAction,
-        rightHandAction: c.XrAction,
-        leftGrabAction: c.XrAction,
-        rightGrabAction: c.XrAction,
-        leftHandSpace: c.XrSpace,
-        rightHandSpace: c.XrSpace,
-    ) !bool {
-        var activeActionSet = c.XrActiveActionSet{
-            .actionSet = actionSet,
-            .subactionPath = c.XR_NULL_PATH,
-        };
-
-        var syncInfo = c.XrActionsSyncInfo{
-            .type = c.XR_TYPE_ACTIONS_SYNC_INFO,
-            .countActiveActionSets = 1,
-            .activeActionSets = &activeActionSet,
-        };
-
-        const result: c.XrResult = (c.xrSyncActions(session, &syncInfo));
-
-        if (result == c.XR_SESSION_NOT_FOCUSED) {
-            return false;
-        } else if (result != c.XR_SUCCESS) {
-            std.log.err("Failed to synchronize actions: {any}\n", .{result});
-            return true;
-        }
-
-        const leftHand: c.XrPosef = try xr.getActionPose(session, leftHandAction, leftHandSpace, roomSpace, predictedDisplayTime);
-        const rightHand: c.XrPosef = try xr.getActionPose(session, rightHandAction, rightHandSpace, roomSpace, predictedDisplayTime);
-        const leftGrab: c.XrBool32 = try xr.getActionBoolean(session, leftGrabAction);
-        const rightGrab: c.XrBool32 = try xr.getActionBoolean(session, rightGrabAction);
-
-        std.debug.print("\n\n=========[RIGHT: {any}]===========\n\n", .{rightHand});
-        std.debug.print("\n\n=========[LEFT: {any}]===========\n\n", .{leftHand});
-
-        if (leftGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - leftHand.position.x, 2) + std.math.pow(f32, object_pos.y - leftHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
-            object_grabbed = 1;
-        } else if (leftGrab != 0 and object_grabbed == 1) {
-            object_grabbed = 0;
-        }
-
-        if (rightGrab != 0 and object_grabbed != 0 and std.math.sqrt(std.math.pow(f32, object_pos.x - rightHand.position.x, 2) + std.math.pow(f32, object_pos.y - rightHand.position.y, 2) + std.math.pow(f32, object_pos.z - leftHand.position.z, 2)) < grab_distance) {
-            object_grabbed = 2;
-        } else if (rightGrab != 0 and object_grabbed == 2) {
-            object_grabbed = 0;
-        }
-
-        switch (object_grabbed) {
-            1 => object_pos = leftHand.position,
-            2 => object_pos = rightHand.position,
-            else => return false,
-        }
-
-        return false;
-    }
     fn render(
         allocator: std.mem.Allocator,
         session: c.XrSession,
@@ -780,13 +760,6 @@ pub const Engine = struct {
         pipeline_layout: c.VkPipelineLayout,
         pipeline: c.VkPipeline,
     ) !struct { bool, u32 } {
-        // _ = render_pass;
-        // _ = pipeline;
-        // _ = pipeline_layout;
-        // _ = view;
-        // _ = device;
-        // _ = images;
-        // _ = queue;
         var acquire_image_info = c.XrSwapchainImageAcquireInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
         };
@@ -826,25 +799,26 @@ pub const Engine = struct {
             projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
             projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
             projection_matrix.d[11] = -1;
+
+            // projection_matrix = nz.Mat4(f32).perspective(angle_height, angle_width, near_distance, far_distance);
+
             @memcpy(data.?[ptr_start .. ptr_start + 16], projection_matrix.d[0..]);
             ptr_start += 16;
         }
 
         for (0..2) |i| {
-            const view_matrix: nz.Mat4(f32) = .mul(
+            const view_matrix: nz.Mat4(f32) = .inverse(.mul(
                 .translate(.{ view[i].pose.position.x, view[i].pose.position.y, view[i].pose.position.z }),
-                .fromQuaternion(.{ view[i].pose.orientation.w, view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z }),
-            );
+                .fromQuaternion(.{ view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z, view[i].pose.orientation.w }),
+            ));
             @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
             ptr_start += 16;
         }
 
-        var model_matrix = nz.Mat4(f32).identity(1);
-        model_matrix.d[12] = object_pos.x;
-        model_matrix.d[13] = object_pos.y;
-        model_matrix.d[14] = object_pos.z;
-        model_matrix.d[15] = 1;
-        @memcpy(data.?[ptr_start .. ptr_start + 16], model_matrix.d[0..]);
+        // var model_matrix = nz.Mat4(f32).identity(1);
+        // model_matrix.d[14] = -1;
+
+        // @memcpy(data.?[ptr_start .. ptr_start + 16], model_matrix.d[0..]);
 
         c.vkUnmapMemory(device, image.memory);
 
@@ -855,10 +829,9 @@ pub const Engine = struct {
 
         try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
 
-        const clearValue = c.VkClearValue{
-            .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } },
-        };
-
+        var clear_values: [2]c.VkClearValue = undefined;
+        clear_values[0].color.float32 = .{ 0.0, 0.0, 0.0, 1.0 };
+        clear_values[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
         const begin_render_pass_info = c.VkRenderPassBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
             .renderPass = render_pass,
@@ -867,8 +840,8 @@ pub const Engine = struct {
                 .offset = .{ .x = 0, .y = 0 },
                 .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
             },
-            .clearValueCount = 1,
-            .pClearValues = &clearValue,
+            .clearValueCount = clear_values.len,
+            .pClearValues = &clear_values[0],
         };
 
         c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
@@ -891,25 +864,13 @@ pub const Engine = struct {
 
         c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
 
-        //TODO: HERE WE DO THE CUBEOIDS!
-
         c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
 
-        var offsets: [1]c.VkDeviceSize = .{0};
-        var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};
-        c.vkCmdBindVertexBuffers(image.command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
-        c.vkCmdBindIndexBuffer(image.command_buffer, index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
-        c.vkCmdDrawIndexed(
-            image.command_buffer,
-            cube_indecies.len,
-            1,
-            0,
-            0,
-            0,
-        );
+        for (blocks.items) |block| {
+            renderCuboid(block, image.command_buffer, pipeline_layout);
+        }
 
-        // c.vkCmdDraw(image.command_buffer, 3, 1, 0, 0);
         c.vkCmdEndRenderPass(image.command_buffer);
 
         const beforeSrcBarrier: c.VkImageMemoryBarrier = .{
@@ -1059,7 +1020,70 @@ pub const Engine = struct {
         std.debug.print("SIGINT received. Initiating graceful shutdown...\n", .{});
         quit.store(true, .release); // Set quit_requested to true
     }
+    pub fn createResources(allocator: std.mem.Allocator) !void {
+        var prng = std.Random.DefaultPrng.init(blk: {
+            var seed: u64 = undefined;
+            try std.posix.getrandom(std.mem.asBytes(&seed));
+            break :blk seed;
+        });
+        const rand = prng.random();
+
+        blocks = .init(allocator);
+        const scale: f32 = 0.2;
+        // Center the blocks a little way from the origin.
+        const center: c.XrVector3f = .{ .x = 0.0, .y = -0.2, .z = -0.7 };
+        for (0..4) |i| {
+            const x: f32 = scale * (@as(f32, @floatFromInt(i)) - 1.5) + center.x;
+            for (0..4) |j| {
+                const y: f32 = scale * (@as(f32, @floatFromInt(j)) - 1.5) + center.y;
+                for (0..4) |k| {
+                    // const angleRad: f32 = 0;
+                    const z: f32 = scale * (@as(f32, @floatFromInt(k)) - 1.5) + center.z;
+                    const q: c.XrQuaternionf = .{ .x = 0.0, .z = 0.0, .y = 0.0, .w = 1.0 };
+                    const color: c.XrVector3f = .{
+                        .x = rand.float(f32),
+                        .y = rand.float(f32),
+                        .z = rand.float(f32),
+                    };
+                    const block: input.Block = .{
+                        .orientation = q,
+                        .position = .{ .x = x, .y = y, .z = z },
+                        .scale = .{ .x = 0.095, .y = 0.095, .z = 0.095 },
+                        .color = color,
+                    };
+                    try blocks.append(block);
+                }
+            }
+        }
+    }
 };
+
+pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
+    // XrMatrix4x4f_CreateTranslationRotationScale(&cameraConstants.model, &pose.position, &pose.orientation, &scale);
+    // XrMatrix4x4f_Multiply(&cameraConstants.modelViewProj, &cameraConstants.viewProj, &cameraConstants.model);
+    // cameraConstants.color = {color.x, color.y, color.z, 1.0};
+    // size_t offsetCameraUB = sizeof(CameraConstants) * renderCuboidIndex;
+
+    var push: nz.Mat4(f32) = .identity(1);
+    push.d[12] = block.position.x;
+    push.d[13] = block.position.y;
+    push.d[14] = block.position.z - 1;
+
+    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(nz.Mat4(f32)), &push);
+
+    var offsets: [1]c.VkDeviceSize = .{0};
+    var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};
+    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
+    c.vkCmdBindIndexBuffer(command_buffer, index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
+    c.vkCmdDrawIndexed(
+        command_buffer,
+        cube_indecies.len,
+        1,
+        0,
+        0,
+        0,
+    );
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{

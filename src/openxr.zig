@@ -292,7 +292,7 @@ pub fn createSession(
 pub fn createSpace(session: c.XrSession) !c.XrSpace {
     var space_create_info = c.XrReferenceSpaceCreateInfo{
         .type = c.XR_TYPE_REFERENCE_SPACE_CREATE_INFO,
-        .referenceSpaceType = c.XR_REFERENCE_SPACE_TYPE_STAGE,
+        .referenceSpaceType = c.XR_REFERENCE_SPACE_TYPE_LOCAL,
         .poseInReferenceSpace = .{ .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1 }, .position = .{ .x = 0, .y = 0, .z = 0 } },
     };
 
@@ -359,9 +359,7 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
     }
 }
 
-pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
-    var actionSet: c.XrActionSet = undefined;
-
+pub fn createActionSet(instance: c.XrInstance, hand_path: *[2]c.XrPath) !c.XrActionSet {
     const buffer_size = 64;
     const buffer = [buffer_size]u8;
     var set_name: buffer = .{0} ** buffer_size;
@@ -379,7 +377,11 @@ pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
         .priority = 0,
     };
 
+    var actionSet: c.XrActionSet = undefined;
     try loader.xrCheck(c.xrCreateActionSet(instance, &actionSetCreateInfo, &actionSet));
+
+    hand_path[0] = try createXrPath(instance, "/user/hand/left".ptr);
+    hand_path[1] = try createXrPath(instance, "/user/hand/right".ptr);
 
     return actionSet;
 }
@@ -411,7 +413,7 @@ pub fn createActionSpace(session: c.XrSession, action: c.XrAction) !c.XrSpace {
         .type = c.XR_TYPE_ACTION_SPACE_CREATE_INFO,
         .poseInActionSpace = .{
             .position = .{ .x = 0, .y = 0, .z = 0 },
-            .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1 },
+            .orientation = .{ .x = 1, .y = 0, .z = 0, .w = 0 },
         },
         .action = action,
     };
@@ -436,9 +438,9 @@ pub fn getPath(instance: c.XrInstance, name: [*:0]const u8) !c.XrPath {
 pub fn suggestBindings(instance: c.XrInstance, leftHandAction: c.XrAction, rightHandAction: c.XrAction, leftGrabAction: c.XrAction, rightGrabAction: c.XrAction) !void {
     const leftHandPath: c.XrPath = try getPath(instance, "/user/hand/left/input/grip/pose");
     const rightHandPath: c.XrPath = try getPath(instance, "/user/hand/right/input/grip/pose");
-    const leftButtonPath: c.XrPath = try getPath(instance, "/user/hand/left/input/trigger/click");
-    const rightButtonPath: c.XrPath = try getPath(instance, "/user/hand/right/input/trigger/click");
-    const interactionProfilePath: c.XrPath = try getPath(instance, "/interaction_profiles/valve/index_controller");
+    const leftButtonPath: c.XrPath = try getPath(instance, "/user/hand/left/input/select/click");
+    const rightButtonPath: c.XrPath = try getPath(instance, "/user/hand/right/input/select/click");
+    const interactionProfilePath: c.XrPath = try getPath(instance, "/interaction_profiles/khr/simple_controller");
 
     const suggestedBindings = [4]c.XrActionSuggestedBinding{
         .{ .action = leftHandAction, .binding = leftHandPath },
@@ -456,6 +458,67 @@ pub fn suggestBindings(instance: c.XrInstance, leftHandAction: c.XrAction, right
 
     try loader.xrCheck(c.xrSuggestInteractionProfileBindings(instance, &suggestedBinding));
 }
+pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance) !void {
+    var hand_paths: [2]c.XrPath = .{ 0, 0 };
+    try loader.xrCheck(c.xrStringToPath(
+        xr_instance,
+        "/user/hand/left",
+        @ptrCast(&hand_paths[0]),
+    ));
+    try loader.xrCheck(c.xrStringToPath(
+        xr_instance,
+        "/user/hand/right",
+        @ptrCast(&hand_paths[1]),
+    ));
+
+    std.debug.print("\nstr: {d}\n", .{hand_paths[0]});
+    std.debug.print("\nstr: {d}\n", .{hand_paths[1]});
+
+    var strl: u32 = 0;
+    var text: [c.XR_MAX_PATH_LENGTH]u8 = undefined;
+    var interactionProfile: c.XrInteractionProfileState = .{
+        .type = c.XR_TYPE_INTERACTION_PROFILE_STATE,
+        .interactionProfile = 0,
+        .next = null,
+    };
+
+    try loader.xrCheck(
+        c.xrGetCurrentInteractionProfile(
+            xr_session,
+            hand_paths[0],
+            &interactionProfile,
+        ),
+    );
+    if (interactionProfile.interactionProfile != c.XR_NULL_HANDLE) {
+        try loader.xrCheck(c.xrPathToString(
+            xr_instance,
+            interactionProfile.interactionProfile,
+            text.len,
+            &strl,
+            &text[0],
+        ));
+        std.debug.print("\n\n====[LEFT]]=====\n\n", .{});
+        std.debug.print("user/hand/left ActiveProfile : {any}", .{text});
+    } else std.debug.print("\noh shit\n", .{});
+    try loader.xrCheck(
+        c.xrGetCurrentInteractionProfile(
+            xr_session,
+            hand_paths[1],
+            &interactionProfile,
+        ),
+    );
+    if (interactionProfile.interactionProfile != c.XR_NULL_HANDLE) {
+        try loader.xrCheck(c.xrPathToString(
+            xr_instance,
+            interactionProfile.interactionProfile,
+            text.len,
+            &strl,
+            &text[0],
+        ));
+        std.debug.print("\n\n====[RIGHT]=====\n\n", .{});
+        std.debug.print("user/hand/right ActiveProfile : {any}", .{text});
+    } else std.debug.print("\noh shit\n", .{});
+}
 
 pub fn attachActionSet(session: c.XrSession, actionSet: c.XrActionSet) !void {
     var actionSetsAttachInfo = c.XrSessionActionSetsAttachInfo{
@@ -467,10 +530,11 @@ pub fn attachActionSet(session: c.XrSession, actionSet: c.XrActionSet) !void {
     try loader.xrCheck(c.xrAttachSessionActionSets(session, &actionSetsAttachInfo));
 }
 
-pub fn getActionBoolean(session: c.XrSession, action: c.XrAction) !c.XrBool32 {
+pub fn getActionBoolean(session: c.XrSession, action: c.XrAction, path: c.XrPath) !c.XrBool32 {
     var getInfo = c.XrActionStateGetInfo{
         .type = c.XR_TYPE_ACTION_STATE_GET_INFO,
         .action = action,
+        .subactionPath = path,
     };
 
     var state = c.XrActionStateBoolean{
@@ -513,4 +577,15 @@ pub fn getActionPose(session: c.XrSession, action: c.XrAction, space: c.XrSpace,
     }
 
     return location.pose;
+}
+pub fn createXrPath(xr_instance: c.XrInstance, path_string: [*:0]const u8) !c.XrPath {
+    var xrPath: c.XrPath = undefined;
+    try loader.xrCheck(c.xrStringToPath(xr_instance, path_string, &xrPath));
+    return xrPath;
+}
+pub fn fromXrPath(xr_instance: c.XrInstance, path: c.XrPath) ![*:0]u8 {
+    var strl: i32 = undefined;
+    const text: [c.XR_MAX_PATH_LENGTH]u8 = undefined;
+    try loader.xrCheck(c.xrPathToString(xr_instance, path, c.XR_MAX_PATH_LENGTH, &strl, text));
+    return text;
 }
