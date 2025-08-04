@@ -10,6 +10,7 @@ layout(binding = 0) uniform Matrices {
 
 layout(push_constant) uniform Push {
     mat4 model;
+    vec4 color;
 } push;
 
 // vec3 vertices[3] = vec3[](
@@ -26,9 +27,10 @@ layout(push_constant) uniform Push {
 void main()
 {
     gl_Position = matrices.projection[gl_ViewIndex] * matrices.view[gl_ViewIndex] * push.model * vertex;
-    float greenChannel = (sin(gl_VertexIndex) + 1) / 2;
-    float redChannel = (cos(gl_VertexIndex) + 1) / 2;
-    float blueChannel = (tan(gl_VertexIndex) + 1) / 2;
-    color =  vec3(redChannel, greenChannel, blueChannel);
+    float redChannel = push.color[0];
+    float blueChannel = push.color[1];
+    float greenChannel = push.color[2];
+    color =  vec3(redChannel, blueChannel,greenChannel);
+    
     //color = abs(vertices[gl_VertexIndex]);
 }

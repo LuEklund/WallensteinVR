@@ -127,7 +127,7 @@ pub const Engine = struct {
         try xr.validateLayers(allocator, config.xr_layers);
 
         //SDL
-        const init_flags: sdl.InitFlags = .{ .video = true };
+        const init_flags: sdl.InitFlags = .{ .video = true, .events = true };
         try sdl.init(init_flags);
         // defer sdl.quit(init_flags);
         const window: sdl.video.Window = try .init("Hello SDL3", windowWidth, windowHeight, .{ .vulkan = true, .resizable = true });
@@ -359,6 +359,12 @@ pub const Engine = struct {
                             @intCast(wr.width),
                             @intCast(wr.height),
                         );
+                    },
+                    .key_down => |key| {
+                        std.debug.print("Key press {any}\n", .{key});
+                        if (key.key == .escape) {
+                            quit.store(true, .release);
+                        }
                     },
                     else => {},
                 }
@@ -646,7 +652,8 @@ pub const Engine = struct {
                         pipeline_layout,
                         pipeline,
                     ) catch .{ true, 0 };
-                    quit.store(should_quit, .release);
+                    if (should_quit)
+                        quit.store(should_quit, .release);
                     lastRenderedImageIndex = active_index;
                 }
             }
@@ -867,8 +874,38 @@ pub const Engine = struct {
         c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
 
+        var floor: input.Block = undefined;
+        floor.color = .{ 1, 1, 1, 1 };
+        floor.position = .{ 0, -0.4, 0 };
+        floor.scale = .{ 10, 0.05, 10 };
+        floor.orientation = .{ 0, 0, 0, 0 };
+        renderCuboid(floor, image.command_buffer, pipeline_layout);
         for (blocks.items) |block| {
             renderCuboid(block, image.command_buffer, pipeline_layout);
+        }
+
+        std.debug.print("\n\n=========[LEFT: {any}]===========\n\n", .{hand_pose[0]});
+        std.debug.print("\n\n=========[RIGHT: {any}]===========\n\n", .{hand_pose[1]});
+
+        for (0..2) |i| {
+            var hand: input.Block = .{
+                .color = .{ 1, 0, 0, 1 },
+                .position = .{ 0, 0, 0 },
+                .scale = .{ 1, 1, 1 },
+                .orientation = .{ 0, 0, 0, 0 },
+            };
+            if (m_handPoseState[i].isActive != 0) {
+                hand.position[0] = hand_pose[i].position.x;
+                hand.position[1] = hand_pose[i].position.y;
+                hand.position[2] = hand_pose[i].position.z;
+                hand.orientation = .{
+                    hand_pose[i].orientation.x,
+                    hand_pose[i].orientation.y,
+                    hand_pose[i].orientation.z,
+                    hand_pose[i].orientation.w,
+                };
+            }
+            renderCuboid(hand, image.command_buffer, pipeline_layout);
         }
 
         c.vkCmdEndRenderPass(image.command_buffer);
@@ -1031,24 +1068,26 @@ pub const Engine = struct {
         blocks = .init(allocator);
         const scale: f32 = 0.2;
         // Center the blocks a little way from the origin.
-        const center: c.XrVector3f = .{ .x = 0.0, .y = -0.2, .z = -0.7 };
+        const center: nz.Vec3(f32) = .{ 0.0, -0.2, -0.7 };
         for (0..4) |i| {
-            const x: f32 = scale * (@as(f32, @floatFromInt(i)) - 1.5) + center.x;
+            const x: f32 = scale * (@as(f32, @floatFromInt(i)) - 1.5) + center[0];
             for (0..4) |j| {
-                const y: f32 = scale * (@as(f32, @floatFromInt(j)) - 1.5) + center.y;
+                const y: f32 = scale * (@as(f32, @floatFromInt(j)) - 1.5) + center[1];
                 for (0..4) |k| {
                     // const angleRad: f32 = 0;
-                    const z: f32 = scale * (@as(f32, @floatFromInt(k)) - 1.5) + center.z;
-                    const q: c.XrQuaternionf = .{ .x = 0.0, .z = 0.0, .y = 0.0, .w = 1.0 };
-                    const color: c.XrVector3f = .{
-                        .x = rand.float(f32),
-                        .y = rand.float(f32),
-                        .z = rand.float(f32),
+                    const z: f32 = scale * (@as(f32, @floatFromInt(k)) - 1.5) + center[2];
+                    const q: nz.Vec4(f32) = .{ 0.0, 0.45, 0.0, 1.0 };
+                    const color: nz.Vec4(f32) = .{
+                        rand.float(f32),
+                        rand.float(f32),
+                        rand.float(f32),
+
+                        1,
                     };
                     const block: input.Block = .{
                         .orientation = q,
-                        .position = .{ .x = x, .y = y, .z = z },
-                        .scale = .{ .x = 0.095, .y = 0.095, .z = 0.095 },
+                        .position = .{ x, y, z },
+                        .scale = .{ 0.1, 0.1, 0.1 },
                         .color = color,
                     };
                     try blocks.append(block);
@@ -1059,17 +1098,22 @@ pub const Engine = struct {
 };
 
 pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
-    // XrMatrix4x4f_CreateTranslationRotationScale(&cameraConstants.model, &pose.position, &pose.orientation, &scale);
-    // XrMatrix4x4f_Multiply(&cameraConstants.modelViewProj, &cameraConstants.viewProj, &cameraConstants.model);
-    // cameraConstants.color = {color.x, color.y, color.z, 1.0};
-    // size_t offsetCameraUB = sizeof(CameraConstants) * renderCuboidIndex;
+    var scale: nz.Mat4(f32) = .identity(1);
+    scale.d[0] = block.scale[0];
+    scale.d[5] = block.scale[1];
+    scale.d[10] = block.scale[2];
 
-    var push: nz.Mat4(f32) = .identity(1);
-    push.d[12] = block.position.x;
-    push.d[13] = block.position.y;
-    push.d[14] = block.position.z - 1;
+    const rotation: nz.Mat4(f32) = .fromQuaternion(block.orientation);
 
-    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(nz.Mat4(f32)), &push);
+    var positon: nz.Mat4(f32) = .translate(block.position);
+    // positon.d[14] += -0.2;
+
+    var push: vk.PushConstant = .{
+        .matrix = (positon.mul(rotation).mul(scale)).d,
+        .color = block.color,
+    };
+
+    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(vk.PushConstant), &push);
 
     var offsets: [1]c.VkDeviceSize = .{0};
     var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};

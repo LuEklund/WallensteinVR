@@ -2,14 +2,15 @@ const loader = @import("loader");
 const std = @import("std");
 const xr = @import("openxr.zig");
 const c = loader.c;
+const nz = @import("numz");
 // const f32max = std.math.floatMax(f32);
 // const f32abs = std.math.
 
 pub const Block = struct {
-    orientation: c.XrQuaternionf = std.mem.zeroes(c.XrQuaternionf),
-    position: c.XrVector3f = std.mem.zeroes(c.XrVector3f),
-    scale: c.XrVector3f = std.mem.zeroes(c.XrVector3f),
-    color: c.XrVector3f = std.mem.zeroes(c.XrVector3f),
+    orientation: nz.Vec4(f32) = @splat(0),
+    position: nz.Vec3(f32) = @splat(0),
+    scale: nz.Vec3(f32) = @splat(0),
+    color: nz.Vec4(f32) = @splat(0),
 };
 
 pub fn pollAction(
@@ -80,9 +81,6 @@ pub fn pollAction(
         rightGrabAction,
         m_handPaths[1],
     );
-    // std.debug.print("\n\n=========[RIGHT: {any}]===========\n\n", .{rightHand});
-    // std.debug.print("\n\n=========[LEFT: {any}]===========\n\n", .{leftHand});
-
     return false;
 }
 
