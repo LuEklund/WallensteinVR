@@ -123,6 +123,7 @@ pub const Engine = struct {
     };
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
+        try setCwdToExeDir();
         try xr.validateExtensions(allocator, config.xr_extensions);
         try xr.validateLayers(allocator, config.xr_layers);
 
@@ -657,6 +658,13 @@ pub const Engine = struct {
 
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(self.vk_logical_device));
+    }
+
+    fn setCwdToExeDir() !void {
+         var path_buffer: [std.fs.max_path_bytes] = undefined;
+         const exe_path = try std.fs.selfExePath(&path_buffer);
+         const exe_dir = std.fs.path.dirname(exe_path) orelse return;
+         try std.process.changeCurDir(exe_dir);
     }
 
     fn render(
