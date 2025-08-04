@@ -44,7 +44,8 @@ pub fn pollAction(
         return false;
     } else if (result != c.XR_SUCCESS) {
         std.log.err("Failed to synchronize actions: {any}\n", .{result});
-        return true;
+        // return true;
+        return error.SHIT;
     }
 
     var actionStateGetInfo: c.XrActionStateGetInfo = .{ .type = c.XR_TYPE_ACTION_STATE_GET_INFO };
@@ -71,6 +72,7 @@ pub fn pollAction(
     }
     // const leftHand: c.XrPosef = try xr.getActionPose(session, leftHandAction, leftHandSpace, roomSpace, predictedDisplayTime);
     // const rightHand: c.XrPosef = try xr.getActionPose(session, rightHandAction, rightHandSpace, roomSpace, predictedDisplayTime);
+
     _ = try xr.getActionBoolean(
         session,
         leftGrabAction,
