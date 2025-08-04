@@ -661,7 +661,7 @@ pub const Engine = struct {
     }
 
     fn setCwdToExeDir() !void {
-         var path_buffer: [std.fs.max_path_bytes] = undefined;
+         var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
          const exe_path = try std.fs.selfExePath(&path_buffer);
          const exe_dir = std.fs.path.dirname(exe_path) orelse return;
          try std.process.changeCurDir(exe_dir);
