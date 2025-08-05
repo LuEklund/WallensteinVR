@@ -7,7 +7,7 @@
             "request": "launch",
             "name": "Debug",
             "program": "${workspaceFolder}/zig-out/bin/WallensteinVr",
-            "args": [],
+            "args": ["/home/lucas/.local/bin/zig"],
             "cwd": "${workspaceFolder}/zig-out/bin"
         }
     ]

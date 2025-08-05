@@ -4,6 +4,7 @@ const log = std.log;
 const loader = @import("loader");
 const c = loader.c;
 
+const nz = @import("numz");
 // const XrSwapchain = @import("XrSwapchain.zig");
 
 const xr = @import("openxr.zig");
@@ -12,6 +13,11 @@ pub const Dispatcher = loader.VkDispatcher(.{
     .vkCreateDebugUtilsMessengerEXT = true,
     .vkDestroyDebugUtilsMessengerEXT = true,
 });
+
+pub const PushConstant = extern struct {
+    matrix: [16]f32,
+    color: [4]f32,
+};
 
 export fn debugCallback(
     message_severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
@@ -305,7 +311,7 @@ pub fn createPipeline(
 
     var push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
-        .size = 64,
+        .size = @sizeOf(PushConstant),
         .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
     };
     var layout_create_info = c.VkPipelineLayoutCreateInfo{

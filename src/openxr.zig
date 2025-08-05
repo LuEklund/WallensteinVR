@@ -359,7 +359,7 @@ pub fn validateLayers(allocator: std.mem.Allocator, layers: []const [*:0]const u
     }
 }
 
-pub fn createActionSet(instance: c.XrInstance, hand_path: *[2]c.XrPath) !c.XrActionSet {
+pub fn createActionSet(instance: c.XrInstance) !c.XrActionSet {
     const buffer_size = 64;
     const buffer = [buffer_size]u8;
     var set_name: buffer = .{0} ** buffer_size;
@@ -380,13 +380,10 @@ pub fn createActionSet(instance: c.XrInstance, hand_path: *[2]c.XrPath) !c.XrAct
     var actionSet: c.XrActionSet = undefined;
     try loader.xrCheck(c.xrCreateActionSet(instance, &actionSetCreateInfo, &actionSet));
 
-    hand_path[0] = try createXrPath(instance, "/user/hand/left".ptr);
-    hand_path[1] = try createXrPath(instance, "/user/hand/right".ptr);
-
     return actionSet;
 }
 
-pub fn createAction(actionSet: c.XrActionSet, name: [*:0]const u8, action_type: c.XrActionType) !c.XrAction {
+pub fn createAction(xr_instance: c.XrInstance, actionSet: c.XrActionSet, name: [*:0]const u8, action_type: c.XrActionType, sub_path: std.ArrayListUnmanaged([*:0]const u8)) !c.XrAction {
     var action: c.XrAction = undefined;
 
     var action_name: [64]u8 = undefined;
@@ -394,33 +391,23 @@ pub fn createAction(actionSet: c.XrActionSet, name: [*:0]const u8, action_type: 
     @memcpy(&action_name, name);
     @memcpy(&localized_action_name, name);
 
+    var xr_paths: [16]c.XrPath = undefined;
+    for (sub_path.items, 0..) |path, i| {
+        xr_paths[i] = try createXrPath(xr_instance, path);
+    }
+
     var actionCreateInfo = c.XrActionCreateInfo{
         .type = c.XR_TYPE_ACTION_CREATE_INFO,
         .actionName = action_name,
         .localizedActionName = localized_action_name,
         .actionType = action_type,
+        .countSubactionPaths = @intCast(sub_path.items.len),
+        .subactionPaths = &xr_paths[0],
     };
 
     try loader.xrCheck(c.xrCreateAction(actionSet, &actionCreateInfo, &action));
 
     return action;
-}
-
-pub fn createActionSpace(session: c.XrSession, action: c.XrAction) !c.XrSpace {
-    var space: c.XrSpace = undefined;
-
-    var actionSpaceCreateInfo = c.XrActionSpaceCreateInfo{
-        .type = c.XR_TYPE_ACTION_SPACE_CREATE_INFO,
-        .poseInActionSpace = .{
-            .position = .{ .x = 0, .y = 0, .z = 0 },
-            .orientation = .{ .x = 1, .y = 0, .z = 0, .w = 0 },
-        },
-        .action = action,
-    };
-
-    try loader.xrCheck(c.xrCreateActionSpace(session, &actionSpaceCreateInfo, &space));
-
-    return space;
 }
 
 pub fn getPath(instance: c.XrInstance, name: [*:0]const u8) !c.XrPath {
