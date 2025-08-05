@@ -16,14 +16,14 @@ var quit: std.atomic.Value(bool) = .init(false);
 // var object_grabbed: u32 = 0;
 // var object_pos = c.XrVector3f{ .x = 0, .y = 0, .z = 0 };
 // var grab_distance: f32 = 1;
-var grabbed_block: [2]u32 = .{ -1, -1 };
-var near_block: [2]u32 = .{ -1, -1 };
+var grabbed_block: [2]i32 = .{ -1, -1 };
+var near_block: [2]i32 = .{ -1, -1 };
 const windowWidth: c_int = 1600;
 const windowHeight: c_int = 900;
 var blocks: std.ArrayList(input.Block) = undefined;
 
 // The XrPaths for left and right hand hands or controllers.
-var m_grabState: [2]c.XrActionStateBoolean = .{ .{ .type = c.XR_TYPE_ACTION_STATE_BOOLEAN }, .{ .type = c.XR_TYPE_ACTION_STATE_BOOLEAN } };
+var m_grabState: [2]c.XrActionStateFloat = .{ .{ .type = c.XR_TYPE_ACTION_STATE_FLOAT }, .{ .type = c.XR_TYPE_ACTION_STATE_FLOAT } };
 var m_handPaths: [2]c.XrPath = .{ 0, 0 };
 var hand_pose_space: [2]c.XrSpace = undefined;
 var hand_pose: [2]c.XrPosef = .{
@@ -36,7 +36,8 @@ var hand_pose: [2]c.XrPosef = .{
         .position = .{ .x = 0.0, .z = 0.0, .y = -100 },
     },
 };
-
+var m_palmPoseAction: c.XrAction = undefined;
+var m_grabCubeAction: c.XrAction = undefined;
 var m_handPoseState: [2]c.XrActionStatePose = .{
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
@@ -106,10 +107,6 @@ pub const Engine = struct {
     vk_logical_device: c.VkDevice,
     vk_queue: c.VkQueue,
     action_set: c.XrActionSet,
-    l_action: c.XrAction,
-    r_action: c.XrAction,
-    l_action_g: c.XrAction,
-    r_action_g: c.XrAction,
     vkid: vk.Dispatcher,
     sdl_window: sdl.video.Window,
     sdl_surface: c.VkSurfaceKHR,
@@ -136,24 +133,23 @@ pub const Engine = struct {
         for (0..vk_exts.len) |i| {
             std.debug.print("EXT_SDL: {s}\n", .{vk_exts[i]});
         }
+        // const leftGrabAction: c.XrAction = try xr.createAction(action_set, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT
 
         const xr_instance: c.XrInstance = try xr.createInstance(config.xr_extensions, config.xr_layers);
         const xrd = try xr.Dispatcher.init(xr_instance);
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xrd, xr_instance);
         const xr_system_id: c.XrSystemId = try xr.getSystem(xr_instance);
 
-        const action_set: c.XrActionSet = try xr.createActionSet(xr_instance, &m_handPaths);
-        // defer _ = c.xrDestroyActionSet(action_set);
-        const leftHandAction: c.XrAction = try xr.createAction(action_set, "left-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        // defer _ = c.xrDestroyAction(leftHandAction);
-        const rightHandAction: c.XrAction = try xr.createAction(action_set, "right-hand", c.XR_ACTION_TYPE_POSE_INPUT);
-        // defer _ = c.xrDestroyAction(leftHandAction);
-        // const hand_poses: [2]c.XrPosef
-        // _ = hand_poses;
-        const leftGrabAction: c.XrAction = try xr.createAction(action_set, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        // defer _ = c.xrDestroyAction(leftGrabAction);
-        const right_grab_action: c.XrAction = try xr.createAction(action_set, "right-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT);
-        // defer _ = c.xrDestroyAction(right_grab_action);
+        const action_set: c.XrActionSet = try xr.createActionSet(xr_instance);
+        var paths: std.ArrayListUnmanaged([*:0]const u8) = .empty;
+        try paths.append(allocator, "/user/hand/left");
+        try paths.append(allocator, "/user/hand/right");
+        defer paths.deinit(allocator);
+        m_grabCubeAction = try xr.createAction(xr_instance, action_set, "grab-cube", c.XR_ACTION_TYPE_FLOAT_INPUT, paths);
+        m_palmPoseAction = try xr.createAction(xr_instance, action_set, "palm-pose", c.XR_ACTION_TYPE_POSE_INPUT, paths);
+
+        m_handPaths[0] = try xr.createXrPath(xr_instance, "/user/hand/left".ptr);
+        m_handPaths[1] = try xr.createXrPath(xr_instance, "/user/hand/right".ptr);
 
         const xr_graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const xr_instance_extensions: []const [*:0]const u8 =
             try xr.getVulkanInstanceRequirements(xrd, allocator, xr_instance, xr_system_id);
@@ -173,13 +169,11 @@ pub const Engine = struct {
         const logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(physical_device, queue_family_index, vk_device_extensions);
 
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, physical_device, logical_device, queue_family_index);
-        hand_pose_space[0] = try xr.createActionSpace(xr_session, leftHandAction);
-        // defer _ = c.xrDestroySpace(leftHandSpace);
-        hand_pose_space[1] = try xr.createActionSpace(xr_session, rightHandAction);
-        // defer _ = c.xrDestroySpace(rightHandSpace);
 
-        try xr.suggestBindings(xr_instance, leftHandAction, rightHandAction, leftGrabAction, right_grab_action);
+        try xr.suggestBindings(xr_instance, m_palmPoseAction, m_palmPoseAction, m_grabCubeAction, m_grabCubeAction);
 
+        hand_pose_space[0] = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/left");
+        hand_pose_space[1] = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/right");
         try xr.attachActionSet(xr_session, action_set);
 
         //TODO: MOVE OUT!
@@ -214,10 +208,6 @@ pub const Engine = struct {
             .vk_logical_device = logical_device,
             .vk_queue = queue,
             .action_set = action_set,
-            .l_action = leftHandAction,
-            .l_action_g = leftGrabAction,
-            .r_action_g = right_grab_action,
-            .r_action = rightHandAction,
             .vkid = vkid,
             .sdl_window = window,
             .sdl_surface = @ptrCast(surface.surface),
@@ -361,7 +351,6 @@ pub const Engine = struct {
                         );
                     },
                     .key_down => |key| {
-                        std.debug.print("Key press {any}\n", .{key});
                         if (key.key == .escape) {
                             quit.store(true, .release);
                         }
@@ -619,15 +608,22 @@ pub const Engine = struct {
                     self.action_set,
                     space,
                     frame_state.predictedDisplayTime,
-                    self.l_action,
-                    self.r_action,
-                    self.l_action_g,
-                    self.r_action_g,
+                    m_palmPoseAction,
+                    m_grabCubeAction,
                     m_handPaths,
                     hand_pose_space,
                     &m_handPoseState,
+                    &m_grabState,
                     &hand_pose,
                 ) catch true;
+                input.blockInteraction(
+                    &grabbed_block,
+                    m_grabState,
+                    &near_block,
+                    hand_pose,
+                    m_handPoseState,
+                    blocks,
+                );
                 if (frame_state.shouldRender == c.VK_FALSE) {
                     var end_frame_info = c.XrFrameEndInfo{
                         .type = c.XR_TYPE_FRAME_END_INFO,
@@ -641,7 +637,6 @@ pub const Engine = struct {
                     continue;
                 } else {
                     should_quit, const active_index = render(
-                        self.allocator,
                         self.xr_session,
                         xr_swapchain,
                         space,
@@ -667,7 +662,6 @@ pub const Engine = struct {
     }
 
     fn render(
-        allocator: std.mem.Allocator,
         session: c.XrSession,
         swapchain: XrSwapchain,
         space: c.XrSpace,
@@ -689,10 +683,8 @@ pub const Engine = struct {
             .type = c.XR_TYPE_VIEW_STATE,
         };
 
-        var view_count: u32 = build_options.eye_count;
-        const views = try allocator.alloc(c.XrView, view_count);
-        defer allocator.free(views);
-        @memset(views, .{ .type = c.XR_TYPE_VIEW });
+        var view_count: u32 = 2;
+        var views: [2]c.XrView = .{ .{ .type = c.XR_TYPE_VIEW }, .{ .type = c.XR_TYPE_VIEW } };
 
         try loader.xrCheck(c.xrLocateViews(
             session,
@@ -700,12 +692,12 @@ pub const Engine = struct {
             &view_state,
             view_count,
             &view_count,
-            views.ptr,
+            @ptrCast(&views[0]),
         ));
 
         const ok, const active_index = try renderEye(
             swapchain,
-            views,
+            &views,
             device,
             queue,
             render_pass,
@@ -884,14 +876,11 @@ pub const Engine = struct {
             renderCuboid(block, image.command_buffer, pipeline_layout);
         }
 
-        std.debug.print("\n\n=========[LEFT: {any}]===========\n\n", .{hand_pose[0]});
-        std.debug.print("\n\n=========[RIGHT: {any}]===========\n\n", .{hand_pose[1]});
-
         for (0..2) |i| {
             var hand: input.Block = .{
                 .color = .{ 1, 0, 0, 1 },
                 .position = .{ 0, 0, 0 },
-                .scale = .{ 1, 1, 1 },
+                .scale = .{ 0.1, 0.1, 0.1 },
                 .orientation = .{ 0, 0, 0, 0 },
             };
             if (m_handPoseState[i].isActive != 0) {
@@ -1106,7 +1095,7 @@ pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, laypu
     const rotation: nz.Mat4(f32) = .fromQuaternion(block.orientation);
 
     var positon: nz.Mat4(f32) = .translate(block.position);
-    // positon.d[14] += -0.2;
+    positon.d[14] += -0.2;
 
     var push: vk.PushConstant = .{
         .matrix = (positon.mul(rotation).mul(scale)).d,
@@ -1143,12 +1132,12 @@ pub fn main() !void {
         loader.c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME,
     };
     const xr_layers = &[_][*:0]const u8{
-        "XR_APILAYER_LUNARG_core_validation",
-        "XR_APILAYER_LUNARG_api_dump",
+        // "XR_APILAYER_LUNARG_core_validation",
+        // "XR_APILAYER_LUNARG_api_dump",
     };
 
     const vk_layers = &[_][*:0]const u8{
-        "VK_LAYER_KHRONOS_validation",
+        // "VK_LAYER_KHRONOS_validation",
     };
 
     defer sdl.shutdown();
