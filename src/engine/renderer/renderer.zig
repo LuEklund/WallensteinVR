@@ -11,6 +11,7 @@ const build_options = @import("build_options");
 const nz = @import("numz");
 const c = loader.c;
 const sdl = @import("sdl3");
+const SpectatorView = @import("SpectatorView.zig");
 const World = @import("../../ecs.zig").World;
 var quit: std.atomic.Value(bool) = .init(false);
 
@@ -246,11 +247,6 @@ fn renderEye(
         @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
         ptr_start += 16;
     }
-
-    // var model_matrix = nz.Mat4(f32).identity(1);
-    // model_matrix.d[14] = -1;
-
-    // @memcpy(data.?[ptr_start .. ptr_start + 16], model_matrix.d[0..]);
 
     c.vkUnmapMemory(device, image.memory);
 
@@ -550,8 +546,7 @@ pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, laypu
 // ======[NEW]======
 
 pub const Context = struct {
-    sdl_window: sdl.video.Window,
-    sdl_surface: c.VkSurfaceKHR,
+    spectator_view: SpectatorView,
     xr_instance: c.XrInstance,
     xr_session: c.XrSession,
     xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
@@ -569,6 +564,10 @@ pub const Context = struct {
     vk_swapchain: VulkanSwapchain,
     render_pass: c.VkRenderPass,
     command_pool: c.VkCommandPool,
+    descriptor_pool: c.VkDescriptorPool,
+    descriptor_set_layout: c.VkDescriptorSetLayout,
+    vertex_shader: c.VkShaderModule,
+    fragment_shader: c.VkShaderModule,
     pipeline: c.VkPipeline,
     pipeline_layout: c.VkPipelineLayout,
     graphics_queue_family_index: u32,
@@ -576,8 +575,6 @@ pub const Context = struct {
     last_rendered_image_index: u32 = 0,
     running: bool = false,
 };
-
-var ctx: Context = undefined;
 
 pub const Renderer = struct {
     pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -597,18 +594,6 @@ pub const Renderer = struct {
 
         try xr.validateExtensions(allocator, xr_extensions);
         try xr.validateLayers(allocator, xr_layers);
-
-        //SDL
-        const init_flags: sdl.InitFlags = .{ .video = true, .events = true };
-        try sdl.init(init_flags);
-        // defer sdl.quit(init_flags);
-        const window: sdl.video.Window = try .init("Hello SDL3", window_width, window_height, .{ .vulkan = true, .resizable = true });
-        try window.show();
-        const vk_exts = try sdl.vulkan.getInstanceExtensions();
-        for (0..vk_exts.len) |i| {
-            std.debug.print("EXT_SDL: {s}\n", .{vk_exts[i]});
-        }
-        // const leftGrabAction: c.XrAction = try xr.createAction(action_set, "left-grab", c.XR_ACTION_TYPE_BOOLEAN_INPUT
 
         const xr_instance: c.XrInstance = try xr.createInstance(xr_extensions, xr_layers);
         const xrd = try xr.Dispatcher.init(xr_instance);
@@ -633,13 +618,13 @@ pub const Renderer = struct {
         const vkid = try vk.Dispatcher.init(vk_instance);
         const vk_debug_messenger: c.VkDebugUtilsMessengerEXT = try vk.createDebugMessenger(vkid, vk_instance);
 
-        const sdl_surface = sdl.vulkan.Surface.init(window, @ptrCast(vk_instance), null) catch |err| {
-            std.debug.print("SDL Error: {s}\n", .{sdl.c.SDL_GetError()});
-            return err;
-        };
+        const spectator_view: SpectatorView = try .init(vk_instance, window_height, window_width);
 
         const vk_physical_device: c.VkPhysicalDevice, const vk_device_extensions: []const [*:0]const u8 = try xr.getVulkanDeviceRequirements(xrd, allocator, xr_instance, xr_system_id, vk_instance);
-        const queue_family_index = try vk.findGraphicsQueueFamily(vk_physical_device, @ptrCast(sdl_surface.surface));
+        const queue_family_index = try vk.findGraphicsQueueFamily(
+            vk_physical_device,
+            spectator_view.sdl_surface,
+        );
 
         const vk_logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(vk_physical_device, queue_family_index, vk_device_extensions);
 
@@ -651,7 +636,7 @@ pub const Renderer = struct {
         hand_pose_space[1] = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/right");
         try xr.attachActionSet(xr_session, action_set);
 
-        var vulkan_swapchain: VulkanSwapchain = try .init(vk_physical_device, vk_logical_device, @ptrCast(sdl_surface.surface), window_width, window_height);
+        var vulkan_swapchain: VulkanSwapchain = try .init(vk_physical_device, vk_logical_device, spectator_view.sdl_surface, window_width, window_height);
         var xr_swapchain: XrSwapchain = try .init(2, vk_physical_device, xr_instance, xr_system_id, xr_session);
         const render_pass: c.VkRenderPass = try vk.createRenderPass(vk_logical_device, xr_swapchain.format, xr_swapchain.depth_format, xr_swapchain.sample_count);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(vk_logical_device, queue_family_index);
@@ -694,9 +679,9 @@ pub const Renderer = struct {
         );
         try createResources(allocator);
 
-        var context: Context = .{
-            .sdl_window = window,
-            .sdl_surface = @ptrCast(sdl_surface.surface),
+        const context = try allocator.create(Context);
+        context.* = .{
+            .spectator_view = spectator_view,
             .command_pool = command_pool,
             .graphics_queue_family_index = queue_family_index,
             .render_pass = render_pass,
@@ -708,6 +693,10 @@ pub const Renderer = struct {
             .vk_queue = queue,
             .vk_swapchain = vulkan_swapchain,
             .pipeline = pipeline,
+            .descriptor_pool = descriptor_pool,
+            .descriptor_set_layout = descriptor_set_layout,
+            .vertex_shader = vertex_shader,
+            .fragment_shader = fragment_shader,
             .pipeline_layout = pipeline_layout,
             .vkid = vkid,
             .action_set = action_set,
@@ -719,13 +708,12 @@ pub const Renderer = struct {
             .xr_swapchain = xr_swapchain,
         };
 
-        try world.setResource(allocator, Context, &context);
-        ctx = context;
+        try world.setResource(allocator, Context, context);
     }
 
-    pub fn deinit(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
-        // const ctx = try world.getResource(Context);
-        _ = world;
+    pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
+        const ctx = try world.getResource(Context) catch return;
+        defer allocator.destroy(ctx);
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(ctx.vk_logical_device));
 
@@ -740,210 +728,10 @@ pub const Renderer = struct {
     }
 
     pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
-        // var ctx = try world.getResource(Context);
-        _ = world;
+        var ctx = try world.getResource(Context);
         std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
         if (true) {
-            while (sdl.events.poll()) |sdl_event| {
-                switch (sdl_event) {
-                    .quit => quit.store(true, .release),
-                    .window_resized => |wr| {
-                        try ctx.vk_swapchain.recreate(
-                            ctx.sdl_surface,
-                            ctx.vk_physical_device,
-                            ctx.command_pool,
-                            &ctx.image_index,
-                            @intCast(wr.width),
-                            @intCast(wr.height),
-                        );
-                    },
-                    .key_down => |key| {
-                        if (key.key == .escape) {
-                            quit.store(true, .release);
-                        }
-                    },
-                    else => {},
-                }
-            }
-            const vkResult = c.vkAcquireNextImageKHR(
-                ctx.vk_logical_device,
-                ctx.vk_swapchain.swapchain,
-                0,
-                null,
-                ctx.vk_fence,
-                &ctx.image_index,
-            );
-
-            if (vkResult == c.VK_ERROR_OUT_OF_DATE_KHR or vkResult == c.VK_SUBOPTIMAL_KHR) {
-                const win_size = try ctx.sdl_window.getSize();
-
-                try ctx.vk_swapchain.recreate(
-                    ctx.sdl_surface,
-                    ctx.vk_physical_device,
-                    ctx.command_pool,
-                    &ctx.image_index,
-                    @intCast(win_size.width),
-                    @intCast(win_size.height),
-                );
-            } else if (vkResult == c.VK_SUCCESS) {
-                try loader.vkCheck(c.vkWaitForFences(
-                    ctx.vk_logical_device,
-                    1,
-                    &ctx.vk_fence,
-                    1,
-                    std.math.maxInt(u8),
-                ));
-                try loader.vkCheck(c.vkResetFences(
-                    ctx.vk_logical_device,
-                    1,
-                    &ctx.vk_fence,
-                ));
-
-                const element: VulkanSwapchain.SwapchainImage = ctx.vk_swapchain.swapchain_images[ctx.image_index];
-                var beginInfo: c.VkCommandBufferBeginInfo = .{
-                    .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                    .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-                };
-                try loader.vkCheck(c.vkBeginCommandBuffer(element.command_buffer, &beginInfo));
-
-                const beforeDstBarrier: c.VkImageMemoryBarrier = .{
-                    .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                    .srcAccessMask = c.VK_ACCESS_NONE,
-                    .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
-                    .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
-                    .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    .image = element.image,
-                    .subresourceRange = .{
-                        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                        .baseMipLevel = 0,
-                        .levelCount = 1,
-                        .baseArrayLayer = 0,
-                        .layerCount = 1,
-                    },
-                };
-
-                const beforeBarriers: [1]c.VkImageMemoryBarrier = .{beforeDstBarrier};
-
-                c.vkCmdPipelineBarrier(
-                    element.command_buffer,
-                    c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                    c.VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    0,
-                    0,
-                    null,
-                    0,
-                    null,
-                    beforeBarriers.len,
-                    &beforeBarriers,
-                );
-
-                var region: c.VkImageBlit = .{
-                    .srcSubresource = .{
-                        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                        .mipLevel = 0,
-                        .baseArrayLayer = 0,
-                        .layerCount = 1,
-                    },
-                    .srcOffsets = .{
-                        .{ .x = 0, .y = 0, .z = 0 },
-                        .{ .x = @intCast(ctx.xr_swapchain.width), .y = @intCast(ctx.xr_swapchain.height), .z = 1 },
-                    },
-                    .dstSubresource = .{
-                        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                        .mipLevel = 0,
-                        .baseArrayLayer = 0,
-                        .layerCount = 1,
-                    },
-                    .dstOffsets = .{
-                        .{ .x = 0, .y = 0, .z = 0 },
-                        .{ .x = @intCast(ctx.vk_swapchain.width), .y = @intCast(ctx.vk_swapchain.height), .z = 1 },
-                    },
-                };
-
-                c.vkCmdBlitImage(
-                    element.command_buffer,
-                    ctx.xr_swapchain.swapchain_images[ctx.last_rendered_image_index].vk_dup_image,
-                    c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    element.image,
-                    c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    1,
-                    &region,
-                    c.VK_FILTER_LINEAR,
-                );
-
-                const afterDstBarrier: c.VkImageMemoryBarrier = .{
-                    .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                    .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
-                    .dstAccessMask = c.VK_ACCESS_NONE,
-                    .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    .newLayout = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                    .image = element.image,
-                    .subresourceRange = .{
-                        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                        .baseMipLevel = 0,
-                        .levelCount = 1,
-                        .baseArrayLayer = 0,
-                        .layerCount = 1,
-                    },
-                };
-
-                const afterBarriers: [1]c.VkImageMemoryBarrier = .{afterDstBarrier};
-
-                c.vkCmdPipelineBarrier(
-                    element.command_buffer,
-                    c.VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    c.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                    0,
-                    0,
-                    null,
-                    0,
-                    null,
-                    afterBarriers.len,
-                    &afterBarriers,
-                );
-
-                try loader.vkCheck(c.vkEndCommandBuffer(element.command_buffer));
-
-                var waitStage: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
-
-                var submitInfo: c.VkSubmitInfo = .{
-                    .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                    .pWaitDstStageMask = &waitStage,
-                    .commandBufferCount = 1,
-                    .pCommandBuffers = &element.command_buffer,
-                    .signalSemaphoreCount = 1,
-                    .pSignalSemaphores = &element.render_done_semaphore,
-                };
-
-                try loader.vkCheck(c.vkQueueSubmit(ctx.vk_queue, 1, &submitInfo, null));
-
-                var presentInfo: c.VkPresentInfoKHR = .{
-                    .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-                    .waitSemaphoreCount = 1,
-                    .pWaitSemaphores = &element.render_done_semaphore,
-                    .swapchainCount = 1,
-                    .pSwapchains = &ctx.vk_swapchain.swapchain,
-                    .pImageIndices = &ctx.image_index,
-                };
-
-                const vk_result: c.VkResult = c.vkQueuePresentKHR(ctx.vk_queue, &presentInfo);
-
-                if (vk_result == c.VK_ERROR_OUT_OF_DATE_KHR or vk_result == c.VK_SUBOPTIMAL_KHR) {
-                    const win_size = try ctx.sdl_window.getSize();
-                    try ctx.vk_swapchain.recreate(
-                        ctx.sdl_surface,
-                        ctx.vk_physical_device,
-                        ctx.command_pool,
-                        &ctx.image_index,
-                        @intCast(win_size.width),
-                        @intCast(win_size.height),
-                    );
-                } else if (vk_result > 0) {
-                    std.log.err("Failed to present Vulkan queue: {any}\n", .{vk_result});
-                }
-            } else if (vkResult != c.VK_TIMEOUT) {
-                std.log.err("Failed to acquire next Vulkan swapchain image:{any}\n", .{vkResult});
-            }
+            try ctx.spectator_view.update(ctx);
         }
 
         var eventData = c.XrEventDataBuffer{
@@ -1002,7 +790,6 @@ pub const Renderer = struct {
         if (ctx.running) {
             var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
             var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
-            std.debug.print("\nSESSION: {any}\n", .{ctx.xr_session});
             result = c.xrWaitFrame(ctx.xr_session, &frame_wait_info, &frame_state);
             if (result != c.XR_SUCCESS) {
                 std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{}); //TODO: QUITE APP

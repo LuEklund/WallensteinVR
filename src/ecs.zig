@@ -127,6 +127,6 @@ pub fn World(comps: []const type) type {
         pub inline fn getResource(self: *Self, comptime Key: type) !*Key {
             const ctx = self.resources.get(@typeName(Key));
             if (ctx != null) return @ptrCast(@alignCast(ctx)) else return error.ResourceNotFound;
-        }
+        } // We get seg faults when we store an opaque like c.VkInstance u32 and other primitives work fine so idk
     };
 }
