@@ -29,6 +29,7 @@ pub fn World(comps: []const type) type {
         const Self = @This();
 
         layout: ComponentsLayout,
+        resources: std.StringHashMapUnmanaged(*anyopaque),
 
         next_id: u32 = 0,
 
@@ -41,7 +42,7 @@ pub fn World(comps: []const type) type {
                 field_ptr.* = .empty;
             }
 
-            return .{ .layout = comps_layout };
+            return .{ .layout = comps_layout, .resources = .empty };
         }
 
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
@@ -118,5 +119,14 @@ pub fn World(comps: []const type) type {
                 };
             };
         } // bro how deeply is this nested 💔💔
+
+        pub inline fn setResource(self: *Self, allocator: std.mem.Allocator, comptime Key: type, val: *Key) !void {
+            try self.resources.put(allocator, @typeName(Key), @ptrCast(val));
+        }
+
+        pub inline fn getResource(self: *Self, comptime Key: type) !*Key {
+            const ctx = self.resources.get(@typeName(Key));
+            if (ctx != null) return @ptrCast(@alignCast(ctx)) else return error.ResourceNotFound;
+        }
     };
 }

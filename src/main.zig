@@ -1,5 +1,6 @@
 const std = @import("std");
 const World = @import("ecs.zig").World;
+const eng = @import("engine/renderer/renderer.zig").Renderer;
 
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{ .verbose_log = true }) = .init;
@@ -14,10 +15,10 @@ pub fn main() !void {
         &[_]type{ Velocity, Position },
     ) = .init();
     defer world.deinit(allocator);
-    try world.runSystems(allocator, .{someInitSystem});
+    try world.runSystems(allocator, .{ eng.init, someInitSystem });
 
     while (true) {
-        try world.runSystems(allocator, .{someUpdateSystem});
+        try world.runSystems(allocator, .{ eng.update, someUpdateSystem });
     }
 }
 
