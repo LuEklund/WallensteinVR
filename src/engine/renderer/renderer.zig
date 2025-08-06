@@ -13,6 +13,8 @@ const c = loader.c;
 const sdl = @import("sdl3");
 const SpectatorView = @import("SpectatorView.zig");
 const World = @import("../../ecs.zig").World;
+const root = @import("../root.zig");
+const AssetManager = @import("../asset_manager/AssetManager.zig");
 var quit: std.atomic.Value(bool) = .init(false);
 
 const window_width: c_int = 1600;
@@ -88,6 +90,8 @@ var index_buffer: vk.VulkanBuffer = undefined;
 var vertex_buffer: vk.VulkanBuffer = undefined;
 
 pub fn render(
+    comps: []const type,
+    world: *World(comps),
     session: c.XrSession,
     swapchain: XrSwapchain,
     space: c.XrSpace,
@@ -130,6 +134,8 @@ pub fn render(
     ));
 
     const ok, const active_index = try renderEye(
+        comps,
+        world,
         swapchain,
         &views,
         device,
@@ -185,6 +191,8 @@ pub fn render(
 }
 
 fn renderEye(
+    comps: []const type,
+    world: *World(comps),
     xr_swapchain: XrSwapchain,
     view: []c.XrView,
     device: c.VkDevice,
@@ -290,7 +298,7 @@ fn renderEye(
         .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
     };
 
-    c.vkCmdSetScissor(image.command_buffer, 0, 10, &scissor);
+    c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
 
     c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
@@ -303,6 +311,24 @@ fn renderEye(
     renderCuboid(floor, image.command_buffer, pipeline_layout);
     for (blocks.items) |block| {
         renderCuboid(block, image.command_buffer, pipeline_layout);
+    }
+    var it = world.query(&.{ root.Transform, root.Mesh });
+    while (it.next()) |entity| {
+        const transform = entity.get(root.Transform).?.*;
+        // const mesh = entity.get(root.Mesh).?.*;
+        // std.debug.print("Transform: {any}\n", .{transform});
+        const asset_manager = try world.getResource(AssetManager);
+        // std.debug.print("AssetManer: {any}\n", .{asset_manager});
+        // const model = asset_manager.models.get(mesh.name) orelse return error.MeshNameNotFound;
+        const model = asset_manager.model;
+        // _ = transform;
+        // std.debug.print("Model: {any}\n", .{model});
+        // _ = mesh;
+        // _ = asset_manager;
+        // _ = model;
+        // renderCuboid(floor, image.command_buffer, pipeline_layout);
+        // renderMesh(, model, image.command_buffer, pipeline_layout);
+        renderMesh(transform, model, image.command_buffer, pipeline_layout);
     }
 
     for (0..2) |i| {
@@ -508,6 +534,37 @@ pub fn createResources(allocator: std.mem.Allocator) !void {
         }
     }
 }
+pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
+    var scale: nz.Mat4(f32) = .identity(2);
+    scale.d[0] = transform.scale[0];
+    scale.d[5] = transform.scale[1];
+    scale.d[10] = transform.scale[2];
+
+    const rotation: nz.Mat4(f32) = .identity(1);
+
+    var positon: nz.Mat4(f32) = .translate(transform.position);
+    // positon.d[14] += -0.2;
+
+    var push: vk.PushConstant = .{
+        .matrix = (positon.mul(rotation).mul(scale)).d,
+        .color = .{ 0.7, 0.0, 0.4, 0 },
+    };
+
+    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(vk.PushConstant), &push);
+
+    var offsets: [1]c.VkDeviceSize = .{0};
+    var vertex_buffers: [1]c.VkBuffer = .{model.vertex_buffer.buffer};
+    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
+    c.vkCmdBindIndexBuffer(command_buffer, model.index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
+    c.vkCmdDrawIndexed(
+        command_buffer,
+        model.index_count,
+        1,
+        0,
+        0,
+        0,
+    );
+}
 
 pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
     var scale: nz.Mat4(f32) = .identity(2);
@@ -584,12 +641,12 @@ pub const Renderer = struct {
             loader.c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME,
         };
         const xr_layers = &[_][*:0]const u8{
-            "XR_APILAYER_LUNARG_core_validation",
-            "XR_APILAYER_LUNARG_api_dump",
+            // "XR_APILAYER_LUNARG_core_validation",
+            // "XR_APILAYER_LUNARG_api_dump",
         };
 
         const vk_layers = &[_][*:0]const u8{
-            "VK_LAYER_KHRONOS_validation",
+            // "VK_LAYER_KHRONOS_validation",
         };
 
         try xr.validateExtensions(allocator, xr_extensions);
@@ -711,8 +768,10 @@ pub const Renderer = struct {
         try world.setResource(allocator, Context, context);
     }
 
+    // mashe dpotatoes
+
     pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
-        const ctx = try world.getResource(Context) catch return;
+        const ctx = try world.getResource(Context);
         defer allocator.destroy(ctx);
         std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
         try loader.xrCheck(c.vkDeviceWaitIdle(ctx.vk_logical_device));
@@ -787,6 +846,7 @@ pub const Renderer = struct {
             },
         }
         // if (result == c.XR_EVENT_UNAVAILABLE) {
+        // mashed potatos
         if (ctx.running) {
             var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
             var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
@@ -831,6 +891,8 @@ pub const Renderer = struct {
                 try loader.xrCheck(c.xrEndFrame(ctx.xr_session, &end_frame_info));
             } else {
                 should_quit, const active_index = render(
+                    comps,
+                    world,
                     ctx.xr_session,
                     ctx.xr_swapchain,
                     ctx.xr_space,
@@ -849,3 +911,5 @@ pub const Renderer = struct {
         std.debug.print("\n\n=========[DONE while loop]===========\n\n", .{});
     }
 };
+
+// mashedpotatoe

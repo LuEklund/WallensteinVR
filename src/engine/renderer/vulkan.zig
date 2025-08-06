@@ -500,6 +500,13 @@ pub fn createBuffer(
         .queueFamilyIndexCount = 0,
         .pQueueFamilyIndices = null,
     };
+    std.debug.print("Creating VulkanBuffer with the following parameters:\n", .{});
+    std.debug.print("  - physical_device: {any}\n", .{physical_device});
+    std.debug.print("  - device: {any}\n", .{device});
+    std.debug.print("  - usage_type: {d}\n", .{usage_type});
+    std.debug.print("  - len: {d}\n", .{len});
+    std.debug.print("  - type_size: {d}\n", .{type_size});
+    std.debug.print("  - data: {any}\n", .{data});
     var buffer: c.VkBuffer = undefined;
     try loader.vkCheck(c.vkCreateBuffer(device, &buffer_create_info, null, &buffer));
 
@@ -530,12 +537,13 @@ pub fn createBuffer(
     try loader.vkCheck(c.vkAllocateMemory(device, &allocate_info, null, &memory));
     try loader.vkCheck(c.vkBindBufferMemory(device, buffer, memory, 0));
 
-    var mappedData: *anyopaque = undefined;
-    try loader.vkCheck(c.vkMapMemory(device, memory, 0, buffer_create_info.size, 0, @ptrCast(&mappedData)));
-    const dest_bytes: [*]u8 = @ptrCast(mappedData);
+    var mapped_data: *anyopaque = undefined;
+    try loader.vkCheck(c.vkMapMemory(device, memory, 0, buffer_create_info.size, 0, @ptrCast(&mapped_data)));
+    const dest_bytes: [*]u8 = @ptrCast(mapped_data);
     const src_bytes: [*]const u8 = @ptrCast(data);
     const dest_slice = dest_bytes[0..buffer_create_info.size];
     const src_slice = src_bytes[0..buffer_create_info.size];
+    std.debug.print("{d} -=- {d}\n", .{ dest_slice.len, src_slice.len });
     @memcpy(dest_slice, src_slice);
 
     return .{
