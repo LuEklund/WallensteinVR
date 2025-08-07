@@ -2,4 +2,6 @@
 zig-out/
 monado/
 
+*.obj
+
 *.spv
