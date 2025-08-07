@@ -53,7 +53,7 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
     _ = try world.spawn(allocator, .{
         eng.Transform{
             .position = .{ 0, -0.1, -0.1 },
-            .scale = .{ 1, 1, 1 },
+            .scale = .{ 0.01, 0.01, 0.01 },
         },
         eng.Mesh{ .name = "xyzdragon.obj" },
     });
