@@ -11,7 +11,7 @@ pub const RigidBody = struct {
 pub const Transform = struct {
     position: nz.Vec3(f32) = @splat(0),
     rotation: nz.Vec3(f32) = @splat(0),
-    scale: nz.Vec3(f32) = @splat(1),
+    scale: nz.Vec3(f32) = @splat(0.1),
 };
 
 pub const Mesh = struct {

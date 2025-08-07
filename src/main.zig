@@ -24,12 +24,22 @@ pub fn main() !void {
 }
 
 pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
-    for (0..2) |i| {
-        const f: f32 = @floatFromInt(i);
-        _ = if (i % 2 == 0)
-            try world.spawn(allocator, .{eng.RigidBody{}})
-        else
-            try world.spawn(allocator, .{ eng.RigidBody{}, eng.Transform{ .position = .{ f, f, f } }, eng.Mesh{ .name = "xyzdragon.obj" } });
+    for (0..4) |i| {
+        var fx: f32 = @floatFromInt(i);
+        fx = fx / 10;
+        for (0..4) |j| {
+            var fy: f32 = @floatFromInt(j);
+            fy = fy / 10;
+            for (0..4) |k| {
+                var fz: f32 = @floatFromInt(k);
+                fz = fz / 10;
+                _ = try world.spawn(allocator, .{
+                    eng.RigidBody{},
+                    eng.Transform{ .position = .{ fx, fy, fz } },
+                    eng.Mesh{ .name = "cube.obj" },
+                });
+            }
+        }
     }
 }
 
@@ -40,17 +50,15 @@ pub fn someUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.Al
     _ = query;
 
     // while (query.next()) |entity| {
-    //     const velocity = entity.get(eng.RigidBody).?;
-    //     const position = entity.get(eng.Transform);
+    //     const rigid_body = entity.get(eng.RigidBody).?;
+    //     const transform = entity.get(eng.Transform).?;
 
     //     std.debug.print("ID: {d} ", .{entity.id});
 
-    //     if (position) |p| {
-    //         std.debug.print("Pos! {d} {d} ", .{ p.x, p.y });
-    //         p.x += velocity.x;
-    //         p.y += velocity.y;
-    //     }
+    //     // std.debug.print("Pos! {d} {d} ", .{ p.x, p.y });
+    //     transform.position[0] += rigid_body.force[0];
+    //     transform.position[1] += rigid_body.force[1];
 
-    //     std.debug.print("Vel! {d} {d}\n", .{ velocity.x, velocity.y });
+    //     // std.debug.print("Vel! {d} {d}\n", .{ velocity.x, velocity.y });
     // }
 }

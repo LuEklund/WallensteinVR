@@ -54,15 +54,15 @@ var m_handPoseState: [2]c.XrActionStatePose = .{
 // };
 //
 
-var cube_vertecies: [8]c.XrVector4f = .{
-    .{ .x = 0.5, .y = 0.5, .z = 0.5, .w = 1.0 }, // 0: Top-Front-Right
-    .{ .x = 0.5, .y = 0.5, .z = -0.5, .w = 1.0 }, // 1: Top-Back-Right
-    .{ .x = 0.5, .y = -0.5, .z = 0.5, .w = 1.0 }, // 2: Bottom-Front-Right
-    .{ .x = 0.5, .y = -0.5, .z = -0.5, .w = 1.0 }, // 3: Bottom-Back-Right
-    .{ .x = -0.5, .y = 0.5, .z = 0.5, .w = 1.0 }, // 4: Top-Front-Left
-    .{ .x = -0.5, .y = 0.5, .z = -0.5, .w = 1.0 }, // 5: Top-Back-Left
-    .{ .x = -0.5, .y = -0.5, .z = 0.5, .w = 1.0 }, // 6: Bottom-Front-Left
-    .{ .x = -0.5, .y = -0.5, .z = -0.5, .w = 1.0 }, // 7: Bottom-Back-Left
+var cube_vertecies: [8]c.XrVector3f = .{
+    .{ .x = 0.5, .y = 0.5, .z = 0.5 }, // 0: Top-Front-Right
+    .{ .x = 0.5, .y = 0.5, .z = -0.5 }, // 1: Top-Back-Right
+    .{ .x = 0.5, .y = -0.5, .z = 0.5 }, // 2: Bottom-Front-Right
+    .{ .x = 0.5, .y = -0.5, .z = -0.5 }, // 3: Bottom-Back-Right
+    .{ .x = -0.5, .y = 0.5, .z = 0.5 }, // 4: Top-Front-Left
+    .{ .x = -0.5, .y = 0.5, .z = -0.5 }, // 5: Top-Back-Left
+    .{ .x = -0.5, .y = -0.5, .z = 0.5 }, // 6: Bottom-Front-Left
+    .{ .x = -0.5, .y = -0.5, .z = -0.5 }, // 7: Bottom-Back-Left
 };
 
 var cube_indecies: [36]u32 = .{
@@ -88,550 +88,6 @@ var cube_indecies: [36]u32 = .{
 
 var index_buffer: vk.VulkanBuffer = undefined;
 var vertex_buffer: vk.VulkanBuffer = undefined;
-
-pub fn render(
-    comps: []const type,
-    world: *World(comps),
-    session: c.XrSession,
-    swapchain: XrSwapchain,
-    space: c.XrSpace,
-    predicted_display_time: c.XrTime,
-    device: c.VkDevice,
-    queue: c.VkQueue,
-    render_pass: c.VkRenderPass,
-    pipeline_layout: c.VkPipelineLayout,
-    pipeline: c.VkPipeline,
-) !struct { bool, u32 } {
-    var view_locate_info = c.XrViewLocateInfo{
-        .type = c.XR_TYPE_VIEW_LOCATE_INFO,
-        .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-        .displayTime = predicted_display_time,
-        .space = space,
-        .next = null,
-    };
-
-    var view_state = c.XrViewState{
-        .type = c.XR_TYPE_VIEW_STATE,
-        .next = null,
-    };
-
-    var view_count: u32 = 2;
-    var views: [2]c.XrView = .{ .{
-        .type = c.XR_TYPE_VIEW,
-        .next = null,
-    }, .{
-        .type = c.XR_TYPE_VIEW,
-        .next = null,
-    } };
-
-    try loader.xrCheck(c.xrLocateViews(
-        session,
-        &view_locate_info,
-        &view_state,
-        view_count,
-        &view_count,
-        @ptrCast(&views[0]),
-    ));
-
-    const ok, const active_index = try renderEye(
-        comps,
-        world,
-        swapchain,
-        &views,
-        device,
-        queue,
-        render_pass,
-        pipeline_layout,
-        pipeline,
-    );
-    if (!ok) {
-        return .{ true, active_index };
-    }
-
-    var projected_views: [build_options.eye_count]c.XrCompositionLayerProjectionView = undefined;
-
-    for (0..build_options.eye_count) |i| {
-        projected_views[i].type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
-        projected_views[i].pose = views[i].pose;
-        projected_views[i].fov = views[i].fov;
-        projected_views[i].subImage = .{
-            .swapchain = swapchain.color_swapchain,
-            .imageRect = .{
-                .offset = .{ .x = 0, .y = 0 },
-                .extent = .{
-                    .width = @intCast(swapchain.width),
-                    .height = @intCast(swapchain.height),
-                },
-            },
-            .imageArrayIndex = @intCast(i),
-        };
-        projected_views[i].next = null;
-    }
-
-    var layer = c.XrCompositionLayerProjection{
-        .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
-        .space = space,
-        .viewCount = build_options.eye_count,
-        .views = &projected_views[0],
-        .next = null,
-    };
-
-    const layers_array: [1]*const c.XrCompositionLayerBaseHeader = .{@ptrCast(&layer)};
-
-    var end_frame_info = c.XrFrameEndInfo{
-        .type = c.XR_TYPE_FRAME_END_INFO,
-        .displayTime = predicted_display_time,
-        .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
-        .layerCount = 1,
-        .layers = &layers_array[0],
-    };
-    try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
-
-    return .{ false, active_index };
-}
-
-fn renderEye(
-    comps: []const type,
-    world: *World(comps),
-    xr_swapchain: XrSwapchain,
-    view: []c.XrView,
-    device: c.VkDevice,
-    queue: c.VkQueue,
-    render_pass: c.VkRenderPass,
-    pipeline_layout: c.VkPipelineLayout,
-    pipeline: c.VkPipeline,
-) !struct { bool, u32 } {
-    var acquire_image_info = c.XrSwapchainImageAcquireInfo{
-        .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
-    };
-
-    var color_active_index: u32 = 0;
-    var depth_active_index: u32 = 0;
-    try loader.xrCheck(c.xrAcquireSwapchainImage(xr_swapchain.color_swapchain, &acquire_image_info, &color_active_index));
-    try loader.xrCheck(c.xrAcquireSwapchainImage(xr_swapchain.depth_swapchain, &acquire_image_info, &depth_active_index));
-
-    var wait_image_info = c.XrSwapchainImageWaitInfo{
-        .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
-        .timeout = std.math.maxInt(i64),
-    };
-
-    try loader.xrCheck(c.xrWaitSwapchainImage(xr_swapchain.color_swapchain, &wait_image_info));
-    try loader.xrCheck(c.xrWaitSwapchainImage(xr_swapchain.depth_swapchain, &wait_image_info));
-    const image: XrSwapchain.SwapchainImage = xr_swapchain.swapchain_images[color_active_index];
-
-    var data: ?[*]f32 = null;
-    try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
-
-    var ptr_start: u32 = 0;
-    for (0..2) |i| {
-        const angle_width: f32 = std.math.tan(view[i].fov.angleRight) - std.math.tan(view[i].fov.angleLeft);
-        const angle_height: f32 = std.math.tan(view[i].fov.angleDown) - std.math.tan(view[i].fov.angleUp);
-
-        var projection_matrix = nz.Mat4(f32).identity(0);
-
-        //TODO: defines?
-        const far_distance: f32 = 100;
-        const near_distance: f32 = 0.01;
-
-        projection_matrix.d[0] = 2.0 / angle_width;
-        projection_matrix.d[8] = (std.math.tan(view[i].fov.angleRight) + std.math.tan(view[i].fov.angleLeft)) / angle_width;
-        projection_matrix.d[5] = 2.0 / angle_height;
-        projection_matrix.d[9] = (std.math.tan(view[i].fov.angleUp) + std.math.tan(view[i].fov.angleDown)) / angle_height;
-        projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
-        projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
-        projection_matrix.d[11] = -1;
-
-        // projection_matrix = nz.Mat4(f32).perspective(angle_height, angle_width, near_distance, far_distance);
-
-        @memcpy(data.?[ptr_start .. ptr_start + 16], projection_matrix.d[0..]);
-        ptr_start += 16;
-    }
-
-    for (0..2) |i| {
-        const view_matrix: nz.Mat4(f32) = .inverse(.mul(
-            .translate(.{ view[i].pose.position.x, view[i].pose.position.y, view[i].pose.position.z }),
-            .fromQuaternion(.{ view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z, view[i].pose.orientation.w }),
-        ));
-        @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
-        ptr_start += 16;
-    }
-
-    c.vkUnmapMemory(device, image.memory);
-
-    const begin_info = c.VkCommandBufferBeginInfo{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-
-    try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
-
-    var clear_values: [2]c.VkClearValue = undefined;
-    clear_values[0].color.float32 = .{ 0.0, 0.0, 0.0, 1.0 };
-    clear_values[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
-    const begin_render_pass_info = c.VkRenderPassBeginInfo{
-        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass = render_pass,
-        .framebuffer = image.framebuffer,
-        .renderArea = .{
-            .offset = .{ .x = 0, .y = 0 },
-            .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
-        },
-        .clearValueCount = clear_values.len,
-        .pClearValues = &clear_values[0],
-    };
-
-    c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
-
-    const viewport = c.VkViewport{
-        .x = 0,
-        .y = 0,
-        .width = @floatFromInt(xr_swapchain.width),
-        .height = @floatFromInt(xr_swapchain.height),
-        .minDepth = 0,
-        .maxDepth = 1,
-    };
-
-    c.vkCmdSetViewport(image.command_buffer, 0, 1, &viewport);
-
-    const scissor = c.VkRect2D{
-        .offset = .{ .x = 0, .y = 0 },
-        .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
-    };
-
-    c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
-
-    c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-    c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
-
-    var floor: input.Block = undefined;
-    floor.color = .{ 1, 1, 1, 1 };
-    floor.position = .{ 0, -0.4, 0 };
-    floor.scale = .{ 10, 0.05, 10 };
-    floor.orientation = .{ 0, 0, 0, 0 };
-    renderCuboid(floor, image.command_buffer, pipeline_layout);
-    for (blocks.items) |block| {
-        renderCuboid(block, image.command_buffer, pipeline_layout);
-    }
-    var it = world.query(&.{ root.Transform, root.Mesh });
-    while (it.next()) |entity| {
-        const transform = entity.get(root.Transform).?.*;
-        // const mesh = entity.get(root.Mesh).?.*;
-        // std.debug.print("Transform: {any}\n", .{transform});
-        const asset_manager = try world.getResource(AssetManager);
-        // std.debug.print("AssetManer: {any}\n", .{asset_manager});
-        // const model = asset_manager.models.get(mesh.name) orelse return error.MeshNameNotFound;
-        const model = asset_manager.model;
-        // _ = transform;
-        // std.debug.print("Model: {any}\n", .{model});
-        // _ = mesh;
-        // _ = asset_manager;
-        // _ = model;
-        // renderCuboid(floor, image.command_buffer, pipeline_layout);
-        // renderMesh(, model, image.command_buffer, pipeline_layout);
-        renderMesh(transform, model, image.command_buffer, pipeline_layout);
-    }
-
-    for (0..2) |i| {
-        var hand: input.Block = .{
-            .color = .{ 1, 0, 0, 1 },
-            .position = .{ 0, 0, 0 },
-            .scale = .{ 0.1, 0.1, 0.1 },
-            .orientation = .{ 0, 0, 0, 0 },
-        };
-        if (m_handPoseState[i].isActive != 0) {
-            hand.position[0] = hand_pose[i].position.x;
-            hand.position[1] = hand_pose[i].position.y;
-            hand.position[2] = hand_pose[i].position.z;
-            hand.orientation = .{
-                hand_pose[i].orientation.x,
-                hand_pose[i].orientation.y,
-                hand_pose[i].orientation.z,
-                hand_pose[i].orientation.w,
-            };
-        }
-        renderCuboid(hand, image.command_buffer, pipeline_layout);
-    }
-
-    c.vkCmdEndRenderPass(image.command_buffer);
-
-    const beforeSrcBarrier: c.VkImageMemoryBarrier = .{
-        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        .dstAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT,
-        .oldLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = image.image.image,
-        .subresourceRange = .{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 0,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-    };
-
-    const beforeDstBarrier: c.VkImageMemoryBarrier = .{
-        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = c.VK_ACCESS_NONE,
-        .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
-        .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .image = image.vk_dup_image,
-        .subresourceRange = .{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-    };
-
-    const beforeBarriers = [_]c.VkImageMemoryBarrier{
-        beforeSrcBarrier,
-        beforeDstBarrier,
-    };
-
-    c.vkCmdPipelineBarrier(
-        image.command_buffer,
-        c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        c.VK_PIPELINE_STAGE_TRANSFER_BIT,
-        0,
-        0,
-        null,
-        0,
-        null,
-        beforeBarriers.len,
-        &beforeBarriers,
-    );
-
-    var region: c.VkImageCopy = .{
-        .srcSubresource = .{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseArrayLayer = 0,
-            .mipLevel = 0,
-            .layerCount = 1,
-        },
-        .srcOffset = .{},
-        .dstSubresource = .{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseArrayLayer = 0,
-            .mipLevel = 0,
-            .layerCount = 1,
-        },
-        .dstOffset = .{},
-        .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height, .depth = 1 },
-    };
-
-    c.vkCmdCopyImage(
-        image.command_buffer,
-        image.image.image,
-        c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        image.vk_dup_image,
-        c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1,
-        &region,
-    );
-
-    const afterSrcBarrier: c.VkImageMemoryBarrier = .{ .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT, .dstAccessMask = c.VK_ACCESS_NONE, .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, .newLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, .image = image.image.image, .subresourceRange = .{
-        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1,
-    } };
-
-    const afterDstBarrier: c.VkImageMemoryBarrier = .{
-        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
-        .dstAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT,
-        .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = image.vk_dup_image,
-        .subresourceRange = .{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-    };
-
-    const afterBarriers = [_]c.VkImageMemoryBarrier{
-        afterSrcBarrier,
-        afterDstBarrier,
-    };
-
-    c.vkCmdPipelineBarrier(
-        image.command_buffer,
-        c.VK_PIPELINE_STAGE_TRANSFER_BIT,
-        c.VK_PIPELINE_STAGE_TRANSFER_BIT,
-        0,
-        0,
-        null,
-        0,
-        null,
-        afterBarriers.len,
-        &afterBarriers,
-    );
-
-    try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
-
-    const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-    const submit_info = c.VkSubmitInfo{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pWaitDstStageMask = &stage_mask,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &image.command_buffer,
-    };
-    try loader.xrCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
-
-    const release_image_info = c.XrSwapchainImageReleaseInfo{
-        .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
-    };
-
-    try loader.xrCheck(c.xrReleaseSwapchainImage(xr_swapchain.color_swapchain, &release_image_info));
-    try loader.xrCheck(c.xrReleaseSwapchainImage(xr_swapchain.depth_swapchain, &release_image_info));
-
-    return .{ true, color_active_index };
-}
-
-pub fn createResources(allocator: std.mem.Allocator) !void {
-    var prng = std.Random.DefaultPrng.init(blk: {
-        var seed: u64 = undefined;
-        try std.posix.getrandom(std.mem.asBytes(&seed));
-        break :blk seed;
-    });
-    const rand = prng.random();
-
-    blocks = .init(allocator);
-    const scale: f32 = 0.2;
-    // Center the blocks a little way from the origin.
-    const center: nz.Vec3(f32) = .{ 0.0, -0.2, -0.7 };
-    for (0..4) |i| {
-        const x: f32 = scale * (@as(f32, @floatFromInt(i)) - 1.5) + center[0];
-        for (0..4) |j| {
-            const y: f32 = scale * (@as(f32, @floatFromInt(j)) - 1.5) + center[1];
-            for (0..4) |k| {
-                // const angleRad: f32 = 0;
-                const z: f32 = scale * (@as(f32, @floatFromInt(k)) - 1.5) + center[2];
-                const q: nz.Vec4(f32) = .{ 0.0, 0.45, 0.0, 1.0 };
-                const color: nz.Vec4(f32) = .{
-                    rand.float(f32),
-                    rand.float(f32),
-                    rand.float(f32),
-
-                    1,
-                };
-                const block: input.Block = .{
-                    .orientation = q,
-                    .position = .{ x, y, z },
-                    .scale = .{ 0.1, 0.1, 0.1 },
-                    .color = color,
-                };
-                try blocks.append(block);
-            }
-        }
-    }
-}
-pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
-    var scale: nz.Mat4(f32) = .identity(2);
-    scale.d[0] = transform.scale[0];
-    scale.d[5] = transform.scale[1];
-    scale.d[10] = transform.scale[2];
-
-    const rotation: nz.Mat4(f32) = .identity(1);
-
-    var positon: nz.Mat4(f32) = .translate(transform.position);
-    // positon.d[14] += -0.2;
-
-    var push: vk.PushConstant = .{
-        .matrix = (positon.mul(rotation).mul(scale)).d,
-        .color = .{ 0.7, 0.0, 0.4, 0 },
-    };
-
-    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(vk.PushConstant), &push);
-
-    var offsets: [1]c.VkDeviceSize = .{0};
-    var vertex_buffers: [1]c.VkBuffer = .{model.vertex_buffer.buffer};
-    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
-    c.vkCmdBindIndexBuffer(command_buffer, model.index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
-    c.vkCmdDrawIndexed(
-        command_buffer,
-        model.index_count,
-        1,
-        0,
-        0,
-        0,
-    );
-}
-
-pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
-    var scale: nz.Mat4(f32) = .identity(2);
-    scale.d[0] = block.scale[0];
-    scale.d[5] = block.scale[1];
-    scale.d[10] = block.scale[2];
-
-    const rotation: nz.Mat4(f32) = .fromQuaternion(block.orientation);
-
-    var positon: nz.Mat4(f32) = .translate(block.position);
-    positon.d[14] += -0.2;
-
-    var push: vk.PushConstant = .{
-        .matrix = (positon.mul(rotation).mul(scale)).d,
-        .color = block.color,
-    };
-
-    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(vk.PushConstant), &push);
-
-    var offsets: [1]c.VkDeviceSize = .{0};
-    var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};
-    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
-    c.vkCmdBindIndexBuffer(command_buffer, index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
-    c.vkCmdDrawIndexed(
-        command_buffer,
-        cube_indecies.len,
-        1,
-        0,
-        0,
-        0,
-    );
-}
-
-// ======[NEW]======
-// ======[NEW]======
-// ======[NEW]======
-
-pub const Context = struct {
-    spectator_view: SpectatorView,
-    xr_instance: c.XrInstance,
-    xr_session: c.XrSession,
-    xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
-    xr_system_id: c.XrSystemId,
-    xr_space: c.XrSpace,
-    xr_swapchain: XrSwapchain,
-    action_set: c.XrActionSet,
-    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
-    vk_instance: c.VkInstance,
-    vk_physical_device: c.VkPhysicalDevice,
-    vk_logical_device: c.VkDevice,
-    vkid: vk.Dispatcher,
-    vk_queue: c.VkQueue,
-    vk_fence: c.VkFence,
-    vk_swapchain: VulkanSwapchain,
-    render_pass: c.VkRenderPass,
-    command_pool: c.VkCommandPool,
-    descriptor_pool: c.VkDescriptorPool,
-    descriptor_set_layout: c.VkDescriptorSetLayout,
-    vertex_shader: c.VkShaderModule,
-    fragment_shader: c.VkShaderModule,
-    pipeline: c.VkPipeline,
-    pipeline_layout: c.VkPipelineLayout,
-    graphics_queue_family_index: u32,
-    image_index: u32 = 0,
-    last_rendered_image_index: u32 = 0,
-    running: bool = false,
-};
 
 pub const Renderer = struct {
     pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -913,3 +369,538 @@ pub const Renderer = struct {
 };
 
 // mashedpotatoe
+
+pub fn render(
+    comps: []const type,
+    world: *World(comps),
+    session: c.XrSession,
+    swapchain: XrSwapchain,
+    space: c.XrSpace,
+    predicted_display_time: c.XrTime,
+    device: c.VkDevice,
+    queue: c.VkQueue,
+    render_pass: c.VkRenderPass,
+    pipeline_layout: c.VkPipelineLayout,
+    pipeline: c.VkPipeline,
+) !struct { bool, u32 } {
+    var view_locate_info = c.XrViewLocateInfo{
+        .type = c.XR_TYPE_VIEW_LOCATE_INFO,
+        .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+        .displayTime = predicted_display_time,
+        .space = space,
+        .next = null,
+    };
+
+    var view_state = c.XrViewState{
+        .type = c.XR_TYPE_VIEW_STATE,
+        .next = null,
+    };
+
+    var view_count: u32 = 2;
+    var views: [2]c.XrView = .{ .{
+        .type = c.XR_TYPE_VIEW,
+        .next = null,
+    }, .{
+        .type = c.XR_TYPE_VIEW,
+        .next = null,
+    } };
+
+    try loader.xrCheck(c.xrLocateViews(
+        session,
+        &view_locate_info,
+        &view_state,
+        view_count,
+        &view_count,
+        @ptrCast(&views[0]),
+    ));
+
+    const ok, const active_index = try renderEye(
+        comps,
+        world,
+        swapchain,
+        &views,
+        device,
+        queue,
+        render_pass,
+        pipeline_layout,
+        pipeline,
+    );
+    if (!ok) {
+        return .{ true, active_index };
+    }
+
+    var projected_views: [build_options.eye_count]c.XrCompositionLayerProjectionView = undefined;
+
+    for (0..build_options.eye_count) |i| {
+        projected_views[i].type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
+        projected_views[i].pose = views[i].pose;
+        projected_views[i].fov = views[i].fov;
+        projected_views[i].subImage = .{
+            .swapchain = swapchain.color_swapchain,
+            .imageRect = .{
+                .offset = .{ .x = 0, .y = 0 },
+                .extent = .{
+                    .width = @intCast(swapchain.width),
+                    .height = @intCast(swapchain.height),
+                },
+            },
+            .imageArrayIndex = @intCast(i),
+        };
+        projected_views[i].next = null;
+    }
+
+    var layer = c.XrCompositionLayerProjection{
+        .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
+        .space = space,
+        .viewCount = build_options.eye_count,
+        .views = &projected_views[0],
+        .next = null,
+    };
+
+    const layers_array: [1]*const c.XrCompositionLayerBaseHeader = .{@ptrCast(&layer)};
+
+    var end_frame_info = c.XrFrameEndInfo{
+        .type = c.XR_TYPE_FRAME_END_INFO,
+        .displayTime = predicted_display_time,
+        .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+        .layerCount = 1,
+        .layers = &layers_array[0],
+    };
+    try loader.xrCheck(c.xrEndFrame(session, &end_frame_info));
+
+    return .{ false, active_index };
+}
+
+fn renderEye(
+    comps: []const type,
+    world: *World(comps),
+    xr_swapchain: XrSwapchain,
+    view: []c.XrView,
+    device: c.VkDevice,
+    queue: c.VkQueue,
+    render_pass: c.VkRenderPass,
+    pipeline_layout: c.VkPipelineLayout,
+    pipeline: c.VkPipeline,
+) !struct { bool, u32 } {
+    var acquire_image_info = c.XrSwapchainImageAcquireInfo{
+        .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
+    };
+
+    var color_active_index: u32 = 0;
+    var depth_active_index: u32 = 0;
+    try loader.xrCheck(c.xrAcquireSwapchainImage(xr_swapchain.color_swapchain, &acquire_image_info, &color_active_index));
+    try loader.xrCheck(c.xrAcquireSwapchainImage(xr_swapchain.depth_swapchain, &acquire_image_info, &depth_active_index));
+
+    var wait_image_info = c.XrSwapchainImageWaitInfo{
+        .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
+        .timeout = std.math.maxInt(i64),
+    };
+
+    try loader.xrCheck(c.xrWaitSwapchainImage(xr_swapchain.color_swapchain, &wait_image_info));
+    try loader.xrCheck(c.xrWaitSwapchainImage(xr_swapchain.depth_swapchain, &wait_image_info));
+    const image: XrSwapchain.SwapchainImage = xr_swapchain.swapchain_images[color_active_index];
+
+    var data: ?[*]f32 = null;
+    try loader.xrCheck(c.vkMapMemory(device, image.memory, 0, c.VK_WHOLE_SIZE, 0, @ptrCast(@alignCast(&data))));
+
+    var ptr_start: u32 = 0;
+    for (0..2) |i| {
+        const angle_width: f32 = std.math.tan(view[i].fov.angleRight) - std.math.tan(view[i].fov.angleLeft);
+        const angle_height: f32 = std.math.tan(view[i].fov.angleDown) - std.math.tan(view[i].fov.angleUp);
+
+        var projection_matrix = nz.Mat4(f32).identity(0);
+
+        //TODO: defines?
+        const far_distance: f32 = 100;
+        const near_distance: f32 = 0.01;
+
+        projection_matrix.d[0] = 2.0 / angle_width;
+        projection_matrix.d[8] = (std.math.tan(view[i].fov.angleRight) + std.math.tan(view[i].fov.angleLeft)) / angle_width;
+        projection_matrix.d[5] = 2.0 / angle_height;
+        projection_matrix.d[9] = (std.math.tan(view[i].fov.angleUp) + std.math.tan(view[i].fov.angleDown)) / angle_height;
+        projection_matrix.d[10] = -far_distance / (far_distance - near_distance);
+        projection_matrix.d[14] = -(far_distance * near_distance) / (far_distance - near_distance);
+        projection_matrix.d[11] = -1;
+
+        // projection_matrix = nz.Mat4(f32).perspective(angle_height, angle_width, near_distance, far_distance);
+
+        @memcpy(data.?[ptr_start .. ptr_start + 16], projection_matrix.d[0..]);
+        ptr_start += 16;
+    }
+
+    for (0..2) |i| {
+        const view_matrix: nz.Mat4(f32) = .inverse(.mul(
+            .translate(.{ view[i].pose.position.x, view[i].pose.position.y, view[i].pose.position.z }),
+            .fromQuaternion(.{ view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z, view[i].pose.orientation.w }),
+        ));
+        @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
+        ptr_start += 16;
+    }
+
+    c.vkUnmapMemory(device, image.memory);
+
+    const begin_info = c.VkCommandBufferBeginInfo{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
+
+    var clear_values: [2]c.VkClearValue = undefined;
+    clear_values[0].color.float32 = .{ 0.0, 0.0, 0.0, 1.0 };
+    clear_values[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
+    const begin_render_pass_info = c.VkRenderPassBeginInfo{
+        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass = render_pass,
+        .framebuffer = image.framebuffer,
+        .renderArea = .{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
+        },
+        .clearValueCount = clear_values.len,
+        .pClearValues = &clear_values[0],
+    };
+
+    c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+
+    const viewport = c.VkViewport{
+        .x = 0,
+        .y = 0,
+        .width = @floatFromInt(xr_swapchain.width),
+        .height = @floatFromInt(xr_swapchain.height),
+        .minDepth = 0,
+        .maxDepth = 1,
+    };
+
+    c.vkCmdSetViewport(image.command_buffer, 0, 1, &viewport);
+
+    const scissor = c.VkRect2D{
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
+    };
+
+    c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
+
+    c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
+
+    var floor: input.Block = undefined;
+    floor.color = .{ 1, 1, 1, 1 };
+    floor.position = .{ 0, -0.4, 0 };
+    floor.scale = .{ 10, 0.05, 10 };
+    floor.orientation = .{ 0, 0, 0, 0 };
+    renderCuboid(floor, image.command_buffer, pipeline_layout);
+    for (blocks.items) |block| {
+        renderCuboid(block, image.command_buffer, pipeline_layout);
+    }
+    var it = world.query(&.{ root.Transform, root.Mesh });
+    while (it.next()) |entity| {
+        const transform = entity.get(root.Transform).?.*;
+        const mesh = entity.get(root.Mesh).?.*;
+        const asset_manager = try world.getResource(AssetManager);
+        const model = asset_manager.models.get(mesh.name) orelse return error.MeshNameNotFound;
+        renderMesh(transform, model, image.command_buffer, pipeline_layout);
+    }
+
+    for (0..2) |i| {
+        var hand: input.Block = .{
+            .color = .{ 1, 0, 0, 1 },
+            .position = .{ 0, 0, 0 },
+            .scale = .{ 0.1, 0.1, 0.1 },
+            .orientation = .{ 0, 0, 0, 0 },
+        };
+        if (m_handPoseState[i].isActive != 0) {
+            hand.position[0] = hand_pose[i].position.x;
+            hand.position[1] = hand_pose[i].position.y;
+            hand.position[2] = hand_pose[i].position.z;
+            hand.orientation = .{
+                hand_pose[i].orientation.x,
+                hand_pose[i].orientation.y,
+                hand_pose[i].orientation.z,
+                hand_pose[i].orientation.w,
+            };
+        }
+        renderCuboid(hand, image.command_buffer, pipeline_layout);
+    }
+
+    c.vkCmdEndRenderPass(image.command_buffer);
+
+    const beforeSrcBarrier: c.VkImageMemoryBarrier = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .dstAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT,
+        .oldLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .image = image.image.image,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    const beforeDstBarrier: c.VkImageMemoryBarrier = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = c.VK_ACCESS_NONE,
+        .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+        .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .image = image.vk_dup_image,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    const beforeBarriers = [_]c.VkImageMemoryBarrier{
+        beforeSrcBarrier,
+        beforeDstBarrier,
+    };
+
+    c.vkCmdPipelineBarrier(
+        image.command_buffer,
+        c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0,
+        null,
+        0,
+        null,
+        beforeBarriers.len,
+        &beforeBarriers,
+    );
+
+    var region: c.VkImageCopy = .{
+        .srcSubresource = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseArrayLayer = 0,
+            .mipLevel = 0,
+            .layerCount = 1,
+        },
+        .srcOffset = .{},
+        .dstSubresource = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseArrayLayer = 0,
+            .mipLevel = 0,
+            .layerCount = 1,
+        },
+        .dstOffset = .{},
+        .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height, .depth = 1 },
+    };
+
+    c.vkCmdCopyImage(
+        image.command_buffer,
+        image.image.image,
+        c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        image.vk_dup_image,
+        c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &region,
+    );
+
+    const afterSrcBarrier: c.VkImageMemoryBarrier = .{ .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT, .dstAccessMask = c.VK_ACCESS_NONE, .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, .newLayout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, .image = image.image.image, .subresourceRange = .{
+        .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    } };
+
+    const afterDstBarrier: c.VkImageMemoryBarrier = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = c.VK_ACCESS_TRANSFER_READ_BIT,
+        .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .image = image.vk_dup_image,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    const afterBarriers = [_]c.VkImageMemoryBarrier{
+        afterSrcBarrier,
+        afterDstBarrier,
+    };
+
+    c.vkCmdPipelineBarrier(
+        image.command_buffer,
+        c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+        c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0,
+        null,
+        0,
+        null,
+        afterBarriers.len,
+        &afterBarriers,
+    );
+
+    try loader.xrCheck(c.vkEndCommandBuffer(image.command_buffer));
+
+    const stage_mask: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+    const submit_info = c.VkSubmitInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .pWaitDstStageMask = &stage_mask,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &image.command_buffer,
+    };
+    try loader.xrCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
+
+    const release_image_info = c.XrSwapchainImageReleaseInfo{
+        .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
+    };
+
+    try loader.xrCheck(c.xrReleaseSwapchainImage(xr_swapchain.color_swapchain, &release_image_info));
+    try loader.xrCheck(c.xrReleaseSwapchainImage(xr_swapchain.depth_swapchain, &release_image_info));
+
+    return .{ true, color_active_index };
+}
+
+pub fn createResources(allocator: std.mem.Allocator) !void {
+    var prng = std.Random.DefaultPrng.init(blk: {
+        var seed: u64 = undefined;
+        try std.posix.getrandom(std.mem.asBytes(&seed));
+        break :blk seed;
+    });
+    const rand = prng.random();
+
+    blocks = .init(allocator);
+    const scale: f32 = 0.2;
+    // Center the blocks a little way from the origin.
+    const center: nz.Vec3(f32) = .{ 0.0, -0.2, -0.7 };
+    for (0..4) |i| {
+        const x: f32 = scale * (@as(f32, @floatFromInt(i)) - 1.5) + center[0];
+        for (0..4) |j| {
+            const y: f32 = scale * (@as(f32, @floatFromInt(j)) - 1.5) + center[1];
+            for (0..4) |k| {
+                // const angleRad: f32 = 0;
+                const z: f32 = scale * (@as(f32, @floatFromInt(k)) - 1.5) + center[2];
+                const q: nz.Vec4(f32) = .{ 0.0, 0.45, 0.0, 1.0 };
+                const color: nz.Vec4(f32) = .{
+                    rand.float(f32),
+                    rand.float(f32),
+                    rand.float(f32),
+
+                    1,
+                };
+                const block: input.Block = .{
+                    .orientation = q,
+                    .position = .{ x, y, z },
+                    .scale = .{ 0.1, 0.1, 0.1 },
+                    .color = color,
+                };
+                try blocks.append(block);
+            }
+        }
+    }
+}
+pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
+    var scale: nz.Mat4(f32) = .identity(2);
+    scale.d[0] = transform.scale[0];
+    scale.d[5] = transform.scale[1];
+    scale.d[10] = transform.scale[2];
+
+    const rotation: nz.Mat4(f32) = .identity(1);
+
+    var positon: nz.Mat4(f32) = .translate(transform.position);
+    positon.d[14] += -2;
+
+    var push: vk.PushConstant = .{
+        .matrix = (positon.mul(rotation).mul(scale)).d,
+        // .matrix = rotation.d,
+        .color = .{ 0.7, 0.0, 0.4, 0 },
+    };
+
+    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(vk.PushConstant), &push);
+
+    var offsets: [1]c.VkDeviceSize = .{0};
+    var vertex_buffers: [1]c.VkBuffer = .{model.vertex_buffer.buffer};
+    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
+    c.vkCmdBindIndexBuffer(command_buffer, model.index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
+    c.vkCmdDrawIndexed(
+        command_buffer,
+        model.index_count,
+        1,
+        0,
+        0,
+        0,
+    );
+}
+
+pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
+    var scale: nz.Mat4(f32) = .identity(2);
+    scale.d[0] = block.scale[0];
+    scale.d[5] = block.scale[1];
+    scale.d[10] = block.scale[2];
+
+    const rotation: nz.Mat4(f32) = .fromQuaternion(block.orientation);
+
+    var positon: nz.Mat4(f32) = .translate(block.position);
+    positon.d[14] += -0.2;
+
+    var push: vk.PushConstant = .{
+        .matrix = (positon.mul(rotation).mul(scale)).d,
+        .color = block.color,
+    };
+
+    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(vk.PushConstant), &push);
+
+    var offsets: [1]c.VkDeviceSize = .{0};
+    var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};
+    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
+    c.vkCmdBindIndexBuffer(command_buffer, index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
+    c.vkCmdDrawIndexed(
+        command_buffer,
+        cube_indecies.len,
+        1,
+        0,
+        0,
+        0,
+    );
+}
+
+// ======[NEW]======
+// ======[NEW]======
+// ======[NEW]======
+
+pub const Context = struct {
+    spectator_view: SpectatorView,
+    xr_instance: c.XrInstance,
+    xr_session: c.XrSession,
+    xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
+    xr_system_id: c.XrSystemId,
+    xr_space: c.XrSpace,
+    xr_swapchain: XrSwapchain,
+    action_set: c.XrActionSet,
+    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
+    vk_instance: c.VkInstance,
+    vk_physical_device: c.VkPhysicalDevice,
+    vk_logical_device: c.VkDevice,
+    vkid: vk.Dispatcher,
+    vk_queue: c.VkQueue,
+    vk_fence: c.VkFence,
+    vk_swapchain: VulkanSwapchain,
+    render_pass: c.VkRenderPass,
+    command_pool: c.VkCommandPool,
+    descriptor_pool: c.VkDescriptorPool,
+    descriptor_set_layout: c.VkDescriptorSetLayout,
+    vertex_shader: c.VkShaderModule,
+    fragment_shader: c.VkShaderModule,
+    pipeline: c.VkPipeline,
+    pipeline_layout: c.VkPipelineLayout,
+    graphics_queue_family_index: u32,
+    image_index: u32 = 0,
+    last_rendered_image_index: u32 = 0,
+    running: bool = false,
+};

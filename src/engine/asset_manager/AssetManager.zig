@@ -8,8 +8,8 @@ const Obj = @import("Obj.zig");
 
 const Self = @This();
 
-// models: std.StringHashMapUnmanaged(Model) = .empty,
-model: Model, //TODO : REMOVE
+model_path_list: [][]const u8,
+models: std.StringHashMapUnmanaged(Model),
 
 pub const Model = struct {
     vertex_buffer: vk.VulkanBuffer,
@@ -24,13 +24,19 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     // defer allocator.free(texture_paths);
 
     const model_paths = try findAssetsFromDir(allocator, model_dir_path, ".obj");
-    defer allocator.free(model_paths);
+    // defer allocator.free(model_paths);
 
     const asset_manager = try allocator.create(Self);
+    asset_manager.* = .{
+        .models = .empty,
+        .model_path_list = model_paths,
+    };
 
-    for (model_paths) |path| {
-        var buffer: [64]u8 = undefined;
-        const local_path = try std.fmt.bufPrint(&buffer, model_dir_path ++ "/{s}", .{path});
+    std.debug.print("PATHS :.{any}\n", .{model_paths});
+    for (asset_manager.model_path_list) |path| {
+        std.debug.print("PATH :.{any}\n", .{path});
+        const local_path = try std.fs.path.join(allocator, &.{ model_dir_path, path });
+        std.debug.print("LOCAL_PATH :.{s}\n", .{local_path});
         const obj = try Obj.init(allocator, local_path);
         defer obj.deinit(allocator);
 
@@ -52,21 +58,12 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             obj.indices.ptr,
         );
 
-        // try asset_manager.models.put(
-        //     allocator,
-        //     path,
-        //     .{
-        //         .vertex_buffer = vertex_buffer,
-        //         .index_buffer = index_buffer,
-        //         .index_count = @intCast(obj.indices.len),
-        //     },
-        // );
-        asset_manager.model = .{
+        const model: Model = .{
             .vertex_buffer = vertex_buffer,
             .index_buffer = index_buffer,
             .index_count = @intCast(obj.indices.len),
         };
-        break; // TODO: REMOVE DO ALL
+        try asset_manager.models.put(allocator, path, model);
     }
 
     try world.setResource(allocator, Self, asset_manager);
@@ -91,9 +88,15 @@ pub fn findAssetsFromDir(
     var it = dir.iterate();
     while (try it.next()) |entry| {
         if (entry.kind == .file and std.mem.eql(u8, std.fs.path.extension(entry.name), extension)) {
-            try assets.append(allocator, entry.name);
+            const name = try allocator.dupe(u8, entry.name);
+            // cheesecake saves the day again
+            errdefer allocator.free(name);
+            std.debug.print("APPEND :.{s}\n", .{name});
+            try assets.append(allocator, name);
         }
     }
-
-    return assets.toOwnedSlice(allocator);
+    // done
+    const slice = try assets.toOwnedSlice(allocator);
+    assets.items = &.{}; // to prevent double-free probably idk i am writing this blindly i have no idea what i am doing
+    return slice;
 }

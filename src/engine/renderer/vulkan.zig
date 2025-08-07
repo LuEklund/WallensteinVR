@@ -327,7 +327,7 @@ pub fn createPipeline(
 
     var vertex_binding: c.VkVertexInputBindingDescription = .{
         .binding = 0,
-        .stride = @sizeOf(c.XrVector4f),
+        .stride = @sizeOf(f32) * 3,
         .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
     };
 
