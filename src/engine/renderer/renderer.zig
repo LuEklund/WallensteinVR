@@ -755,11 +755,9 @@ pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_
     const rotation: nz.Mat4(f32) = .identity(1);
 
     var positon: nz.Mat4(f32) = .translate(transform.position);
-    positon.d[14] += -2;
 
     var push: vk.PushConstant = .{
         .matrix = (positon.mul(rotation).mul(scale)).d,
-        // .matrix = rotation.d,
         .color = .{ 0.7, 0.0, 0.4, 0 },
     };
 

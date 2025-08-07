@@ -327,22 +327,32 @@ pub fn createPipeline(
 
     var vertex_binding: c.VkVertexInputBindingDescription = .{
         .binding = 0,
-        .stride = @sizeOf(f32) * 3,
+        .stride = @sizeOf(f32) * 8,
         .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
     };
 
-    var vertex_input: c.VkVertexInputAttributeDescription = .{
+    var vertex_input: [3]c.VkVertexInputAttributeDescription = .{ .{
         .binding = 0,
         .location = 0,
         .offset = 0,
-        .format = c.VK_FORMAT_R32G32B32A32_SFLOAT,
-    };
+        .format = c.VK_FORMAT_R32G32B32_SFLOAT,
+    }, .{
+        .binding = 0,
+        .location = 1,
+        .offset = @sizeOf(f32) * 3,
+        .format = c.VK_FORMAT_R32G32B32_SFLOAT,
+    }, .{
+        .binding = 0,
+        .location = 2,
+        .offset = @sizeOf(f32) * 6,
+        .format = c.VK_FORMAT_R32G32_SFLOAT,
+    } };
 
     var vertex_input_stage = c.VkPipelineVertexInputStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = 1,
         .pVertexBindingDescriptions = &vertex_binding,
-        .vertexAttributeDescriptionCount = 1,
+        .vertexAttributeDescriptionCount = vertex_input.len,
         .pVertexAttributeDescriptions = &vertex_input,
     };
 

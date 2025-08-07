@@ -68,29 +68,29 @@ pub fn init(
                         positions.items[position_idx * 3 + 2],
                     });
 
-                    // if (it.next()) |uv| {
-                    //     const trimmed_uv = std.mem.trim(u8, uv, " \n\r\t");
-                    //     if (trimmed_uv.len > 0) {
-                    //         const uv_idx = try std.fmt.parseInt(usize, trimmed_uv, 10) - 1;
-                    //         if (uv_idx * 2 + 1 >= uvs.items.len) return error.InvalidIndex;
+                    if (it.next()) |uv| {
+                        const trimmed_uv = std.mem.trim(u8, uv, " \n\r\t");
+                        if (trimmed_uv.len > 0) {
+                            const uv_idx = try std.fmt.parseInt(usize, trimmed_uv, 10) - 1;
+                            if (uv_idx * 2 + 1 >= uvs.items.len) return error.InvalidIndex;
 
-                    //         try vertices.appendSlice(allocator, &.{
-                    //             uvs.items[uv_idx * 2 + 0],
-                    //             uvs.items[uv_idx * 2 + 1],
-                    //         });
-                    //     } else try vertices.appendSlice(allocator, &.{ 0, 0 });
-                    // } else try vertices.appendSlice(allocator, &.{ 0, 0 });
+                            try vertices.appendSlice(allocator, &.{
+                                uvs.items[uv_idx * 2 + 0],
+                                uvs.items[uv_idx * 2 + 1],
+                            });
+                        } else try vertices.appendSlice(allocator, &.{ 0, 0 });
+                    } else try vertices.appendSlice(allocator, &.{ 0, 0 });
 
-                    // if (it.next()) |normal| {
-                    //     const normal_idx = try std.fmt.parseInt(usize, std.mem.trim(u8, normal, " \n\r\t"), 10) - 1;
-                    //     if (normal_idx * 3 + 2 >= normals.items.len) return error.InvalidIndex;
+                    if (it.next()) |normal| {
+                        const normal_idx = try std.fmt.parseInt(usize, std.mem.trim(u8, normal, " \n\r\t"), 10) - 1;
+                        if (normal_idx * 3 + 2 >= normals.items.len) return error.InvalidIndex;
 
-                    //     try vertices.appendSlice(allocator, &.{
-                    //         normals.items[normal_idx * 3 + 0],
-                    //         normals.items[normal_idx * 3 + 1],
-                    //         normals.items[normal_idx * 3 + 2],
-                    //     });
-                    // } else try vertices.appendSlice(allocator, &.{ 0, 1, 0 });
+                        try vertices.appendSlice(allocator, &.{
+                            normals.items[normal_idx * 3 + 0],
+                            normals.items[normal_idx * 3 + 1],
+                            normals.items[normal_idx * 3 + 2],
+                        });
+                    } else try vertices.appendSlice(allocator, &.{ 0, 1, 0 });
 
                     try face_vertices.append(allocator, vertex_count);
                     vertex_count += 1;
