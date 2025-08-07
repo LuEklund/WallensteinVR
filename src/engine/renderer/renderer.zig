@@ -86,8 +86,36 @@ var cube_indecies: [36]u32 = .{
     2, 7, 3,
 };
 
-var index_buffer: vk.VulkanBuffer = undefined;
-var vertex_buffer: vk.VulkanBuffer = undefined;
+pub const Context = struct {
+    spectator_view: SpectatorView,
+    xr_instance: c.XrInstance,
+    xr_session: c.XrSession,
+    xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
+    xr_system_id: c.XrSystemId,
+    xr_space: c.XrSpace,
+    xr_swapchain: XrSwapchain,
+    action_set: c.XrActionSet,
+    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
+    vk_instance: c.VkInstance,
+    vk_physical_device: c.VkPhysicalDevice,
+    vk_logical_device: c.VkDevice,
+    vkid: vk.Dispatcher,
+    vk_queue: c.VkQueue,
+    vk_fence: c.VkFence,
+    vk_swapchain: VulkanSwapchain,
+    render_pass: c.VkRenderPass,
+    command_pool: c.VkCommandPool,
+    descriptor_pool: c.VkDescriptorPool,
+    descriptor_set_layout: c.VkDescriptorSetLayout,
+    vertex_shader: c.VkShaderModule,
+    fragment_shader: c.VkShaderModule,
+    pipeline: c.VkPipeline,
+    pipeline_layout: c.VkPipelineLayout,
+    graphics_queue_family_index: u32,
+    image_index: u32 = 0,
+    last_rendered_image_index: u32 = 0,
+    running: bool = false,
+};
 
 pub const Renderer = struct {
     pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -172,25 +200,6 @@ pub const Renderer = struct {
         );
 
         const space: c.XrSpace = try xr.createSpace(xr_session);
-
-        //TODO: MOVE OUT!
-        vertex_buffer = try vk.createBuffer(
-            vk_physical_device,
-            vk_logical_device,
-            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            cube_vertecies.len,
-            @sizeOf(c.XrVector4f),
-            @ptrCast(&cube_vertecies),
-        );
-        index_buffer = try vk.createBuffer(
-            vk_physical_device,
-            vk_logical_device,
-            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            cube_indecies.len,
-            @sizeOf(c.XrVector4f),
-            @ptrCast(&cube_indecies),
-        );
-        try createResources(allocator);
 
         const context = try allocator.create(Context);
         context.* = .{
@@ -328,14 +337,14 @@ pub const Renderer = struct {
                 &m_grabState,
                 &hand_pose,
             ) catch true;
-            input.blockInteraction(
-                &grabbed_block,
-                m_grabState,
-                &near_block,
-                hand_pose,
-                m_handPoseState,
-                blocks,
-            );
+            // input.blockInteraction(
+            //     &grabbed_block,
+            //     m_grabState,
+            //     &near_block,
+            //     hand_pose,
+            //     m_handPoseState,
+            //     blocks,
+            // );
             if (frame_state.shouldRender == c.VK_FALSE) {
                 var end_frame_info = c.XrFrameEndInfo{
                     .type = c.XR_TYPE_FRAME_END_INFO,
@@ -584,15 +593,6 @@ fn renderEye(
     c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
 
-    var floor: input.Block = undefined;
-    floor.color = .{ 1, 1, 1, 1 };
-    floor.position = .{ 0, -0.4, 0 };
-    floor.scale = .{ 10, 0.05, 10 };
-    floor.orientation = .{ 0, 0, 0, 0 };
-    renderCuboid(floor, image.command_buffer, pipeline_layout);
-    for (blocks.items) |block| {
-        renderCuboid(block, image.command_buffer, pipeline_layout);
-    }
     var it = world.query(&.{ root.Transform, root.Mesh });
     while (it.next()) |entity| {
         const transform = entity.get(root.Transform).?.*;
@@ -600,27 +600,6 @@ fn renderEye(
         const asset_manager = try world.getResource(AssetManager);
         const model = asset_manager.models.get(mesh.name) orelse return error.MeshNameNotFound;
         renderMesh(transform, model, image.command_buffer, pipeline_layout);
-    }
-
-    for (0..2) |i| {
-        var hand: input.Block = .{
-            .color = .{ 1, 0, 0, 1 },
-            .position = .{ 0, 0, 0 },
-            .scale = .{ 0.1, 0.1, 0.1 },
-            .orientation = .{ 0, 0, 0, 0 },
-        };
-        if (m_handPoseState[i].isActive != 0) {
-            hand.position[0] = hand_pose[i].position.x;
-            hand.position[1] = hand_pose[i].position.y;
-            hand.position[2] = hand_pose[i].position.z;
-            hand.orientation = .{
-                hand_pose[i].orientation.x,
-                hand_pose[i].orientation.y,
-                hand_pose[i].orientation.z,
-                hand_pose[i].orientation.w,
-            };
-        }
-        renderCuboid(hand, image.command_buffer, pipeline_layout);
     }
 
     c.vkCmdEndRenderPass(image.command_buffer);
@@ -767,44 +746,6 @@ fn renderEye(
     return .{ true, color_active_index };
 }
 
-pub fn createResources(allocator: std.mem.Allocator) !void {
-    var prng = std.Random.DefaultPrng.init(blk: {
-        var seed: u64 = undefined;
-        try std.posix.getrandom(std.mem.asBytes(&seed));
-        break :blk seed;
-    });
-    const rand = prng.random();
-
-    blocks = .init(allocator);
-    const scale: f32 = 0.2;
-    // Center the blocks a little way from the origin.
-    const center: nz.Vec3(f32) = .{ 0.0, -0.2, -0.7 };
-    for (0..4) |i| {
-        const x: f32 = scale * (@as(f32, @floatFromInt(i)) - 1.5) + center[0];
-        for (0..4) |j| {
-            const y: f32 = scale * (@as(f32, @floatFromInt(j)) - 1.5) + center[1];
-            for (0..4) |k| {
-                // const angleRad: f32 = 0;
-                const z: f32 = scale * (@as(f32, @floatFromInt(k)) - 1.5) + center[2];
-                const q: nz.Vec4(f32) = .{ 0.0, 0.45, 0.0, 1.0 };
-                const color: nz.Vec4(f32) = .{
-                    rand.float(f32),
-                    rand.float(f32),
-                    rand.float(f32),
-
-                    1,
-                };
-                const block: input.Block = .{
-                    .orientation = q,
-                    .position = .{ x, y, z },
-                    .scale = .{ 0.1, 0.1, 0.1 },
-                    .color = color,
-                };
-                try blocks.append(block);
-            }
-        }
-    }
-}
 pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
     var scale: nz.Mat4(f32) = .identity(2);
     scale.d[0] = transform.scale[0];
@@ -837,70 +778,3 @@ pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_
         0,
     );
 }
-
-pub fn renderCuboid(block: input.Block, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
-    var scale: nz.Mat4(f32) = .identity(2);
-    scale.d[0] = block.scale[0];
-    scale.d[5] = block.scale[1];
-    scale.d[10] = block.scale[2];
-
-    const rotation: nz.Mat4(f32) = .fromQuaternion(block.orientation);
-
-    var positon: nz.Mat4(f32) = .translate(block.position);
-    positon.d[14] += -0.2;
-
-    var push: vk.PushConstant = .{
-        .matrix = (positon.mul(rotation).mul(scale)).d,
-        .color = block.color,
-    };
-
-    c.vkCmdPushConstants(command_buffer, layput, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(vk.PushConstant), &push);
-
-    var offsets: [1]c.VkDeviceSize = .{0};
-    var vertex_buffers: [1]c.VkBuffer = .{vertex_buffer.buffer};
-    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, @ptrCast(&offsets));
-    c.vkCmdBindIndexBuffer(command_buffer, index_buffer.buffer, 0, c.VK_INDEX_TYPE_UINT32);
-    c.vkCmdDrawIndexed(
-        command_buffer,
-        cube_indecies.len,
-        1,
-        0,
-        0,
-        0,
-    );
-}
-
-// ======[NEW]======
-// ======[NEW]======
-// ======[NEW]======
-
-pub const Context = struct {
-    spectator_view: SpectatorView,
-    xr_instance: c.XrInstance,
-    xr_session: c.XrSession,
-    xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
-    xr_system_id: c.XrSystemId,
-    xr_space: c.XrSpace,
-    xr_swapchain: XrSwapchain,
-    action_set: c.XrActionSet,
-    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
-    vk_instance: c.VkInstance,
-    vk_physical_device: c.VkPhysicalDevice,
-    vk_logical_device: c.VkDevice,
-    vkid: vk.Dispatcher,
-    vk_queue: c.VkQueue,
-    vk_fence: c.VkFence,
-    vk_swapchain: VulkanSwapchain,
-    render_pass: c.VkRenderPass,
-    command_pool: c.VkCommandPool,
-    descriptor_pool: c.VkDescriptorPool,
-    descriptor_set_layout: c.VkDescriptorSetLayout,
-    vertex_shader: c.VkShaderModule,
-    fragment_shader: c.VkShaderModule,
-    pipeline: c.VkPipeline,
-    pipeline_layout: c.VkPipelineLayout,
-    graphics_queue_family_index: u32,
-    image_index: u32 = 0,
-    last_rendered_image_index: u32 = 0,
-    running: bool = false,
-};
