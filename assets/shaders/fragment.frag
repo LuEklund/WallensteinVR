@@ -12,3 +12,4 @@ void main()
     float brightness = max(dot(unitNormal, lightDirection), 0.2);
     fragColor = vec4(color * brightness, 1);
 }
+

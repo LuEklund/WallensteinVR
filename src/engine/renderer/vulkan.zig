@@ -340,12 +340,12 @@ pub fn createPipeline(
         .binding = 0,
         .location = 1,
         .offset = @sizeOf(f32) * 3,
-        .format = c.VK_FORMAT_R32G32B32_SFLOAT,
+        .format = c.VK_FORMAT_R32G32_SFLOAT,
     }, .{
         .binding = 0,
         .location = 2,
-        .offset = @sizeOf(f32) * 6,
-        .format = c.VK_FORMAT_R32G32_SFLOAT,
+        .offset = @sizeOf(f32) * 5,
+        .format = c.VK_FORMAT_R32G32B32_SFLOAT,
     } };
 
     var vertex_input_stage = c.VkPipelineVertexInputStateCreateInfo{

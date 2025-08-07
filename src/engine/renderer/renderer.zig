@@ -598,7 +598,7 @@ fn renderEye(
         const transform = entity.get(root.Transform).?.*;
         const mesh = entity.get(root.Mesh).?.*;
         const asset_manager = try world.getResource(AssetManager);
-        const model = asset_manager.models.get(mesh.name) orelse return error.MeshNameNotFound;
+        const model = asset_manager.getModel(mesh.name);
         renderMesh(transform, model, image.command_buffer, pipeline_layout);
     }
 
