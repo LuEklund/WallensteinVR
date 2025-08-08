@@ -445,68 +445,6 @@ pub fn suggestBindings(instance: c.XrInstance, leftHandAction: c.XrAction, right
 
     try loader.xrCheck(c.xrSuggestInteractionProfileBindings(instance, &suggestedBinding));
 }
-pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance) !void {
-    var hand_paths: [2]c.XrPath = .{ 0, 0 };
-    try loader.xrCheck(c.xrStringToPath(
-        xr_instance,
-        "/user/hand/left",
-        @ptrCast(&hand_paths[0]),
-    ));
-    try loader.xrCheck(c.xrStringToPath(
-        xr_instance,
-        "/user/hand/right",
-        @ptrCast(&hand_paths[1]),
-    ));
-
-    std.debug.print("\nstr: {d}\n", .{hand_paths[0]});
-    std.debug.print("\nstr: {d}\n", .{hand_paths[1]});
-
-    var strl: u32 = 0;
-    var text: [c.XR_MAX_PATH_LENGTH]u8 = undefined;
-    var interactionProfile: c.XrInteractionProfileState = .{
-        .type = c.XR_TYPE_INTERACTION_PROFILE_STATE,
-        .interactionProfile = 0,
-        .next = null,
-    };
-
-    try loader.xrCheck(
-        c.xrGetCurrentInteractionProfile(
-            xr_session,
-            hand_paths[0],
-            &interactionProfile,
-        ),
-    );
-    if (interactionProfile.interactionProfile != c.XR_NULL_HANDLE) {
-        try loader.xrCheck(c.xrPathToString(
-            xr_instance,
-            interactionProfile.interactionProfile,
-            text.len,
-            &strl,
-            &text[0],
-        ));
-        std.debug.print("\n\n====[LEFT]]=====\n\n", .{});
-        std.debug.print("user/hand/left ActiveProfile : {any}", .{text});
-    } else std.debug.print("\noh shit\n", .{});
-    try loader.xrCheck(
-        c.xrGetCurrentInteractionProfile(
-            xr_session,
-            hand_paths[1],
-            &interactionProfile,
-        ),
-    );
-    if (interactionProfile.interactionProfile != c.XR_NULL_HANDLE) {
-        try loader.xrCheck(c.xrPathToString(
-            xr_instance,
-            interactionProfile.interactionProfile,
-            text.len,
-            &strl,
-            &text[0],
-        ));
-        std.debug.print("\n\n====[RIGHT]=====\n\n", .{});
-        std.debug.print("user/hand/right ActiveProfile : {any}", .{text});
-    } else std.debug.print("\noh shit\n", .{});
-}
-
 pub fn attachActionSet(session: c.XrSession, actionSet: c.XrActionSet) !void {
     var actionSetsAttachInfo = c.XrSessionActionSetsAttachInfo{
         .type = c.XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO,

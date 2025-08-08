@@ -3,7 +3,7 @@ const loader = @import("loader");
 const c = loader.c;
 const sdl = @import("sdl3");
 const SpectatorView = @This();
-const renderer = @import("renderer.zig");
+const Context = @import("Context.zig");
 const VulkanSwapchain = @import("VulkanSwapchain.zig");
 
 sdl_surface: c.VkSurfaceKHR = undefined,
@@ -28,30 +28,9 @@ pub fn init(vulkan_instance: c.VkInstance, hight: usize, width: usize) !@This() 
 }
 pub fn deinit() !void {}
 pub fn update(
-    self: @This(),
-    ctx: *renderer.Context,
+    _: @This(),
+    ctx: *Context,
 ) !void {
-    while (sdl.events.poll()) |sdl_event| {
-        switch (sdl_event) {
-            // .quit =>
-            .window_resized => |wr| {
-                try ctx.vk_swapchain.recreate(
-                    self.sdl_surface,
-                    ctx.vk_physical_device,
-                    ctx.command_pool,
-                    &ctx.image_index,
-                    @intCast(wr.width),
-                    @intCast(wr.height),
-                );
-            },
-            // .key_down => |key| {
-            //     if (key.key == .escape) {
-            //         quit.store(true, .release);
-            //     }
-            // },
-            else => {},
-        }
-    }
     const vkResult = c.vkAcquireNextImageKHR(
         ctx.vk_logical_device,
         ctx.vk_swapchain.swapchain,
