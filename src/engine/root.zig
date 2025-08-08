@@ -1,6 +1,7 @@
 const nz = @import("numz");
 
 pub const Renderer = @import("renderer/renderer.zig").Renderer;
+pub const Input = @import("Input/Input.zig");
 pub const AssetManager = @import("asset_manager/AssetManager.zig");
 
 pub const RigidBody = struct {

@@ -1,7 +1,7 @@
 const std = @import("std");
 const c = @import("loader").c;
 const World = @import("../../ecs.zig").World;
-const Context = @import("../renderer/renderer.zig").Context;
+const Context = @import("../renderer/Context.zig");
 const vk = @import("../renderer/vulkan.zig");
 
 const Obj = @import("Obj.zig");

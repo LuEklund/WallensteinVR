@@ -15,44 +15,11 @@ const SpectatorView = @import("SpectatorView.zig");
 const World = @import("../../ecs.zig").World;
 const root = @import("../root.zig");
 const AssetManager = @import("../asset_manager/AssetManager.zig");
+const Context = @import("Context.zig");
 var quit: std.atomic.Value(bool) = .init(false);
 
 const window_width: c_int = 1600;
 const window_height: c_int = 900;
-
-var grabbed_block: [2]i32 = .{ -1, -1 };
-var near_block: [2]i32 = .{ -1, -1 };
-var blocks: std.ArrayList(input.Block) = undefined;
-
-var m_grabState: [2]c.XrActionStateFloat = .{ .{ .type = c.XR_TYPE_ACTION_STATE_FLOAT }, .{ .type = c.XR_TYPE_ACTION_STATE_FLOAT } };
-var m_handPaths: [2]c.XrPath = .{ 0, 0 };
-var hand_pose_space: [2]c.XrSpace = undefined;
-var hand_pose: [2]c.XrPosef = .{
-    .{
-        .orientation = .{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 0.0 },
-        .position = .{ .x = 0.0, .z = 0.0, .y = -100 },
-    },
-    .{
-        .orientation = .{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 0.0 },
-        .position = .{ .x = 0.0, .z = 0.0, .y = -100 },
-    },
-};
-var m_palmPoseAction: c.XrAction = undefined;
-var m_grabCubeAction: c.XrAction = undefined;
-var m_handPoseState: [2]c.XrActionStatePose = .{
-    .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
-    .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
-};
-
-// var normals: [6]c.XrVector4f = .{
-// .{ .x = 1.00, .y = 0.00, .z = 0.00, .w = 0 },
-// .{ .x = -1.00, .y = 0.00, .z = 0.00, .w = 0 },
-// .{ .x = 0.00, .y = 1.00, .z = 0.00, .w = 0 },
-// .{ .x = 0.00, .y = -1.00, .z = 0.00, .w = 0 },
-// .{ .x = 0.00, .y = 0.00, .z = 1.00, .w = 0 },
-// .{ .x = 0.00, .y = 0.0, .z = -1.00, .w = 0 },
-// };
-//
 
 var cube_vertecies: [8]c.XrVector3f = .{
     .{ .x = 0.5, .y = 0.5, .z = 0.5 }, // 0: Top-Front-Right
@@ -86,37 +53,6 @@ var cube_indecies: [36]u32 = .{
     2, 7, 3,
 };
 
-pub const Context = struct {
-    spectator_view: SpectatorView,
-    xr_instance: c.XrInstance,
-    xr_session: c.XrSession,
-    xr_debug_messenger: c.XrDebugUtilsMessengerEXT,
-    xr_system_id: c.XrSystemId,
-    xr_space: c.XrSpace,
-    xr_swapchain: XrSwapchain,
-    action_set: c.XrActionSet,
-    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
-    vk_instance: c.VkInstance,
-    vk_physical_device: c.VkPhysicalDevice,
-    vk_logical_device: c.VkDevice,
-    vkid: vk.Dispatcher,
-    vk_queue: c.VkQueue,
-    vk_fence: c.VkFence,
-    vk_swapchain: VulkanSwapchain,
-    render_pass: c.VkRenderPass,
-    command_pool: c.VkCommandPool,
-    descriptor_pool: c.VkDescriptorPool,
-    descriptor_set_layout: c.VkDescriptorSetLayout,
-    vertex_shader: c.VkShaderModule,
-    fragment_shader: c.VkShaderModule,
-    pipeline: c.VkPipeline,
-    pipeline_layout: c.VkPipelineLayout,
-    graphics_queue_family_index: u32,
-    image_index: u32 = 0,
-    last_rendered_image_index: u32 = 0,
-    running: bool = false,
-};
-
 pub const Renderer = struct {
     pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
         const xr_extensions = &[_][*:0]const u8{
@@ -146,11 +82,11 @@ pub const Renderer = struct {
         try paths.append(allocator, "/user/hand/left");
         try paths.append(allocator, "/user/hand/right");
         defer paths.deinit(allocator);
-        m_grabCubeAction = try xr.createAction(xr_instance, action_set, "grab-cube", c.XR_ACTION_TYPE_FLOAT_INPUT, paths);
-        m_palmPoseAction = try xr.createAction(xr_instance, action_set, "palm-pose", c.XR_ACTION_TYPE_POSE_INPUT, paths);
+        const m_grabCubeAction = try xr.createAction(xr_instance, action_set, "grab-cube", c.XR_ACTION_TYPE_FLOAT_INPUT, paths);
+        const m_palmPoseAction = try xr.createAction(xr_instance, action_set, "palm-pose", c.XR_ACTION_TYPE_POSE_INPUT, paths);
 
-        m_handPaths[0] = try xr.createXrPath(xr_instance, "/user/hand/left".ptr);
-        m_handPaths[1] = try xr.createXrPath(xr_instance, "/user/hand/right".ptr);
+        const m_handPaths_l = try xr.createXrPath(xr_instance, "/user/hand/left".ptr);
+        const m_handPaths_r = try xr.createXrPath(xr_instance, "/user/hand/right".ptr);
 
         const xr_graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const xr_instance_extensions: []const [*:0]const u8 =
             try xr.getVulkanInstanceRequirements(xrd, allocator, xr_instance, xr_system_id);
@@ -173,8 +109,8 @@ pub const Renderer = struct {
 
         try xr.suggestBindings(xr_instance, m_palmPoseAction, m_palmPoseAction, m_grabCubeAction, m_grabCubeAction);
 
-        hand_pose_space[0] = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/left");
-        hand_pose_space[1] = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/right");
+        const hand_pose_space_l = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/left");
+        const hand_pose_space_r = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/right");
         try xr.attachActionSet(xr_session, action_set);
 
         var vulkan_swapchain: VulkanSwapchain = try .init(vk_physical_device, vk_logical_device, spectator_view.sdl_surface, window_width, window_height);
@@ -228,6 +164,17 @@ pub const Renderer = struct {
             .xr_system_id = xr_system_id,
             .xr_space = space,
             .xr_swapchain = xr_swapchain,
+            //XR POSE CONTEXTm_grabCubeAction
+            .grab_cube_action = m_grabCubeAction,
+            .palm_pose_action = m_palmPoseAction,
+            .hand_paths = .{
+                m_handPaths_l,
+                m_handPaths_r,
+            },
+            .hand_pose_space = .{
+                hand_pose_space_l,
+                hand_pose_space_r,
+            },
         };
 
         try world.setResource(allocator, Context, context);
@@ -254,68 +201,16 @@ pub const Renderer = struct {
     pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
         var ctx = try world.getResource(Context);
         std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
-        if (true) {
-            try ctx.spectator_view.update(ctx);
-        }
 
-        var eventData = c.XrEventDataBuffer{
-            .type = c.XR_TYPE_EVENT_DATA_BUFFER,
-        };
-        var result: c.XrResult = c.xrPollEvent(ctx.xr_instance, &eventData);
-
-        switch (eventData.type) {
-            c.XR_TYPE_EVENT_DATA_EVENTS_LOST => std.debug.print("Event queue overflowed and events were lost.\n", .{}),
-            c.XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING => {
-                std.debug.print("OpenXR instance is shutting down.\n", .{});
-                quit.store(true, .release);
-            },
-            c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => {
-                try xr.recordCurrentBindings(ctx.xr_session, ctx.xr_instance);
-                std.debug.print("The interaction profile has changed.\n", .{});
-            },
-            c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
-            c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
-                const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
-
-                switch (event.state) {
-                    c.XR_SESSION_STATE_UNKNOWN, c.XR_SESSION_STATE_MAX_ENUM => std.debug.print("Unknown session state entered: {any}\n", .{event.state}),
-                    c.XR_SESSION_STATE_IDLE => ctx.running = false,
-                    c.XR_SESSION_STATE_READY => {
-                        const sessionBeginInfo = c.XrSessionBeginInfo{
-                            .type = c.XR_TYPE_SESSION_BEGIN_INFO,
-                            .primaryViewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-                        };
-                        try loader.xrCheck(c.xrBeginSession(ctx.xr_session, &sessionBeginInfo));
-                        ctx.running = true;
-                    },
-                    c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => ctx.running = true,
-                    c.XR_SESSION_STATE_STOPPING => {
-                        try loader.xrCheck(c.xrEndSession(ctx.xr_session));
-                        ctx.running = false;
-                    },
-                    c.XR_SESSION_STATE_LOSS_PENDING => {
-                        std.debug.print("OpenXR session is shutting down.\n", .{});
-                        quit.store(true, .release);
-                    },
-                    c.XR_SESSION_STATE_EXITING => {
-                        std.debug.print("OpenXR runtime requested shutdown.\n", .{});
-                        quit.store(true, .release);
-                    },
-                    else => {
-                        log.err("Unknown event STATE received: {any}", .{event.state});
-                    },
-                }
-            },
-            else => {
-                log.err("Unknown event TYPE received: {any}", .{eventData.type});
-            },
-        }
         // if (result == c.XR_EVENT_UNAVAILABLE) {
         // mashed potatos
         if (ctx.running) {
+            if (true) {
+                try ctx.spectator_view.update(ctx);
+            }
             var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
             var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
-            result = c.xrWaitFrame(ctx.xr_session, &frame_wait_info, &frame_state);
+            const result = c.xrWaitFrame(ctx.xr_session, &frame_wait_info, &frame_state);
             if (result != c.XR_SUCCESS) {
                 std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{}); //TODO: QUITE APP
                 return;
@@ -325,17 +220,8 @@ pub const Renderer = struct {
             };
             try loader.xrCheck(c.xrBeginFrame(ctx.xr_session, &begin_frame_info));
             var should_quit = input.pollAction(
-                ctx.xr_session,
-                ctx.action_set,
-                ctx.xr_space,
+                ctx,
                 frame_state.predictedDisplayTime,
-                m_palmPoseAction,
-                m_grabCubeAction,
-                m_handPaths,
-                hand_pose_space,
-                &m_handPoseState,
-                &m_grabState,
-                &hand_pose,
             ) catch true;
             // input.blockInteraction(
             //     &grabbed_block,
