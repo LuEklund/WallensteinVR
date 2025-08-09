@@ -2,7 +2,7 @@ const std = @import("std");
 const World = @import("ecs.zig").World;
 const eng = @import("engine/root.zig");
 const game = @import("game/root.zig");
-const GFX_Context = @import("engine/renderer/Context.zig");
+const GfxContext = @import("engine/renderer/Context.zig");
 
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{ .verbose_log = true }) = .init;
@@ -23,15 +23,18 @@ pub fn main() !void {
         someInitSystem,
     });
 
-    while (true) {
+    const ctx: *GfxContext = try world.getResource(GfxContext);
+
+    while (ctx.should_quit == false) {
         try world.runSystems(allocator, .{
+            eng.Renderer.beginFrame,
             eng.Input.pollEvents,
             playerUpdateSystem,
             someUpdateSystem,
             eng.Renderer.update,
         });
     }
-    try world.runSystems(allocator, .{eng.AssetManager.deinit});
+    try world.runSystems(allocator, .{ eng.AssetManager.deinit, eng.Renderer.deinit });
 }
 
 pub fn ininitPlayer(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -80,18 +83,18 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
         eng.Mesh{ .name = "cube.obj" },
         game.Hand{ .side = .right },
     });
-    // _ = try world.spawn(allocator, .{
-    // eng.Transform{
-    // .position = .{ 0, -0.1, -0.5 },
-    // .scale = .{ 0.1, 0.1, 0.1 },
-    // },
-    // eng.Mesh{ .name = "basket.obj" },
-    // });
+    _ = try world.spawn(allocator, .{
+        eng.Transform{
+            .position = .{ 0, -0.1, -0.5 },
+            .scale = .{ 0.1, 0.1, 0.1 },
+        },
+        eng.Mesh{ .name = "basket.obj" },
+    });
 }
 
 pub fn playerUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
     var query = world.query(&.{ game.Hand, eng.Transform });
-    const ctx = try world.getResource(GFX_Context);
+    const ctx = try world.getResource(GfxContext);
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
         const transform = entity.get(eng.Transform).?;

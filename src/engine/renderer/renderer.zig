@@ -16,42 +16,11 @@ const World = @import("../../ecs.zig").World;
 const root = @import("../root.zig");
 const AssetManager = @import("../asset_manager/AssetManager.zig");
 const Context = @import("Context.zig");
+const Input = @import("../Input/Input.zig");
 var quit: std.atomic.Value(bool) = .init(false);
 
 const window_width: c_int = 1600;
 const window_height: c_int = 900;
-
-var cube_vertecies: [8]c.XrVector3f = .{
-    .{ .x = 0.5, .y = 0.5, .z = 0.5 }, // 0: Top-Front-Right
-    .{ .x = 0.5, .y = 0.5, .z = -0.5 }, // 1: Top-Back-Right
-    .{ .x = 0.5, .y = -0.5, .z = 0.5 }, // 2: Bottom-Front-Right
-    .{ .x = 0.5, .y = -0.5, .z = -0.5 }, // 3: Bottom-Back-Right
-    .{ .x = -0.5, .y = 0.5, .z = 0.5 }, // 4: Top-Front-Left
-    .{ .x = -0.5, .y = 0.5, .z = -0.5 }, // 5: Top-Back-Left
-    .{ .x = -0.5, .y = -0.5, .z = 0.5 }, // 6: Bottom-Front-Left
-    .{ .x = -0.5, .y = -0.5, .z = -0.5 }, // 7: Bottom-Back-Left
-};
-
-var cube_indecies: [36]u32 = .{
-    // Front face
-    4, 6, 0,
-    0, 6, 2,
-    // Back face
-    1, 3, 5,
-    5, 3, 7,
-    // Right face
-    0, 2, 1,
-    1, 2, 3,
-    // Left face
-    5, 7, 4,
-    4, 7, 6,
-    // Top face
-    4, 0, 5,
-    5, 0, 1,
-    // Bottom face
-    6, 7, 2,
-    2, 7, 3,
-};
 
 pub const Renderer = struct {
     pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -61,12 +30,12 @@ pub const Renderer = struct {
             loader.c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME,
         };
         const xr_layers = &[_][*:0]const u8{
-            // "XR_APILAYER_LUNARG_core_validation",
-            // "XR_APILAYER_LUNARG_api_dump",
+            "XR_APILAYER_LUNARG_core_validation",
+            "XR_APILAYER_LUNARG_api_dump",
         };
 
         const vk_layers = &[_][*:0]const u8{
-            // "VK_LAYER_KHRONOS_validation",
+            "VK_LAYER_KHRONOS_validation",
         };
 
         try xr.validateExtensions(allocator, xr_extensions);
@@ -164,6 +133,7 @@ pub const Renderer = struct {
             .xr_system_id = xr_system_id,
             .xr_space = space,
             .xr_swapchain = xr_swapchain,
+            .predicted_time_frame = 0,
             //XR POSE CONTEXTm_grabCubeAction
             .grab_cube_action = m_grabCubeAction,
             .palm_pose_action = m_palmPoseAction,
@@ -198,68 +168,115 @@ pub const Renderer = struct {
         c.vkDestroyRenderPass(ctx.vk_logical_device, ctx.render_pass, null);
     }
 
+    pub fn beginFrame(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
+        std.debug.print("\n\n=========[BEGIN FRAME]===========\n\n", .{}); //TODO: QUITE APP
+        var ctx = try world.getResource(Context);
+        var eventData = c.XrEventDataBuffer{
+            .type = c.XR_TYPE_EVENT_DATA_BUFFER,
+        };
+        _ = c.xrPollEvent(ctx.xr_instance, &eventData);
+
+        switch (eventData.type) {
+            c.XR_TYPE_EVENT_DATA_EVENTS_LOST => std.debug.print("Event queue overflowed and events were lost.\n", .{}),
+            c.XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING => {
+                std.debug.print("OpenXR instance is shutting down.\n", .{}); // :TODO QUIT THE APP
+            },
+            c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => {
+                try Input.recordCurrentBindings(ctx.xr_session, ctx.xr_instance); //TODO Re-record bingings
+                std.debug.print("The interaction profile has changed.\n", .{});
+            },
+            c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
+            c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
+                const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
+
+                switch (event.state) {
+                    c.XR_SESSION_STATE_UNKNOWN, c.XR_SESSION_STATE_MAX_ENUM => std.debug.print("Unknown session state entered: {any}\n", .{event.state}),
+                    c.XR_SESSION_STATE_IDLE => ctx.running = false,
+                    c.XR_SESSION_STATE_READY => {
+                        const sessionBeginInfo = c.XrSessionBeginInfo{
+                            .type = c.XR_TYPE_SESSION_BEGIN_INFO,
+                            .primaryViewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+                        };
+                        try loader.xrCheck(c.xrBeginSession(ctx.xr_session, &sessionBeginInfo));
+                        ctx.running = true;
+                        // @panic("LOL");
+                    },
+                    c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => ctx.running = true,
+                    c.XR_SESSION_STATE_STOPPING => {
+                        try loader.xrCheck(c.xrEndSession(ctx.xr_session));
+                        ctx.running = false;
+                    },
+                    c.XR_SESSION_STATE_LOSS_PENDING => {
+                        std.debug.print("OpenXR session is shutting down.\n", .{}); //TODO: QUIT APP
+                    },
+                    c.XR_SESSION_STATE_EXITING => {
+                        std.debug.print("OpenXR runtime requested shutdown.\n", .{}); //TODO: Quit APP
+                    },
+                    else => {
+                        std.log.err("Unknown event STATE received: {any}", .{event.state});
+                    },
+                }
+            },
+            else => {
+                std.log.err("Unknown event TYPE received: {any}", .{eventData.type});
+            },
+        }
+
+        var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
+        var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
+        const result = c.xrWaitFrame(ctx.xr_session, &frame_wait_info, &frame_state);
+        if (result != c.XR_SUCCESS) {
+            std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{}); //TODO: QUITE APP
+            return;
+        }
+        var begin_frame_info = c.XrFrameBeginInfo{
+            .type = c.XR_TYPE_FRAME_BEGIN_INFO,
+        };
+        try loader.xrCheck(c.xrBeginFrame(ctx.xr_session, &begin_frame_info));
+        ctx.should_render = frame_state.shouldRender;
+        ctx.predicted_time_frame = frame_state.predictedDisplayTime;
+    }
+
     pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
         var ctx = try world.getResource(Context);
-        std.debug.print("\n\n=========[ENTERED while loop]===========\n\n", .{});
+        if (ctx.running == false) return;
+        std.debug.print("\n\n=========[BEGIN RENDER]===========\n\n", .{});
 
-        // if (result == c.XR_EVENT_UNAVAILABLE) {
-        // mashed potatos
-        if (ctx.running) {
-            if (true) {
-                try ctx.spectator_view.update(ctx);
-            }
-            var frame_wait_info = c.XrFrameWaitInfo{ .type = c.XR_TYPE_FRAME_WAIT_INFO };
-            var frame_state = c.XrFrameState{ .type = c.XR_TYPE_FRAME_STATE };
-            const result = c.xrWaitFrame(ctx.xr_session, &frame_wait_info, &frame_state);
-            if (result != c.XR_SUCCESS) {
-                std.debug.print("\n\n=========[OMG WE DIDED]===========\n\n", .{}); //TODO: QUITE APP
-                return;
-            }
-            var begin_frame_info = c.XrFrameBeginInfo{
-                .type = c.XR_TYPE_FRAME_BEGIN_INFO,
+        if (ctx.should_render == c.VK_FALSE) {
+            var end_frame_info = c.XrFrameEndInfo{
+                .type = c.XR_TYPE_FRAME_END_INFO,
+                .displayTime = ctx.predicted_time_frame,
+                .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+                .layerCount = 0,
+                .layers = null,
             };
-            try loader.xrCheck(c.xrBeginFrame(ctx.xr_session, &begin_frame_info));
-            var should_quit = input.pollAction(
-                ctx,
-                frame_state.predictedDisplayTime,
-            ) catch true;
-            // input.blockInteraction(
-            //     &grabbed_block,
-            //     m_grabState,
-            //     &near_block,
-            //     hand_pose,
-            //     m_handPoseState,
-            //     blocks,
-            // );
-            if (frame_state.shouldRender == c.VK_FALSE) {
-                var end_frame_info = c.XrFrameEndInfo{
-                    .type = c.XR_TYPE_FRAME_END_INFO,
-                    .displayTime = frame_state.predictedDisplayTime,
-                    .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
-                    .layerCount = 0,
-                    .layers = null,
-                };
-                try loader.xrCheck(c.xrEndFrame(ctx.xr_session, &end_frame_info));
-            } else {
-                should_quit, const active_index = render(
-                    comps,
-                    world,
-                    ctx.xr_session,
-                    ctx.xr_swapchain,
-                    ctx.xr_space,
-                    frame_state.predictedDisplayTime,
-                    ctx.vk_logical_device,
-                    ctx.vk_queue,
-                    ctx.render_pass,
-                    ctx.pipeline_layout,
-                    ctx.pipeline,
-                ) catch .{ true, 0 };
-                if (should_quit)
-                    quit.store(should_quit, .release);
-                ctx.last_rendered_image_index = active_index;
-            }
+            try loader.xrCheck(c.xrEndFrame(ctx.xr_session, &end_frame_info));
+            return;
         }
-        std.debug.print("\n\n=========[DONE while loop]===========\n\n", .{});
+
+        if (true) {
+            try ctx.spectator_view.update(ctx);
+        }
+
+        const should_quit, const active_index = render(
+            comps,
+            world,
+            ctx.xr_session,
+            ctx.xr_swapchain,
+            ctx.xr_space,
+            ctx.predicted_time_frame,
+            ctx.vk_logical_device,
+            ctx.vk_queue,
+            ctx.render_pass,
+            ctx.pipeline_layout,
+            ctx.pipeline,
+        ) catch .{ true, 0 };
+        if (should_quit) {
+            //TODO: send quit to app
+            // quit.store(should_quit, .release);
+        }
+        ctx.last_rendered_image_index = active_index;
+        std.debug.print("\n\n=========[RENDER DONE]===========\n\n", .{});
     }
 };
 
