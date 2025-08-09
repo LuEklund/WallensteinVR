@@ -6,6 +6,7 @@ const c = @cImport({
     @cInclude("vulkan/vulkan.h");
     @cInclude("openxr/openxr.h");
     @cInclude("openxr/openxr_platform.h");
+    @cInclude("SDL3_image/SDL_image.h");
 });
 
 const Pfn = struct {
