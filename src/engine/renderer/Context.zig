@@ -36,6 +36,7 @@ last_rendered_image_index: u32 = 0,
 predicted_time_frame: c.XrTime,
 running: bool = false,
 should_quit: bool = false,
+should_render: c.VkBool32 = c.VK_FALSE,
 
 //XR INPUT POSE CONTEXT
 grabbed_block: [2]i32 = .{ -1, -1 },

@@ -24,63 +24,13 @@ pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocato
                     @intCast(wr.height),
                 );
             },
-            // .key_down => |key| {
-            //     if (key.key == .escape) {
-            //         quit.store(true, .release);
-            //     }
-            // },
+            .key_down => |key| {
+                if (key.key == .escape) {
+                    ctx.should_quit = true;
+                }
+            },
             else => {},
         }
-    }
-
-    var eventData = c.XrEventDataBuffer{
-        .type = c.XR_TYPE_EVENT_DATA_BUFFER,
-    };
-    _ = c.xrPollEvent(ctx.xr_instance, &eventData);
-
-    switch (eventData.type) {
-        c.XR_TYPE_EVENT_DATA_EVENTS_LOST => std.debug.print("Event queue overflowed and events were lost.\n", .{}),
-        c.XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING => {
-            std.debug.print("OpenXR instance is shutting down.\n", .{}); // :TODO QUIT THE APP
-        },
-        c.XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED => {
-            try recordCurrentBindings(ctx.xr_session, ctx.xr_instance); //TODO Re-record bingings
-            std.debug.print("The interaction profile has changed.\n", .{});
-        },
-        c.XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING => std.debug.print("The reference space is changing.\n", .{}),
-        c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
-            const event: *c.XrEventDataSessionStateChanged = @ptrCast(&eventData);
-
-            switch (event.state) {
-                c.XR_SESSION_STATE_UNKNOWN, c.XR_SESSION_STATE_MAX_ENUM => std.debug.print("Unknown session state entered: {any}\n", .{event.state}),
-                c.XR_SESSION_STATE_IDLE => ctx.running = false,
-                c.XR_SESSION_STATE_READY => {
-                    const sessionBeginInfo = c.XrSessionBeginInfo{
-                        .type = c.XR_TYPE_SESSION_BEGIN_INFO,
-                        .primaryViewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-                    };
-                    try loader.xrCheck(c.xrBeginSession(ctx.xr_session, &sessionBeginInfo));
-                    ctx.running = true;
-                },
-                c.XR_SESSION_STATE_SYNCHRONIZED, c.XR_SESSION_STATE_VISIBLE, c.XR_SESSION_STATE_FOCUSED => ctx.running = true,
-                c.XR_SESSION_STATE_STOPPING => {
-                    try loader.xrCheck(c.xrEndSession(ctx.xr_session));
-                    ctx.running = false;
-                },
-                c.XR_SESSION_STATE_LOSS_PENDING => {
-                    std.debug.print("OpenXR session is shutting down.\n", .{}); //TODO: QUIT APP
-                },
-                c.XR_SESSION_STATE_EXITING => {
-                    std.debug.print("OpenXR runtime requested shutdown.\n", .{}); //TODO: Quit APP
-                },
-                else => {
-                    std.log.err("Unknown event STATE received: {any}", .{event.state});
-                },
-            }
-        },
-        else => {
-            std.log.err("Unknown event TYPE received: {any}", .{eventData.type});
-        },
     }
 
     _ = try pollAction(ctx); //TODO  QUit app
@@ -171,13 +121,6 @@ pub fn pollAction(
         return true;
     }
 
-    // _ = roomSpace;
-    // _ = predictedDisplayTime;
-    // _ = leftHandAction;
-    // _ = rightHandAction;
-    // _ = hand_pose;
-    // _ = hand_pose_space;
-    // _ = hand_pose_state;
     var actionStateGetInfo: c.XrActionStateGetInfo = .{ .type = c.XR_TYPE_ACTION_STATE_GET_INFO };
     actionStateGetInfo.action = @ptrCast(ctx.palm_pose_action);
     for (0..2) |i| {
