@@ -71,8 +71,6 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     try asset_manager.loadTextures(allocator, ctx);
 
     try world.setResource(allocator, Self, asset_manager);
-
-    @panic("LOL");
 }
 
 pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -137,22 +135,27 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
     const dir_path = "../../assets/textures"; // assets/textures
     const paths = try findAssetsFromDir(allocator, dir_path, ".jpg");
     _ = ctx;
-
     for (paths) |path| {
-        const local_path = try std.fs.path.join(allocator, &.{ dir_path, path });
-        std.debug.print("\nPath: .{s}\n", .{local_path});
-        const file = std.fs.cwd().openFile(local_path, .{}) catch |err| {
+        const local_path_z = try std.fs.path.joinZ(allocator, &.{ dir_path, path });
+        defer allocator.free(local_path_z);
+        const file = std.fs.cwd().openFile(local_path_z, .{}) catch |err| {
             if (err == error.FileNotFound) {
-                std.log.err("Texture '{s}' not found", .{local_path});
+                std.log.err("Texture '{s}' not found", .{local_path_z});
                 return;
             }
             return err;
         };
         file.close();
 
-        const surface: *c.SDL_Surface = c.IMG_Load(local_path.ptr) orelse return error.LoadImage;
+        const surface: *c.SDL_Surface = c.IMG_Load(local_path_z.ptr) orelse {
+            const err = c.SDL_GetError();
+            // i will trust haradl
+            // should work now
+            std.debug.print("sdl error {s}\n", .{std.mem.span(err)});
+            return error.FailedToLoadImage;
+        };
 
-        std.debug.print("\nLoad Texture: {s}, width: {d}, height: {d}, format: {d}\n", .{ local_path, surface.*.w, surface.*.h, surface.*.format });
+        std.debug.print("\nLoad Texture: {s}, width: {d}, height: {d}, format: {d}\n", .{ local_path_z, surface.*.w, surface.*.h, surface.*.format });
 
         const texture: Texture = .{};
         try asset_manager.textures.put(allocator, path, texture);
@@ -163,7 +166,9 @@ pub fn getModel(self: Self, asset_name: []const u8) Model {
     return self.models.get(asset_name) orelse self.replacement_model;
 }
 
-pub fn getTexture(self: Self, asset_name: []const u8) Model {
+// lucas read this while i am trying to find the is https://zig.news/kristoff/dont-self-simple-structs-fj8
+
+pub fn getTexture(self: Self, asset_name: []const u8) Texture {
     return self.models.get(asset_name) orelse self.replacement_model;
 }
 

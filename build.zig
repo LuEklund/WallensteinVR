@@ -43,7 +43,6 @@ pub fn build(b: *std.Build) void {
     });
     loader.linkSystemLibrary("vulkan", .{});
     loader.linkSystemLibrary("openxr_loader", .{});
-    loader.linkSystemLibrary("SDL3 ", .{});
     loader.linkSystemLibrary("SDL3_image", .{});
 
     const sdl3_mod = b.dependency("sdl3", .{

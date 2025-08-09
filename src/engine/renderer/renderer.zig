@@ -363,7 +363,7 @@ pub fn render(
     var layer = c.XrCompositionLayerProjection{
         .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
         .space = space,
-        .viewCount = build_options.eye_count,
+        .viewCount = 2,
         .views = &projected_views[0],
         .next = null,
     };
