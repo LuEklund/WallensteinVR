@@ -43,39 +43,31 @@ pub fn build(b: *std.Build) void {
     });
     loader.linkSystemLibrary("vulkan", .{});
     loader.linkSystemLibrary("openxr_loader", .{});
+    loader.linkSystemLibrary("SDL3_image", .{});
 
-    const exe_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+    const sdl3_mod = b.dependency("sdl3", .{
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = "loader", .module = loader },
-        },
-    });
+    }).module("sdl3");
+
+    const numz_mod = b.dependency("numz", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("numz");
 
     const exe = b.addExecutable(.{
         .name = "WallensteinVr",
-        .root_module = exe_mod,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "loader", .module = loader },
+                .{ .name = "sdl3", .module = sdl3_mod },
+                .{ .name = "numz", .module = numz_mod },
+            },
+        }),
     });
-
-    const sdl3 = b.dependency("sdl3", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
-    exe.root_module.addImport("sdl3", sdl3.module("sdl3"));
-
-    const numz_dep = b.dependency("numz", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
-    exe.root_module.addImport("numz", numz_dep.module("numz"));
-
-    const build_options = b.addOptions();
-    const eye_count = b.option(u8, "eye_count", "eye count") orelse 2;
-    build_options.addOption(u8, "eye_count", eye_count);
-    exe_mod.addOptions("build_options", build_options);
 
     const shader_compile_step = addCompileShaders(b, .{
         .in_dir = b.path("assets/shaders"),
@@ -101,7 +93,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const exe_unit_tests = b.addTest(.{
-        .root_module = exe_mod,
+        .root_module = exe.root_module,
     });
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     const test_step = b.step("test", "Run unit tests");

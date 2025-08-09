@@ -25,7 +25,7 @@ pub fn main() !void {
 
     const ctx: *GfxContext = try world.getResource(GfxContext);
 
-    while (ctx.should_quit == false) {
+    while (!ctx.should_quit) {
         try world.runSystems(allocator, .{
             eng.Renderer.beginFrame,
             eng.Input.pollEvents,

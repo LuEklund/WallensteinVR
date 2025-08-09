@@ -7,7 +7,6 @@ const input = @import("input.zig");
 const VulkanSwapchain = @import("VulkanSwapchain.zig");
 const XrSwapchain = @import("XrSwapchain.zig");
 const loader = @import("loader");
-const build_options = @import("build_options");
 const nz = @import("numz");
 const c = loader.c;
 const sdl = @import("sdl3");
@@ -341,9 +340,9 @@ pub fn render(
         return .{ true, active_index };
     }
 
-    var projected_views: [build_options.eye_count]c.XrCompositionLayerProjectionView = undefined;
+    var projected_views: [2]c.XrCompositionLayerProjectionView = undefined;
 
-    for (0..build_options.eye_count) |i| {
+    for (0..2) |i| {
         projected_views[i].type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
         projected_views[i].pose = views[i].pose;
         projected_views[i].fov = views[i].fov;
@@ -364,7 +363,7 @@ pub fn render(
     var layer = c.XrCompositionLayerProjection{
         .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION,
         .space = space,
-        .viewCount = build_options.eye_count,
+        .viewCount = 2,
         .views = &projected_views[0],
         .next = null,
     };
