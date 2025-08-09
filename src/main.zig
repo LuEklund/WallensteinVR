@@ -25,6 +25,7 @@ pub fn main() !void {
 
     while (true) {
         try world.runSystems(allocator, .{
+            eng.Renderer.beginFrame,
             eng.Input.pollEvents,
             playerUpdateSystem,
             someUpdateSystem,
@@ -80,13 +81,13 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
         eng.Mesh{ .name = "cube.obj" },
         game.Hand{ .side = .right },
     });
-    // _ = try world.spawn(allocator, .{
-    // eng.Transform{
-    // .position = .{ 0, -0.1, -0.5 },
-    // .scale = .{ 0.1, 0.1, 0.1 },
-    // },
-    // eng.Mesh{ .name = "basket.obj" },
-    // });
+    _ = try world.spawn(allocator, .{
+        eng.Transform{
+            .position = .{ 0, -0.1, -0.5 },
+            .scale = .{ 0.1, 0.1, 0.1 },
+        },
+        eng.Mesh{ .name = "basket.obj" },
+    });
 }
 
 pub fn playerUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {

@@ -2,12 +2,12 @@ const std = @import("std");
 const loader = @import("loader");
 const c = loader.c;
 const sdl = @import("sdl3");
-const Context = @import("../renderer/Context.zig");
+const GFX_Context = @import("../renderer/Context.zig");
 const World = @import("../../ecs.zig").World;
 
 // pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.allocator) !void {}
 pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
-    var ctx = try world.getResource(Context);
+    var ctx = try world.getResource(GFX_Context);
 
     std.debug.print("\n\n=========[Polling Events]===========\n\n", .{});
 
@@ -82,6 +82,8 @@ pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocato
             std.log.err("Unknown event TYPE received: {any}", .{eventData.type});
         },
     }
+
+    _ = try pollAction(ctx); //TODO  QUit app
 }
 // pub fn deint() !void {}
 pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance) !void {
@@ -144,4 +146,63 @@ pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance)
         std.debug.print("\n\n====[RIGHT]=====\n\n", .{});
         std.debug.print("user/hand/right ActiveProfile : {any}", .{text});
     } else std.debug.print("\noh shit\n", .{});
+}
+
+pub fn pollAction(
+    ctx: *GFX_Context,
+) !bool {
+    var activeActionSet = c.XrActiveActionSet{
+        .actionSet = ctx.action_set,
+        .subactionPath = c.XR_NULL_PATH,
+    };
+
+    var syncInfo = c.XrActionsSyncInfo{
+        .type = c.XR_TYPE_ACTIONS_SYNC_INFO,
+        .countActiveActionSets = 1,
+        .activeActionSets = &activeActionSet,
+    };
+
+    const result: c.XrResult = (c.xrSyncActions(ctx.xr_session, &syncInfo));
+
+    if (result == c.XR_SESSION_NOT_FOCUSED) {
+        return false;
+    } else if (result != c.XR_SUCCESS) {
+        std.log.err("Failed to synchronize actions: {any}\n", .{result});
+        return true;
+    }
+
+    // _ = roomSpace;
+    // _ = predictedDisplayTime;
+    // _ = leftHandAction;
+    // _ = rightHandAction;
+    // _ = hand_pose;
+    // _ = hand_pose_space;
+    // _ = hand_pose_state;
+    var actionStateGetInfo: c.XrActionStateGetInfo = .{ .type = c.XR_TYPE_ACTION_STATE_GET_INFO };
+    actionStateGetInfo.action = @ptrCast(ctx.palm_pose_action);
+    for (0..2) |i| {
+        // Specify the subAction Path.
+        actionStateGetInfo.subactionPath = ctx.hand_paths[i];
+        try loader.xrCheck(c.xrGetActionStatePose(ctx.xr_session, &actionStateGetInfo, @ptrCast(&ctx.hand_pose_state[i])));
+        if (ctx.hand_pose_state[i].isActive != 0) {
+            var spaceLocation: c.XrSpaceLocation = .{ .type = c.XR_TYPE_SPACE_LOCATION };
+            const res: c.XrResult = c.xrLocateSpace(ctx.hand_pose_space[i], ctx.xr_space, ctx.predicted_time_frame, &spaceLocation);
+            if (c.XR_UNQUALIFIED_SUCCESS(res) and
+                (spaceLocation.locationFlags & c.XR_SPACE_LOCATION_POSITION_VALID_BIT) != 0 and
+                (spaceLocation.locationFlags & c.XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0)
+            {
+                ctx.hand_pose[i] = spaceLocation.pose;
+            } else {
+                ctx.hand_pose_state[i].isActive = 0;
+            }
+        }
+    }
+
+    for (0..2) |i| {
+        actionStateGetInfo.action = ctx.grab_cube_action;
+        actionStateGetInfo.subactionPath = ctx.hand_paths[i];
+        try loader.xrCheck(c.xrGetActionStateFloat(ctx.xr_session, &actionStateGetInfo, &ctx.grab_state[i]));
+    }
+
+    return false;
 }

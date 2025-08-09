@@ -33,7 +33,9 @@ pipeline_layout: c.VkPipelineLayout,
 graphics_queue_family_index: u32,
 image_index: u32 = 0,
 last_rendered_image_index: u32 = 0,
+predicted_time_frame: c.XrTime,
 running: bool = false,
+should_quit: bool = false,
 
 //XR INPUT POSE CONTEXT
 grabbed_block: [2]i32 = .{ -1, -1 },
