@@ -2,6 +2,8 @@
 zig-out/
 monado/
 
+.vscode
+big gay balls
 *.obj
 
 *.spv
