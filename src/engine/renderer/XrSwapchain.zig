@@ -3,6 +3,7 @@ const log = std.log;
 
 const loader = @import("loader");
 const c = loader.c;
+const vk = @import("vulkan.zig");
 
 const XrSwapchain = @This();
 
@@ -115,6 +116,8 @@ pub fn createSwapchainImages(
     command_pool: c.VkCommandPool,
     descriptor_pool: c.VkDescriptorPool,
     descriptor_set_layout: c.VkDescriptorSetLayout,
+    texture_image_view: c.VkImageView,
+    texture_sampler: c.VkSampler,
 ) !void {
     try loader.xrCheck(c.xrEnumerateSwapchainImages(self.color_swapchain, 0, &self.image_count, null));
     if (self.image_count > 16) @panic("More than 16 XrSwapchainImagesVulkanKHR\n");
@@ -144,6 +147,8 @@ pub fn createSwapchainImages(
             self,
             self.xr_vk_images[i],
             self.xr_vk_depth_images[i],
+            texture_image_view,
+            texture_sampler,
         );
     }
 }
@@ -175,22 +180,28 @@ pub const SwapchainImage = struct {
         my_xr_swapchain: *XrSwapchain,
         image: c.XrSwapchainImageVulkanKHR,
         depth_iamge: c.XrSwapchainImageVulkanKHR,
+        texture_image_view: c.VkImageView,
+        texture_sampler: c.VkSampler,
     ) !Self {
         const width = my_xr_swapchain.width;
         const height = my_xr_swapchain.height;
-        var image_view_create_info = c.VkImageViewCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = image.image,
-            .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-            .format = my_xr_swapchain.format,
-            .subresourceRange = .{
-                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 2, //<-- eye count
-            },
-        };
+        const image_view = try vk.createImageView(
+            device,
+            image.image,
+            c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+            my_xr_swapchain.format,
+            c.VK_IMAGE_ASPECT_COLOR_BIT,
+            2,
+        );
+        // const depth_image_view = try vk.createImageView(
+        //     device,
+        //     depth_iamge.image,
+        //     c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+        //     my_xr_swapchain.depth_format,
+        //     c.VK_IMAGE_ASPECT_DEPTH_BIT,
+        //     2,
+        // );
+
         var depth_image_view_create_info = c.VkImageViewCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = depth_iamge.image,
@@ -205,8 +216,8 @@ pub const SwapchainImage = struct {
             },
         };
 
-        var image_view: c.VkImageView = undefined;
-        try loader.vkCheck(c.vkCreateImageView(device, &image_view_create_info, null, &image_view));
+        // var : c.VkImageView = undefined;
+        // try loader.vkCheck(c.vkCreateImageView(device, &image_view_create_info, null, &image_view));
         var depth_image_view: c.VkImageView = undefined;
         try loader.vkCheck(c.vkCreateImageView(device, &depth_image_view_create_info, null, &depth_image_view));
 
@@ -292,7 +303,13 @@ pub const SwapchainImage = struct {
             .range = c.VK_WHOLE_SIZE,
         };
 
-        var descriptor_write = c.VkWriteDescriptorSet{
+        var descriptor_texture_info: c.VkDescriptorImageInfo = .{
+            .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = texture_image_view,
+            .sampler = texture_sampler,
+        };
+
+        var descriptor_write = [_]c.VkWriteDescriptorSet{ .{
             .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = descriptor_set,
             .dstBinding = 0,
@@ -300,9 +317,17 @@ pub const SwapchainImage = struct {
             .descriptorCount = 1,
             .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .pBufferInfo = &descriptor_buffer_info,
-        };
+        }, .{
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = descriptor_set,
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &descriptor_texture_info,
+        } };
 
-        c.vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, null);
+        c.vkUpdateDescriptorSets(device, descriptor_write.len, &descriptor_write, 0, null);
 
         var imageCreateInfo: c.VkImageCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,

@@ -249,15 +249,24 @@ pub fn createRenderPass(device: c.VkDevice, color_format: c.VkFormat, depth_form
 pub fn createDescriptorPool(device: c.VkDevice) !c.VkDescriptorPool {
     var descriptor_pool: c.VkDescriptorPool = undefined;
 
+    //TODO: Frames in flight instead of 32!
+    var pool_sizes = [_]c.VkDescriptorPoolSize{
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 32,
+        },
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 32,
+        },
+    };
+
     var create_info = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = c.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
         .maxSets = 32,
-        .poolSizeCount = 1,
-        .pPoolSizes = &.{
-            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 32,
-        },
+        .poolSizeCount = pool_sizes.len,
+        .pPoolSizes = &pool_sizes,
     };
 
     try loader.vkCheck(c.vkCreateDescriptorPool(device, &create_info, null, &descriptor_pool));
@@ -266,16 +275,23 @@ pub fn createDescriptorPool(device: c.VkDevice) !c.VkDescriptorPool {
 }
 
 pub fn createDescriptorSetLayout(device: c.VkDevice) !c.VkDescriptorSetLayout {
-    var binding = c.VkDescriptorSetLayoutBinding{
+    const view_projection_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
         .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
     };
+    const texture_sampler_binding = c.VkDescriptorSetLayoutBinding{
+        .binding = 1,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+    var bindings = [_]c.VkDescriptorSetLayoutBinding{ view_projection_binding, texture_sampler_binding };
     var create_info = c.VkDescriptorSetLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &binding,
+        .bindingCount = bindings.len,
+        .pBindings = &bindings,
     };
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -486,6 +502,20 @@ pub fn createFence(device: c.VkDevice) !c.VkFence {
     return fence;
 }
 
+pub fn findMemoryType(
+    properties: c.VkPhysicalDeviceMemoryProperties,
+    memory_requirements: c.VkMemoryRequirements,
+    flags: c.VkMemoryPropertyFlags,
+) !u32 {
+    const shiftee: u32 = 1;
+
+    for (0..properties.memoryTypeCount) |i| {
+        if ((memory_requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
+            continue;
+        return @intCast(i);
+    } else return error.MemoryRequirements;
+}
+
 pub const VulkanBuffer = struct {
     buffer: c.VkBuffer,
     memory: c.VkDeviceMemory,
@@ -520,27 +550,18 @@ pub fn createBuffer(
     var buffer: c.VkBuffer = undefined;
     try loader.vkCheck(c.vkCreateBuffer(device, &buffer_create_info, null, &buffer));
 
-    var memoryRequirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
+    var memory_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetBufferMemoryRequirements(device, buffer, &memory_requirements);
 
     var properties: c.VkPhysicalDeviceMemoryProperties = undefined;
     c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
     const flags: c.VkMemoryPropertyFlags = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    var memory_type_index: u32 = 0;
-    const shiftee: u32 = 1;
-
-    for (0..properties.memoryTypeCount) |i| {
-        if ((memoryRequirements.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
-            continue;
-        memory_type_index = @intCast(i);
-        break;
-    } else return error.MemoryRequirements;
 
     var allocate_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .pNext = null,
-        .allocationSize = memoryRequirements.size,
-        .memoryTypeIndex = memory_type_index,
+        .allocationSize = memory_requirements.size,
+        .memoryTypeIndex = try findMemoryType(properties, memory_requirements, flags),
     };
 
     var memory: c.VkDeviceMemory = undefined;
@@ -560,4 +581,260 @@ pub fn createBuffer(
         .buffer = buffer,
         .memory = memory,
     };
+}
+pub const VulkanImageBuffer = struct {
+    texture_image: c.VkImage,
+    texture_image_memory: c.VkDeviceMemory,
+};
+
+pub fn createImage(
+    physical_device: c.VkPhysicalDevice,
+    device: c.VkDevice,
+    width: u32,
+    height: u32,
+    format: c.VkFormat,
+    tiling: c.VkImageTiling,
+    usage: c.VkImageUsageFlags,
+    properties: c.VkMemoryPropertyFlags,
+) !VulkanImageBuffer {
+    var image_info: c.VkImageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = c.VK_IMAGE_TYPE_2D,
+        .extent = .{
+            .width = width,
+            .height = height,
+            .depth = 1,
+        },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = format,
+        .tiling = tiling,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = usage,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .flags = 0,
+    };
+
+    var image: c.VkImage = undefined;
+    try loader.vkCheck(c.vkCreateImage(
+        device,
+        &image_info,
+        null,
+        &image,
+    ));
+
+    var mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetImageMemoryRequirements(device, image, &mem_requirements);
+    var device_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
+    c.vkGetPhysicalDeviceMemoryProperties(physical_device, &device_properties);
+
+    var allocInfo: c.VkMemoryAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_requirements.size,
+    };
+    allocInfo.memoryTypeIndex = try findMemoryType(device_properties, mem_requirements, properties);
+    var image_memory: c.VkDeviceMemory = undefined;
+    try loader.vkCheck(c.vkAllocateMemory(device, &allocInfo, null, &image_memory));
+
+    try loader.vkCheck(c.vkBindImageMemory(device, image, image_memory, 0));
+    return .{
+        .texture_image = image,
+        .texture_image_memory = image_memory,
+    };
+}
+
+pub fn beginSingleTimeCommands(device: c.VkDevice, command_pool: c.VkCommandPool) !c.VkCommandBuffer {
+    var alloc_info: c.VkCommandBufferAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool = command_pool,
+        .commandBufferCount = 1,
+    };
+
+    var command_buffer: c.VkCommandBuffer = undefined;
+    try loader.vkCheck(c.vkAllocateCommandBuffers(device, &alloc_info, &command_buffer));
+
+    var begin_info: c.VkCommandBufferBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    try loader.vkCheck(c.vkBeginCommandBuffer(command_buffer, &begin_info));
+    return command_buffer;
+}
+
+pub fn endSingleTimeCommands(device: c.VkDevice, queue: c.VkQueue, command_pool: c.VkCommandPool, command_buffer: c.VkCommandBuffer) !void {
+    try loader.vkCheck(c.vkEndCommandBuffer(command_buffer));
+
+    var submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+
+    try loader.vkCheck(c.vkQueueSubmit(queue, 1, &submit_info, null));
+    try loader.vkCheck(c.vkQueueWaitIdle(queue));
+
+    c.vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
+}
+
+pub fn transitionImageLayout(
+    device: c.VkDevice,
+    queue: c.VkQueue,
+    command_pool: c.VkCommandPool,
+    image: c.VkImage,
+    format: c.VkFormat,
+    oldLayout: c.VkImageLayout,
+    newLayout: c.VkImageLayout,
+) !void {
+    _ = format;
+    const command_buffer: c.VkCommandBuffer = try beginSingleTimeCommands(
+        device,
+        command_pool,
+    );
+    var barrier: c.VkImageMemoryBarrier = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = oldLayout,
+        .newLayout = newLayout,
+        .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .srcAccessMask = 0,
+        .dstAccessMask = 0,
+    };
+
+    var source_stage: c.VkPipelineStageFlags = undefined;
+    var destination_stage: c.VkPipelineStageFlags = undefined;
+    if (oldLayout == c.VK_IMAGE_LAYOUT_UNDEFINED and newLayout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        source_stage = c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (oldLayout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and newLayout == c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT;
+
+        source_stage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destination_stage = c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        @panic("\nunsupported layout transition!\n");
+    }
+
+    c.vkCmdPipelineBarrier(command_buffer, source_stage, destination_stage, 0, 0, null, 0, null, 1, &barrier);
+
+    try endSingleTimeCommands(
+        device,
+        queue,
+        command_pool,
+        command_buffer,
+    );
+}
+
+pub fn copyBufferToImage(
+    device: c.VkDevice,
+    queue: c.VkQueue,
+    command_pool: c.VkCommandPool,
+    buffer: c.VkBuffer,
+    image: c.VkImage,
+    width: u32,
+    height: u32,
+) !void {
+    const command_buffer: c.VkCommandBuffer = try beginSingleTimeCommands(
+        device,
+        command_pool,
+    );
+    var region: c.VkBufferImageCopy = .{
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+
+        .imageSubresource = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
+        .imageExtent = .{ .width = width, .height = height, .depth = 1 },
+    };
+    c.vkCmdCopyBufferToImage(
+        command_buffer,
+        buffer,
+        image,
+        c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &region,
+    );
+
+    try endSingleTimeCommands(
+        device,
+        queue,
+        command_pool,
+        command_buffer,
+    );
+}
+
+pub fn createImageView(
+    device: c.VkDevice,
+    image: c.VkImage,
+    view_type: c.VkImageViewType,
+    format: c.VkFormat,
+    aspect_mask: c.VkImageAspectFlags,
+    layer_count: u32,
+) !c.VkImageView {
+    var view_info: c.VkImageViewCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image,
+        .viewType = view_type,
+        .format = format,
+        .subresourceRange = .{
+            .aspectMask = aspect_mask,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = layer_count,
+        },
+    };
+
+    var image_view: c.VkImageView = undefined;
+    try loader.vkCheck(c.vkCreateImageView(device, &view_info, null, &image_view));
+
+    return image_view;
+}
+
+pub fn createTextureSampler(
+    physical_device: c.VkPhysicalDevice,
+    device: c.VkDevice,
+) !c.VkSampler {
+    _ = physical_device;
+    // var properties: c.VkPhysicalDeviceProperties = undefined;
+    // c.vkGetPhysicalDeviceProperties(physical_device, &properties);
+
+    var samplerInfo: c.VkSamplerCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = c.VK_FILTER_LINEAR,
+        .minFilter = c.VK_FILTER_LINEAR,
+        .addressModeU = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeV = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeW = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .anisotropyEnable = c.VK_FALSE,
+        .maxAnisotropy = 1.0,
+        .borderColor = c.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = c.VK_FALSE,
+        .compareEnable = c.VK_FALSE,
+        .compareOp = c.VK_COMPARE_OP_ALWAYS,
+        .mipmapMode = c.VK_SAMPLER_MIPMAP_MODE_LINEAR,
+    };
+    var texture_sampler: c.VkSampler = undefined;
+    try loader.vkCheck(c.vkCreateSampler(device, &samplerInfo, null, &texture_sampler));
+    return texture_sampler;
 }

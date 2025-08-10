@@ -20,6 +20,7 @@ pub fn main() !void {
     try world.runSystems(allocator, .{
         eng.Renderer.init,
         eng.AssetManager.init,
+        eng.Renderer.initSwapchains,
         someInitSystem,
     });
 
@@ -48,24 +49,23 @@ pub fn ininitPlayer(comps: []const type, world: *World(comps), allocator: std.me
 }
 
 pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
-
-    // for (0..4) |i| {
-    //     var fx: f32 = @floatFromInt(i);
-    //     fx = fx / 5;
-    //     for (0..4) |j| {
-    //         var fy: f32 = @floatFromInt(j);
-    //         fy = fy / 5;
-    //         for (0..4) |k| {
-    //             var fz: f32 = @floatFromInt(k);
-    //             fz = fz / 5 - 2;
-    //             _ = try world.spawn(allocator, .{
-    //                 eng.RigidBody{ .force = .{ std.math.sin(fx) / 1000, std.math.cos(fy) / 1000, std.math.tan(fz) / 1000 } },
-    //                 eng.Transform{ .position = .{ fx, fy, fz } },
-    //                 eng.Mesh{ .name = "cube.obj" },
-    //             });
-    //         }
-    //     }
-    // }
+    for (0..4) |i| {
+        var fx: f32 = @floatFromInt(i);
+        fx = fx / 5;
+        for (0..4) |j| {
+            var fy: f32 = @floatFromInt(j);
+            fy = fy / 5;
+            for (0..4) |k| {
+                var fz: f32 = @floatFromInt(k);
+                fz = fz / 5 - 2;
+                _ = try world.spawn(allocator, .{
+                    eng.RigidBody{ .force = .{ std.math.sin(fx) / 1000, std.math.cos(fy) / 1000, std.math.tan(fz) / 1000 } },
+                    eng.Transform{ .position = .{ fx, fy, fz } },
+                    eng.Mesh{ .name = "basket.obj" },
+                });
+            }
+        }
+    }
 
     _ = try world.spawn(allocator, .{
         eng.Transform{
@@ -85,8 +85,8 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
     });
     _ = try world.spawn(allocator, .{
         eng.Transform{
-            .position = .{ 0, -0.1, -0.5 },
-            .scale = .{ 0.1, 0.1, 0.1 },
+            .position = .{ 0, -0.5, -1.5 },
+            .scale = .{ 1, 1, 1 },
         },
         eng.Mesh{ .name = "basket.obj" },
     });
@@ -114,8 +114,8 @@ pub fn someUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.Al
         // std.debug.print("ID: {d} ", .{entity.id});
 
         // std.debug.print("Pos! {d} {d} ", .{ p.x, p.y });
-        transform.position[0] += rigid_body.force[0];
-        transform.position[1] += rigid_body.force[1];
+        transform.position[0] += rigid_body.force[0] * std.math.sin(transform.position[0]);
+        transform.position[1] += rigid_body.force[1] * std.math.sin(transform.position[1]);
 
         // std.debug.print("Vel! {d} {d}\n", .{ velocity.x, velocity.y });
     }

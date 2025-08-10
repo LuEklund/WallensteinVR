@@ -2,6 +2,7 @@
 zig-out/
 monado/
 
+.vscode
 *.obj
 
 *.spv

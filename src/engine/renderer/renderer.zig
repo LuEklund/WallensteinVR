@@ -81,8 +81,8 @@ pub const Renderer = struct {
         const hand_pose_space_r = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/right");
         try xr.attachActionSet(xr_session, action_set);
 
-        var vulkan_swapchain: VulkanSwapchain = try .init(vk_physical_device, vk_logical_device, spectator_view.sdl_surface, window_width, window_height);
-        var xr_swapchain: XrSwapchain = try .init(2, vk_physical_device, xr_instance, xr_system_id, xr_session);
+        const vulkan_swapchain: VulkanSwapchain = try .init(vk_physical_device, vk_logical_device, spectator_view.sdl_surface, window_width, window_height);
+        const xr_swapchain: XrSwapchain = try .init(2, vk_physical_device, xr_instance, xr_system_id, xr_session);
         const render_pass: c.VkRenderPass = try vk.createRenderPass(vk_logical_device, xr_swapchain.format, xr_swapchain.depth_format, xr_swapchain.sample_count);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(vk_logical_device, queue_family_index);
         const descriptor_pool: c.VkDescriptorPool = try vk.createDescriptorPool(vk_logical_device);
@@ -92,16 +92,6 @@ pub const Renderer = struct {
         const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, xr_swapchain.sample_count);
 
         const acquire_fence: c.VkFence = try vk.createFence(vk_logical_device);
-
-        try vulkan_swapchain.createSwapchainImages(command_pool);
-        try xr_swapchain.createSwapchainImages(
-            vk_physical_device,
-            vk_logical_device,
-            render_pass,
-            command_pool,
-            descriptor_pool,
-            descriptor_set_layout,
-        );
 
         const space: c.XrSpace = try xr.createSpace(xr_session);
 
@@ -147,6 +137,31 @@ pub const Renderer = struct {
         };
 
         try world.setResource(allocator, Context, context);
+    }
+
+    pub fn initSwapchains(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
+        const ctx = try world.getResource(Context);
+        const asset_manager = try world.getResource(AssetManager);
+        var it = asset_manager.textures.iterator();
+        var texture_image_view: c.VkImageView = undefined;
+        var texture_sampler: c.VkSampler = undefined;
+        while (it.next()) |entry| {
+            texture_image_view = entry.value_ptr.texture_image_view;
+            texture_sampler = entry.value_ptr.texture_sample;
+            break;
+        }
+
+        try ctx.vk_swapchain.createSwapchainImages(ctx.command_pool);
+        try ctx.xr_swapchain.createSwapchainImages(
+            ctx.vk_physical_device,
+            ctx.vk_logical_device,
+            ctx.render_pass,
+            ctx.command_pool,
+            ctx.descriptor_pool,
+            ctx.descriptor_set_layout,
+            texture_image_view,
+            texture_sampler,
+        );
     }
 
     // mashe dpotatoes
@@ -520,6 +535,8 @@ fn renderEye(
             .baseArrayLayer = 0,
             .layerCount = 1,
         },
+        // .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+        // .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
     };
 
     const beforeDstBarrier: c.VkImageMemoryBarrier = .{

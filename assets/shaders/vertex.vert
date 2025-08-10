@@ -5,7 +5,8 @@ layout(location = 1) in vec2 uv;
 layout(location = 2) in vec3 normal;
 
 layout(location = 0) out vec3 outColor;
-layout(location = 1) out vec3 outNormal;
+layout(location = 1) out vec2 outfragTexCoord;
+layout(location = 2) out vec3 outNormal;
 layout(set = 0, binding = 0) uniform Matrices {
     mat4 projection[2];
     mat4 view[2];
@@ -25,5 +26,6 @@ void main()
     float blueChannel = push.color[1];
     float greenChannel = push.color[2];
     outColor =  vec3(redChannel, blueChannel,greenChannel);
+    outfragTexCoord = uv;
     outNormal = normal;
 }
