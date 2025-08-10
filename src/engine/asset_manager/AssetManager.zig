@@ -51,7 +51,10 @@ pub const Model = struct {
     index_count: u32,
 };
 
-pub const Texture = struct {}; // IDK what data it needs
+pub const Texture = struct {
+    staging_buffer: vk.VulkanBuffer,
+    image_buffer: vk.VulkanImageBuffer,
+};
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     const ctx = try world.getResource(Context);
@@ -134,7 +137,6 @@ pub fn loadModels(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Cont
 pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Context) !void {
     const dir_path = "../../assets/textures"; // assets/textures
     const paths = try findAssetsFromDir(allocator, dir_path, ".jpg");
-    _ = ctx;
     for (paths) |path| {
         const local_path_z = try std.fs.path.joinZ(allocator, &.{ dir_path, path });
         defer allocator.free(local_path_z);
@@ -149,15 +151,33 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
 
         const surface: *c.SDL_Surface = c.IMG_Load(local_path_z.ptr) orelse {
             const err = c.SDL_GetError();
-            // i will trust haradl
-            // should work now
             std.debug.print("sdl error {s}\n", .{std.mem.span(err)});
             return error.FailedToLoadImage;
         };
-
         std.debug.print("\nLoad Texture: {s}, width: {d}, height: {d}, format: {d}\n", .{ local_path_z, surface.*.w, surface.*.h, surface.*.format });
+        const texture_buffer = try vk.createBuffer(
+            ctx.vk_physical_device,
+            ctx.vk_logical_device,
+            c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            @intCast(surface.h * surface.h),
+            @sizeOf(u32),
+            surface.pixels.?,
+        );
+        const image_buffer = try vk.createImage(
+            ctx.vk_physical_device,
+            ctx.vk_logical_device,
+            @intCast(surface.w),
+            @intCast(surface.h),
+            c.VK_FORMAT_R8G8B8A8_SRGB,
+            c.VK_IMAGE_TILING_OPTIMAL,
+            c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_SAMPLED_BIT,
+            c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        );
 
-        const texture: Texture = .{};
+        const texture: Texture = .{
+            .staging_buffer = texture_buffer,
+            .image_buffer = image_buffer,
+        };
         try asset_manager.textures.put(allocator, path, texture);
     }
 }

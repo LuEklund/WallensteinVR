@@ -486,6 +486,20 @@ pub fn createFence(device: c.VkDevice) !c.VkFence {
     return fence;
 }
 
+pub fn findMemoryType(
+    properties: c.VkPhysicalDeviceMemoryProperties,
+    memory_requirements: c.VkMemoryRequirements,
+    flags: c.VkMemoryPropertyFlags,
+) !u32 {
+    const shiftee: u32 = 1;
+
+    for (0..properties.memoryTypeCount) |i| {
+        if ((memory_requirements.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
+            continue;
+        return @intCast(i);
+    } else return error.MemoryRequirements;
+}
+
 pub const VulkanBuffer = struct {
     buffer: c.VkBuffer,
     memory: c.VkDeviceMemory,
@@ -520,27 +534,18 @@ pub fn createBuffer(
     var buffer: c.VkBuffer = undefined;
     try loader.vkCheck(c.vkCreateBuffer(device, &buffer_create_info, null, &buffer));
 
-    var memoryRequirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
+    var memory_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetBufferMemoryRequirements(device, buffer, &memory_requirements);
 
     var properties: c.VkPhysicalDeviceMemoryProperties = undefined;
     c.vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
     const flags: c.VkMemoryPropertyFlags = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    var memory_type_index: u32 = 0;
-    const shiftee: u32 = 1;
-
-    for (0..properties.memoryTypeCount) |i| {
-        if ((memoryRequirements.memoryTypeBits & (shiftee << @intCast(i)) == 0) or (properties.memoryTypes[i].propertyFlags & flags) != flags)
-            continue;
-        memory_type_index = @intCast(i);
-        break;
-    } else return error.MemoryRequirements;
 
     var allocate_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .pNext = null,
-        .allocationSize = memoryRequirements.size,
-        .memoryTypeIndex = memory_type_index,
+        .allocationSize = memory_requirements.size,
+        .memoryTypeIndex = try findMemoryType(properties, memory_requirements, flags),
     };
 
     var memory: c.VkDeviceMemory = undefined;
@@ -559,5 +564,66 @@ pub fn createBuffer(
     return .{
         .buffer = buffer,
         .memory = memory,
+    };
+}
+pub const VulkanImageBuffer = struct {
+    texture_image: c.VkImage,
+    texture_image_memory: c.VkDeviceMemory,
+};
+
+pub fn createImage(
+    physical_device: c.VkPhysicalDevice,
+    device: c.VkDevice,
+    width: u32,
+    height: u32,
+    format: c.VkFormat,
+    tiling: c.VkImageTiling,
+    usage: c.VkImageUsageFlags,
+    properties: c.VkMemoryPropertyFlags,
+) !VulkanImageBuffer {
+    var image_info: c.VkImageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = c.VK_IMAGE_TYPE_2D,
+        .extent = .{
+            .width = width,
+            .height = height,
+            .depth = 1,
+        },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = format,
+        .tiling = tiling,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = usage,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .flags = 0,
+    };
+
+    var image: c.VkImage = undefined;
+    try loader.vkCheck(c.vkCreateImage(
+        device,
+        &image_info,
+        null,
+        &image,
+    ));
+
+    var mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetImageMemoryRequirements(device, image, &mem_requirements);
+    var device_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
+    c.vkGetPhysicalDeviceMemoryProperties(physical_device, &device_properties);
+
+    var allocInfo: c.VkMemoryAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_requirements.size,
+    };
+    allocInfo.memoryTypeIndex = try findMemoryType(device_properties, mem_requirements, properties);
+    var image_memory: c.VkDeviceMemory = undefined;
+    try loader.vkCheck(c.vkAllocateMemory(device, &allocInfo, null, &image_memory));
+
+    try loader.vkCheck(c.vkBindImageMemory(device, image, image_memory, 0));
+    return .{
+        .texture_image = image,
+        .texture_image_memory = image_memory,
     };
 }
