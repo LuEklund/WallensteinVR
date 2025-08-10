@@ -249,15 +249,24 @@ pub fn createRenderPass(device: c.VkDevice, color_format: c.VkFormat, depth_form
 pub fn createDescriptorPool(device: c.VkDevice) !c.VkDescriptorPool {
     var descriptor_pool: c.VkDescriptorPool = undefined;
 
+    //TODO: Frames in flight instead of 32!
+    var pool_sizes = [_]c.VkDescriptorPoolSize{
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 32,
+        },
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 32,
+        },
+    };
+
     var create_info = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = c.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
         .maxSets = 32,
-        .poolSizeCount = 1,
-        .pPoolSizes = &.{
-            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 32,
-        },
+        .poolSizeCount = pool_sizes.len,
+        .pPoolSizes = &pool_sizes,
     };
 
     try loader.vkCheck(c.vkCreateDescriptorPool(device, &create_info, null, &descriptor_pool));
@@ -266,16 +275,23 @@ pub fn createDescriptorPool(device: c.VkDevice) !c.VkDescriptorPool {
 }
 
 pub fn createDescriptorSetLayout(device: c.VkDevice) !c.VkDescriptorSetLayout {
-    var binding = c.VkDescriptorSetLayoutBinding{
+    const view_projection_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
         .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
     };
+    const texture_sampler_binding = c.VkDescriptorSetLayoutBinding{
+        .binding = 1,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+    var bindings = [_]c.VkDescriptorSetLayoutBinding{ view_projection_binding, texture_sampler_binding };
     var create_info = c.VkDescriptorSetLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &binding,
+        .bindingCount = bindings.len,
+        .pBindings = &bindings,
     };
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -793,4 +809,32 @@ pub fn createImageView(
     try loader.vkCheck(c.vkCreateImageView(device, &view_info, null, &image_view));
 
     return image_view;
+}
+
+pub fn createTextureSampler(
+    physical_device: c.VkPhysicalDevice,
+    device: c.VkDevice,
+) !c.VkSampler {
+    _ = physical_device;
+    // var properties: c.VkPhysicalDeviceProperties = undefined;
+    // c.vkGetPhysicalDeviceProperties(physical_device, &properties);
+
+    var samplerInfo: c.VkSamplerCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = c.VK_FILTER_LINEAR,
+        .minFilter = c.VK_FILTER_LINEAR,
+        .addressModeU = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeV = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeW = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .anisotropyEnable = c.VK_FALSE,
+        .maxAnisotropy = 1.0,
+        .borderColor = c.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = c.VK_FALSE,
+        .compareEnable = c.VK_FALSE,
+        .compareOp = c.VK_COMPARE_OP_ALWAYS,
+        .mipmapMode = c.VK_SAMPLER_MIPMAP_MODE_LINEAR,
+    };
+    var texture_sampler: c.VkSampler = undefined;
+    try loader.vkCheck(c.vkCreateSampler(device, &samplerInfo, null, &texture_sampler));
+    return texture_sampler;
 }

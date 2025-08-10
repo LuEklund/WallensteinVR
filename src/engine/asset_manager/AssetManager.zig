@@ -55,6 +55,7 @@ pub const Texture = struct {
     staging_buffer: vk.VulkanBuffer,
     image_buffer: vk.VulkanImageBuffer,
     texture_image_view: c.VkImageView,
+    texture_sample: c.VkSampler,
 };
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -75,6 +76,8 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     try asset_manager.loadTextures(allocator, ctx);
 
     try world.setResource(allocator, Self, asset_manager);
+
+    // @panic("\nLOL\n");
 }
 
 pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -150,12 +153,15 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
         };
         file.close();
 
-        const surface: *c.SDL_Surface = c.IMG_Load(local_path_z.ptr) orelse {
+        const surface1: *c.SDL_Surface = c.IMG_Load(local_path_z.ptr) orelse {
             const err = c.SDL_GetError();
             std.debug.print("sdl error {s}\n", .{std.mem.span(err)});
             return error.FailedToLoadImage;
         };
+        const surface: *c.SDL_Surface = c.SDL_ConvertSurface(surface1, c.SDL_PIXELFORMAT_ABGR8888);
         std.debug.print("\nLoad Texture: {s}, width: {d}, height: {d}, format: {d}\n", .{ local_path_z, surface.*.w, surface.*.h, surface.*.format });
+
+        // if (true) @panic("XDDDD");
         const texture_buffer = try vk.createBuffer(
             ctx.vk_physical_device,
             ctx.vk_logical_device,
@@ -203,10 +209,25 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
             c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         );
 
+        const texture_image_view = try vk.createImageView(
+            ctx.vk_logical_device,
+            image_buffer.texture_image,
+            c.VK_IMAGE_VIEW_TYPE_2D,
+            c.VK_FORMAT_R8G8B8A8_SRGB,
+            c.VK_IMAGE_ASPECT_COLOR_BIT,
+            1,
+        );
+
+        const texture_sample = try vk.createTextureSampler(
+            ctx.vk_physical_device,
+            ctx.vk_logical_device,
+        );
+
         const texture: Texture = .{
             .staging_buffer = texture_buffer,
             .image_buffer = image_buffer,
-            .texture_image_view = undefined,
+            .texture_image_view = texture_image_view,
+            .texture_sample = texture_sample,
         };
         try asset_manager.textures.put(allocator, path, texture);
     }
@@ -219,7 +240,7 @@ pub fn getModel(self: Self, asset_name: []const u8) Model {
 // lucas read this while i am trying to find the is https://zig.news/kristoff/dont-self-simple-structs-fj8
 
 pub fn getTexture(self: Self, asset_name: []const u8) Texture {
-    return self.models.get(asset_name) orelse self.replacement_model;
+    return self.textures.get(asset_name) orelse @panic("TEXTURE NOT FOUND");
 }
 
 fn findAssetsFromDir(
