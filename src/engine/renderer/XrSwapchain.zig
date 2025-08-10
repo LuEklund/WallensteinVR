@@ -3,6 +3,7 @@ const log = std.log;
 
 const loader = @import("loader");
 const c = loader.c;
+const vk = @import("vulkan.zig");
 
 const XrSwapchain = @This();
 
@@ -178,37 +179,41 @@ pub const SwapchainImage = struct {
     ) !Self {
         const width = my_xr_swapchain.width;
         const height = my_xr_swapchain.height;
-        var image_view_create_info = c.VkImageViewCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = image.image,
-            .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-            .format = my_xr_swapchain.format,
-            .subresourceRange = .{
-                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 2, //<-- eye count
-            },
-        };
-        var depth_image_view_create_info = c.VkImageViewCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = depth_iamge.image,
-            .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-            .format = my_xr_swapchain.depth_format,
-            .subresourceRange = .{
-                .aspectMask = c.VK_IMAGE_ASPECT_DEPTH_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 2, //<-- eye count
-            },
-        };
+        const image_view = try vk.createImageView(
+            device,
+            image.image,
+            c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+            my_xr_swapchain.format,
+            c.VK_IMAGE_ASPECT_COLOR_BIT,
+            2,
+        );
+        const depth_image_view = try vk.createImageView(
+            device,
+            depth_iamge.image,
+            c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+            my_xr_swapchain.depth_format,
+            c.VK_IMAGE_ASPECT_DEPTH_BIT,
+            2,
+        );
 
-        var image_view: c.VkImageView = undefined;
-        try loader.vkCheck(c.vkCreateImageView(device, &image_view_create_info, null, &image_view));
-        var depth_image_view: c.VkImageView = undefined;
-        try loader.vkCheck(c.vkCreateImageView(device, &depth_image_view_create_info, null, &depth_image_view));
+        // var depth_image_view_create_info = c.VkImageViewCreateInfo{
+        //     .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        //     .image = depth_iamge.image,
+        //     .viewType = c.VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+        //     .format = my_xr_swapchain.depth_format,
+        //     .subresourceRange = .{
+        //         .aspectMask = c.VK_IMAGE_ASPECT_DEPTH_BIT,
+        //         .baseMipLevel = 0,
+        //         .levelCount = 1,
+        //         .baseArrayLayer = 0,
+        //         .layerCount = 2, //<-- eye count
+        //     },
+        // };
+
+        // var : c.VkImageView = undefined;
+        // try loader.vkCheck(c.vkCreateImageView(device, &image_view_create_info, null, &image_view));
+        // var depth_image_view: c.VkImageView = undefined;
+        // try loader.vkCheck(c.vkCreateImageView(device, &depth_image_view_create_info, null, &depth_image_view));
 
         var image_views: [2]c.VkImageView = .{
             image_view,

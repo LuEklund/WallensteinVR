@@ -54,6 +54,7 @@ pub const Model = struct {
 pub const Texture = struct {
     staging_buffer: vk.VulkanBuffer,
     image_buffer: vk.VulkanImageBuffer,
+    texture_image_view: c.VkImageView,
 };
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -174,9 +175,38 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
             c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         );
 
+        try vk.transitionImageLayout(
+            ctx.vk_logical_device,
+            ctx.vk_queue,
+            ctx.command_pool,
+            image_buffer.texture_image,
+            c.VK_FORMAT_R8G8B8A8_SRGB,
+            c.VK_IMAGE_LAYOUT_UNDEFINED,
+            c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        );
+        try vk.copyBufferToImage(
+            ctx.vk_logical_device,
+            ctx.vk_queue,
+            ctx.command_pool,
+            texture_buffer.buffer,
+            image_buffer.texture_image,
+            @intCast(surface.w),
+            @intCast(surface.h),
+        );
+        try vk.transitionImageLayout(
+            ctx.vk_logical_device,
+            ctx.vk_queue,
+            ctx.command_pool,
+            image_buffer.texture_image,
+            c.VK_FORMAT_R8G8B8A8_SRGB,
+            c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        );
+
         const texture: Texture = .{
             .staging_buffer = texture_buffer,
             .image_buffer = image_buffer,
+            .texture_image_view = undefined,
         };
         try asset_manager.textures.put(allocator, path, texture);
     }

@@ -520,6 +520,8 @@ fn renderEye(
             .baseArrayLayer = 0,
             .layerCount = 1,
         },
+        // .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+        // .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
     };
 
     const beforeDstBarrier: c.VkImageMemoryBarrier = .{

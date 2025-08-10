@@ -85,10 +85,10 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
     });
     _ = try world.spawn(allocator, .{
         eng.Transform{
-            .position = .{ 0, -0.1, -0.5 },
-            .scale = .{ 0.1, 0.1, 0.1 },
+            .position = .{ 0, -0.5, -1.5 },
+            .scale = .{ 1, 1, 1 },
         },
-        eng.Mesh{ .name = "basket.obj" },
+        eng.Mesh{ .name = "baskest.obj" },
     });
 }
 
