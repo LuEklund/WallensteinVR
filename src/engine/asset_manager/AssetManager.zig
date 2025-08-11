@@ -40,6 +40,8 @@ var replacement_model_indices = [_]u32{
     2, 7, 3,
 };
 
+ctx: *Context,
+
 models: std.StringHashMapUnmanaged(Model),
 textures: std.StringHashMapUnmanaged(Texture),
 
@@ -60,13 +62,10 @@ pub const Texture = struct {
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     const ctx = try world.getResource(Context);
-    // const texture_paths = findAssetsFromDir(allocator, "assets/textures", ".png");
-    // defer allocator.free(texture_paths);
-
-    // defer allocator.free(model_paths);
 
     const asset_manager = try allocator.create(Self);
     asset_manager.* = .{
+        .ctx = ctx,
         .models = .empty,
         .textures = .empty,
         .replacement_model = undefined,
@@ -89,53 +88,50 @@ pub fn loadModels(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Cont
     const dir_path = "../../assets/models"; // assets/models
     const paths = try findAssetsFromDir(allocator, "../../assets/models", ".obj");
 
-    asset_manager.replacement_model.vertex_buffer = try vk.createBuffer(
+    asset_manager.replacement_model = try createModelFromBuffers(
         ctx.vk_physical_device,
         ctx.vk_logical_device,
-        c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        @intCast(replacement_model_vertices.len),
-        @sizeOf(f32),
-        @ptrCast(&replacement_model_vertices),
+        &replacement_model_vertices,
+        &replacement_model_indices,
     );
-    asset_manager.replacement_model.index_buffer = try vk.createBuffer(
-        ctx.vk_physical_device,
-        ctx.vk_logical_device,
-        c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-        replacement_model_indices.len,
-        @sizeOf(u32),
-        @ptrCast(&replacement_model_indices),
-    );
-    asset_manager.replacement_model.index_count = replacement_model_indices.len;
 
     for (paths) |path| {
         const local_path = try std.fs.path.join(allocator, &.{ dir_path, path });
         const obj = try Obj.init(allocator, local_path);
         defer obj.deinit(allocator);
 
-        const vertex_buffer = try vk.createBuffer(
+        const model = try createModelFromBuffers(
             ctx.vk_physical_device,
             ctx.vk_logical_device,
-            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            @intCast(obj.vertices.len),
-            @sizeOf(f32),
-            obj.vertices.ptr,
+            obj.vertices,
+            obj.indices,
         );
-        const index_buffer = try vk.createBuffer(
-            ctx.vk_physical_device,
-            ctx.vk_logical_device,
-            c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            @intCast(obj.indices.len),
-            @sizeOf(u32),
-            obj.indices.ptr,
-        );
-
-        const model: Model = .{
-            .vertex_buffer = vertex_buffer,
-            .index_buffer = index_buffer,
-            .index_count = @intCast(obj.indices.len),
-        };
         try asset_manager.models.put(allocator, path, model);
     }
+}
+
+pub fn createModelFromBuffers(physical_device: c.VkPhysicalDevice, logical_device: c.VkDevice, vertices: []f32, indices: []u32) !Model {
+    const vertex_buffer = try vk.createBuffer(
+        physical_device,
+        logical_device,
+        c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        @intCast(vertices.len),
+        @sizeOf(f32),
+        vertices.ptr,
+    );
+    const index_buffer = try vk.createBuffer(
+        physical_device,
+        logical_device,
+        c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        @intCast(indices.len),
+        @sizeOf(u32),
+        indices.ptr,
+    );
+    return .{
+        .vertex_buffer = vertex_buffer,
+        .index_buffer = index_buffer,
+        .index_count = @intCast(indices.len),
+    };
 }
 
 pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Context) !void {
@@ -235,6 +231,16 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
 
 pub fn getModel(self: Self, asset_name: []const u8) Model {
     return self.models.get(asset_name) orelse self.replacement_model;
+}
+
+pub fn putModel(self: *Self, allocator: std.mem.Allocator, key: []const u8, vertices: []f32, indices: []u32) !void {
+    const model = try createModelFromBuffers(
+        self.ctx.vk_physical_device,
+        self.ctx.vk_logical_device,
+        vertices,
+        indices,
+    );
+    try self.models.put(allocator, key, model);
 }
 
 // lucas read this while i am trying to find the is https://zig.news/kristoff/dont-self-simple-structs-fj8
