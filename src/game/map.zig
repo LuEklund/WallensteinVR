@@ -36,7 +36,7 @@ pub const Tilemap = struct {
         const start_y = y;
         defer self.set(start_x, start_y, 254);
 
-        const i = if (iterations) |i| i else std.math.clamp(random.int(usize), 200, 10000);
+        const i = iterations orelse 10000;
         std.debug.print("ITS {d}\n", .{i});
         for (0..i) |_| {
             const decision: u8 = random.int(u8) % 4;
@@ -55,6 +55,39 @@ pub const Tilemap = struct {
         }
 
         self.set(x, y, 255);
+    }
+
+    pub fn toModel(self: Tilemap, allocator: std.mem.Allocator) !struct { []f32, []u32 } {
+        var verices: std.ArrayListUnmanaged(f32) = .empty;
+        var indices: std.ArrayListUnmanaged(u32) = .empty;
+
+        var size: u32 = 0;
+        for (0..self.x) |ix| {
+            const x: f32 = @floatFromInt(ix);
+            for (0..1) |iy| {
+                const y: f32 = @floatFromInt(iy);
+                for (0..self.y) |iz| {
+                    if (self.get(ix, iz) == 0) continue;
+                    const z: f32 = @floatFromInt(iz);
+                    try indices.appendSlice(allocator, &.{
+                        size,
+                        size + 1,
+                        size + 2,
+                        size,
+                        size + 2,
+                        size + 3,
+                    });
+                    try verices.appendSlice(allocator, &.{
+                        x,     y, z,     0, 0, 0, 0, 0,
+                        x,     y, z + 1, 0, 0, 0, 0, 0,
+                        x + 1, y, z + 1, 0, 0, 0, 0, 0,
+                        x + 1, y, z,     0, 0, 0, 0, 0,
+                    });
+                    size += 4;
+                }
+            }
+        }
+        return .{ try verices.toOwnedSlice(allocator), try indices.toOwnedSlice(allocator) };
     }
 
     pub fn gridSpawn(self: Self, distance: usize, offset: usize, tile: u8) void {
@@ -87,3 +120,16 @@ pub const Tilemap = struct {
         std.debug.print("\x1b[0m\n", .{});
     }
 };
+
+pub fn initLevel(allocator: std.mem.Allocator, seed: ?u64) !Tilemap {
+    var prng = std.Random.DefaultPrng.init(seed orelse std.crypto.random.int(u64));
+    const random = prng.random();
+    // defer std.debug.print("SEED: {d}\n", .{seed});
+
+    var map: Tilemap = try .init(allocator, 150, 150);
+    map.spawnWalker(random, null);
+    // map.gridSpawn(7, 0, 200);
+
+    map.print();
+    return map;
+}
