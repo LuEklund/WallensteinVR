@@ -75,7 +75,7 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
     //             var fz: f32 = @floatFromInt(k);
     //             fz = fz / 5 - 2;
     //             _ = try world.spawn(allocator, .{
-    //                 eng.RigidBody{ .force = .{ std.math.sin(fx) / 1000, std.math.cos(fy) / 1000, std.math.tan(fz) / 1000 } },
+    //                 eng.physics.Rigidbody{ .force = .{ std.math.sin(fx) / 1000, std.math.cos(fy) / 1000, std.math.tan(fz) / 1000 } },
     //                 eng.Transform{ .position = .{ fx, fy, fz } },
     //                 eng.Mesh{ .name = "basket.obj" },
     //             });
@@ -120,18 +120,18 @@ pub fn playerUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.
 }
 
 pub fn someUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
-    var query = world.query(&.{ eng.RigidBody, eng.Transform });
+    var query = world.query(&.{ eng.physics.Rigidbody, eng.Transform });
     // _ = query;
 
     while (query.next()) |entity| {
-        const rigid_body = entity.get(eng.RigidBody).?;
+        const rigidbody = entity.get(eng.physics.Rigidbody).?;
         const transform = entity.get(eng.Transform).?;
 
         // std.debug.print("ID: {d} ", .{entity.id});
 
         // std.debug.print("Pos! {d} {d} ", .{ p.x, p.y });
-        transform.position[0] += rigid_body.force[0] * std.math.sin(transform.position[0]);
-        transform.position[1] += rigid_body.force[1] * std.math.sin(transform.position[1]);
+        transform.position[0] += rigidbody.force[0] * std.math.sin(transform.position[0]);
+        transform.position[1] += rigidbody.force[1] * std.math.sin(transform.position[1]);
 
         // std.debug.print("Vel! {d} {d}\n", .{ velocity.x, velocity.y });
     }
