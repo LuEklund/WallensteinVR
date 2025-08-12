@@ -15,7 +15,7 @@ const World = @import("../../ecs.zig").World;
 const root = @import("../root.zig");
 const AssetManager = @import("../asset_manager/AssetManager.zig");
 const Context = @import("Context.zig");
-const Input = @import("../Input/Input.zig");
+const Input = @import("../input/Input.zig");
 var quit: std.atomic.Value(bool) = .init(false);
 
 const window_width: c_int = 1600;
@@ -97,6 +97,7 @@ pub const Renderer = struct {
 
         const context = try allocator.create(Context);
         context.* = .{
+            .imgui = undefined,
             .spectator_view = spectator_view,
             .command_pool = command_pool,
             .graphics_queue_family_index = queue_family_index,
@@ -139,7 +140,7 @@ pub const Renderer = struct {
         try world.setResource(allocator, Context, context);
     }
 
-    pub fn initSwapchains(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
+    pub fn initSwapchains(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
         const ctx = try world.getResource(Context);
         const asset_manager = try world.getResource(AssetManager);
         var it = asset_manager.textures.iterator();
@@ -162,6 +163,8 @@ pub const Renderer = struct {
             texture_image_view,
             texture_sampler,
         );
+        ctx.imgui = try .init(allocator, ctx);
+        std.debug.print("cmd  buff: .{any}\n", .{ctx.imgui.cmd_buffers});
     }
 
     // mashe dpotatoes
@@ -253,6 +256,7 @@ pub const Renderer = struct {
 
     pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
         var ctx = try world.getResource(Context);
+
         if (ctx.running == false) return;
         std.debug.print("\n\n=========[BEGIN RENDER]===========\n\n", .{});
 
@@ -408,6 +412,7 @@ fn renderEye(
     pipeline_layout: c.VkPipelineLayout,
     pipeline: c.VkPipeline,
 ) !struct { bool, u32 } {
+    const ctx = try world.getResource(Context);
     var acquire_image_info = c.XrSwapchainImageAcquireInfo{
         .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
     };
@@ -456,7 +461,7 @@ fn renderEye(
 
     for (0..2) |i| {
         const view_matrix: nz.Mat4(f32) = .inverse(.mul(
-            .translate(.{ view[i].pose.position.x, view[i].pose.position.y, view[i].pose.position.z }),
+            .translate(.{ view[i].pose.position.x + ctx.player_pos_x, view[i].pose.position.y + ctx.player_pos_y, view[i].pose.position.z + ctx.player_pos_z }),
             .fromQuaternion(.{ view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z, view[i].pose.orientation.w }),
         ));
         @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);

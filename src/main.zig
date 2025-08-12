@@ -3,7 +3,8 @@ const World = @import("ecs.zig").World;
 const eng = @import("engine/root.zig");
 const game = @import("game/root.zig");
 const GfxContext = @import("engine/renderer/Context.zig");
-
+const imgui = @import("imgui").c;
+const loader = @import("loader");
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{ .verbose_log = true }) = .init;
     const smp_allocator = std.heap.smp_allocator;
@@ -17,6 +18,7 @@ pub fn main() !void {
         &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand },
     ) = .init();
     defer world.deinit(allocator);
+
     //Engine Init
     try world.runSystems(allocator, .{
         eng.Renderer.init,
@@ -28,7 +30,7 @@ pub fn main() !void {
         someInitSystem,
     });
 
-    const map = try game.map.initLevel(allocator, null);
+    var map = try game.map.initLevel(allocator, null);
     defer map.deinit(allocator);
     const verices: []f32, const indices: []u32 = try map.toModel(allocator);
     defer allocator.free(verices);
@@ -40,8 +42,18 @@ pub fn main() !void {
         verices,
         indices,
     );
-
     const ctx: *GfxContext = try world.getResource(GfxContext);
+
+    std.debug.print("cmd  buff: .{any}\n", .{ctx.imgui.cmd_buffers});
+    ctx.player_pos_x = @floatFromInt(map.start_x);
+    ctx.player_pos_z = @floatFromInt(map.start_y);
+    // std.debug.print("pos X: {any}\n", .{map.start_x});
+    // std.debug.print("pos Z: {any}\n", .{map.start_y});
+    // if (true) @panic("XDD");
+    ctx.player_pos_z = 5;
+    ctx.player_pos_x = 5;
+    ctx.player_pos_y = 5;
+
     while (!ctx.should_quit) {
         try world.runSystems(allocator, .{
             eng.Renderer.beginFrame,
@@ -65,23 +77,23 @@ pub fn ininitPlayer(comps: []const type, world: *World(comps), allocator: std.me
 }
 
 pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
-    // for (0..4) |i| {
-    //     var fx: f32 = @floatFromInt(i);
-    //     fx = fx / 5;
-    //     for (0..4) |j| {
-    //         var fy: f32 = @floatFromInt(j);
-    //         fy = fy / 5;
-    //         for (0..4) |k| {
-    //             var fz: f32 = @floatFromInt(k);
-    //             fz = fz / 5 - 2;
-    //             _ = try world.spawn(allocator, .{
-    //                 eng.RigidBody{ .force = .{ std.math.sin(fx) / 1000, std.math.cos(fy) / 1000, std.math.tan(fz) / 1000 } },
-    //                 eng.Transform{ .position = .{ fx, fy, fz } },
-    //                 eng.Mesh{ .name = "basket.obj" },
-    //             });
-    //         }
-    //     }
-    // }
+    for (0..4) |i| {
+        var fx: f32 = @floatFromInt(i);
+        fx = fx / 5;
+        for (0..4) |j| {
+            var fy: f32 = @floatFromInt(j);
+            fy = fy / 5;
+            for (0..4) |k| {
+                var fz: f32 = @floatFromInt(k);
+                fz = fz / 5 - 2;
+                _ = try world.spawn(allocator, .{
+                    eng.RigidBody{ .force = .{ std.math.sin(fx) / 1000, std.math.cos(fy) / 1000, std.math.tan(fz) / 1000 } },
+                    eng.Transform{ .position = .{ fx, fy, fz } },
+                    eng.Mesh{ .name = "basket.obj" },
+                });
+            }
+        }
+    }
 
     // _ = try world.spawn(allocator, .{
     //     eng.Transform{
@@ -101,8 +113,8 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
     // });
     _ = try world.spawn(allocator, .{
         eng.Transform{
-            .position = .{ 0, -0.5, -5 },
-            .scale = .{ 0.1, 0.1, 0.11 },
+            .position = .{ 0, 0, 0 },
+            .scale = .{ 0.1, 0.1, 0.1 },
         },
         eng.Mesh{ .name = "world" },
     });

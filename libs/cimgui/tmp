@@ -1,0 +1,44 @@
+        // 1. Start a new ImGui frame
+        imgui.ImplVulkan_NewFrame();
+        imgui.ImplSDL3_NewFrame();
+        imgui.ImGui_NewFrame();
+
+        // 2. Define your UI
+        // if (imgui.ImGui_Begin("My First Window", null, 0)) {
+        //     imgui.ImGui_Text("Hello, ImGui!");
+        //     // You can add more widgets here
+        //     imgui.ImGui_End();
+        // }
+
+                // 3. Prepare the render data
+        imgui.ImGui_Render();
+
+        // 4. Render the data using your backends
+        // (This is a simplified example, the actual calls will be more complex and depend on your setup)
+        // const draw_data = imgui.ImGui_GetDrawData();
+        // imgui.FrameRender();
+        // imgui.ImGui_ImplVulkan_RenderDrawData(draw_data);
+        // imgui.ImGui_ImplSDL3_RenderDrawData(draw_data);
+
+        var imgui_vulkan_info: imgui.ImGui_ImplVulkan_InitInfo = .{
+        //init_info.ApiVersion = VK_API_VERSION_1_3;              // Pass in your value of VkApplicationInfo::apiVersion, otherwise will default to header version.
+        .Instance = ctx.vk_instance,
+        .PhysicalDevice = ctx.vk_physical_device,
+        .Device = ctx.vk_logical_device,
+        .QueueFamily = ctx.graphics_queue_family_index,
+        .Queue = ctx.vk_queue,
+        .PipelineCache = null,
+        .DescriptorPool = ctx.descriptor_pool,
+        .RenderPass = ctx.render_pass,
+        .Subpass = 0,
+        .MinImageCount = 3,
+        .ImageCount = ctx.vk_swapchain.image_count,
+        .MSAASamples = loader.c.VK_SAMPLE_COUNT_1_BIT,
+        .Allocator = null,
+        .CheckVkResultFn = loader.vkCheck,
+    };
+
+    imgui.ImGui_ImplVulkan_Init(&imgui_vulkan_info);
+
+
+

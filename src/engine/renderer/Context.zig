@@ -5,7 +5,9 @@ const loader = @import("loader");
 const c = loader.c;
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
+const ImGui = @import("ImGui.zig");
 
+imgui: ImGui,
 spectator_view: SpectatorView,
 xr_instance: c.XrInstance,
 xr_session: c.XrSession,
@@ -61,3 +63,7 @@ hand_pose_state: [2]c.XrActionStatePose = .{
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
 },
+
+player_pos_x: f32 = 0,
+player_pos_y: f32 = 0,
+player_pos_z: f32 = 0,

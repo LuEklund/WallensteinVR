@@ -1,44 +1,46 @@
 const std = @import("std");
 
 pub const Tilemap = struct {
-    const Self = @This();
-
     tiles: []u8,
     x: usize,
     y: usize,
+    start_x: usize = 0,
+    start_y: usize = 0,
 
-    pub fn init(allocator: std.mem.Allocator, x: usize, y: usize) !Self {
+    pub fn init(allocator: std.mem.Allocator, x: usize, y: usize) !@This() {
         const tiles: []u8 = try allocator.alloc(u8, x * y);
         @memset(tiles, 1);
 
         return .{ .tiles = tiles, .x = x, .y = y };
     }
 
-    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
         allocator.free(self.tiles);
     }
 
-    pub fn get(self: Self, x: usize, y: usize) u8 {
+    pub fn get(self: @This(), x: usize, y: usize) u8 {
         const index = (y * self.x) + x;
         return self.tiles[index];
     }
 
-    pub fn set(self: Self, x: usize, y: usize, tile: u8) void {
+    pub fn set(self: @This(), x: usize, y: usize, tile: u8) void {
         const index = (y * self.x) + x;
         self.tiles[index] = tile;
     }
 
-    pub fn spawnWalker(self: Self, random: std.Random, iterations: ?usize) void {
+    pub fn spawnWalker(self: *@This(), random: std.Random, iterations: ?usize) void {
         var x: usize = random.int(usize) % self.x;
         var y: usize = random.int(usize) % self.y;
 
-        const start_x = x;
-        const start_y = y;
-        defer self.set(start_x, start_y, 254);
+        self.start_x = x;
+        self.start_y = y;
+        defer self.set(self.start_x, self.start_y, 254);
 
         const i = iterations orelse 10000;
         std.debug.print("ITS {d}\n", .{i});
         for (0..i) |_| {
+            x = std.math.clamp(x, 1, self.x - 2);
+            y = std.math.clamp(y, 1, self.y - 2);
             const decision: u8 = random.int(u8) % 4;
             switch (decision) {
                 0 => x += 1,
@@ -57,7 +59,7 @@ pub const Tilemap = struct {
         self.set(x, y, 255);
     }
 
-    pub fn toModel(self: Tilemap, allocator: std.mem.Allocator) !struct { []f32, []u32 } {
+    pub fn toModel(self: @This(), allocator: std.mem.Allocator) !struct { []f32, []u32 } {
         var verices: std.ArrayListUnmanaged(f32) = .empty;
         var indices: std.ArrayListUnmanaged(u32) = .empty;
 
@@ -90,7 +92,7 @@ pub const Tilemap = struct {
         return .{ try verices.toOwnedSlice(allocator), try indices.toOwnedSlice(allocator) };
     }
 
-    pub fn gridSpawn(self: Self, distance: usize, offset: usize, tile: u8) void {
+    pub fn gridSpawn(self: @This(), distance: usize, offset: usize, tile: u8) void {
         for (0..@divFloor(self.x - offset, distance)) |x| {
             for (0..@divFloor(self.y - offset, distance)) |y| {
                 if (self.get(x * distance + offset, y * distance + offset) == 0)
@@ -99,7 +101,7 @@ pub const Tilemap = struct {
         }
     }
 
-    pub fn print(self: Self) void {
+    pub fn print(self: @This()) void {
         for (self.tiles, 0..) |tile, i| {
             if (i > 0 and i % self.x == 0) {
                 std.debug.print("\x1b[0m\n", .{});

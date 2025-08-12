@@ -66,8 +66,13 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "sdl3", .module = sdl3_mod },
                 .{ .name = "numz", .module = numz_mod },
             },
+            .link_libcpp = true,
         }),
     });
+
+    const cimgui = @import("libs/cimgui/src/build.zig").build(b, target, optimize);
+    exe.root_module.addImport("imgui", cimgui);
+    // exe.linkLibCpp();
 
     const shader_compile_step = addCompileShaders(b, .{
         .in_dir = b.path("assets/shaders"),

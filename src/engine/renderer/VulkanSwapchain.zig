@@ -3,12 +3,14 @@ const log = std.log;
 
 const loader = @import("loader");
 const c = loader.c;
+const vk = @import("vulkan.zig");
 
 const VulkanSwapchain = @This();
 
 device: c.VkDevice,
 swapchain: c.VkSwapchainKHR,
 swapchain_images: [16]SwapchainImage,
+vk_image_views: [16]c.VkImageView,
 vk_images: [16]c.VkImage,
 image_count: u32,
 format: c.VkFormat,
@@ -46,7 +48,7 @@ pub fn init(physical_device: c.VkPhysicalDevice, device: c.VkDevice, surface: c.
         .imageColorSpace = chosenFormat.colorSpace,
         .imageExtent = .{ .width = width, .height = height },
         .imageArrayLayers = 1,
-        .imageUsage = c.VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        .imageUsage = c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
         .preTransform = capabilities.currentTransform,
         .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
@@ -60,6 +62,7 @@ pub fn init(physical_device: c.VkPhysicalDevice, device: c.VkDevice, surface: c.
         .device = device,
         .swapchain = swapchain,
         .swapchain_images = undefined,
+        .vk_image_views = undefined,
         .vk_images = undefined,
         .image_count = undefined,
         .format = chosenFormat.format,
@@ -84,6 +87,21 @@ pub fn createSwapchainImages(
     try loader.vkCheck(c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &self.image_count, &self.vk_images[0]));
 
     for (0..self.image_count) |i| {
+        var view_create_info: c.VkImageViewCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = self.vk_images[i],
+            .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
+            .format = self.format,
+            .subresourceRange = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+
+        try loader.vkCheck(c.vkCreateImageView(self.device, &view_create_info, null, &self.vk_image_views[i]));
         self.swapchain_images[i] = try .init(self.device, command_pool, self.vk_images[i]);
     }
 }
@@ -117,15 +135,8 @@ pub const SwapchainImage = struct {
     render_done_semaphore: c.VkSemaphore,
 
     pub fn init(device: c.VkDevice, command_pool: c.VkCommandPool, image: c.VkImage) !@This() {
-        var allocInfo: c.VkCommandBufferAllocateInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = command_pool,
-            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = 1,
-        };
-
         var command_buffer: c.VkCommandBuffer = undefined;
-        try loader.vkCheck(c.vkAllocateCommandBuffers(device, &allocInfo, &command_buffer));
+        try vk.createCommandBuffers(device, command_pool, 1, &command_buffer);
 
         var semaphoreCreateInfo: c.VkSemaphoreCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
