@@ -24,12 +24,7 @@ pub fn main() !void {
         eng.AssetManager.init,
         eng.Renderer.initSwapchains,
     });
-    //Game Init
-    try world.runSystems(allocator, .{
-        someInitSystem,
-    });
-
-    const map = try game.map.initLevel(allocator, null);
+    const map = try game.map.initLevel(allocator, 19);
     defer map.deinit(allocator);
     const verices: []f32, const indices: []u32 = try map.toModel(allocator);
     defer allocator.free(verices);
@@ -41,7 +36,14 @@ pub fn main() !void {
         verices,
         indices,
     );
+    //Game Init
+    try world.runSystems(allocator, .{
+        someInitSystem,
+    });
 
+    const io_ctx: *eng.IoCtx = try world.getResource(eng.IoCtx);
+    io_ctx.*.player_pos[0] = @floatFromInt(map.start_x);
+    io_ctx.*.player_pos[2] = @floatFromInt(map.start_y);
     const ctx: *GfxContext = try world.getResource(GfxContext);
     while (!ctx.should_quit) {
         try world.runSystems(allocator, .{
@@ -102,7 +104,7 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
     });
     _ = try world.spawn(allocator, .{
         eng.Transform{
-            .position = .{ 0, -0.5, -5 },
+            .position = .{ 0, -0.5, 0 },
             .scale = .{ 1, 1, 1 },
         },
         eng.Mesh{ .name = "world" },
