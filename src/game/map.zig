@@ -41,10 +41,10 @@ pub const Tilemap = struct {
         for (0..i) |_| {
             const decision: u8 = random.int(u8) % 4;
             switch (decision) {
-                0 => x += 1,
-                1 => y += 1,
-                2 => x -= 1,
-                3 => y -= 1,
+                0 => x +|= 1,
+                1 => y +|= 1,
+                2 => x -|= 1,
+                3 => y -|= 1,
                 else => unreachable,
             }
 
