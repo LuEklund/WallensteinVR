@@ -103,7 +103,7 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
     _ = try world.spawn(allocator, .{
         eng.Transform{
             .position = .{ 0, -0.5, -5 },
-            .scale = .{ 0.1, 0.1, 0.11 },
+            .scale = .{ 1, 1, 1 },
         },
         eng.Mesh{ .name = "world" },
     });
@@ -113,6 +113,7 @@ pub fn playerUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.
     var query = world.query(&.{ game.Hand, eng.Transform });
     // const ctx = try world.getResource(GfxContext);
     const io_ctx = try world.getResource(eng.IoCtx);
+
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
         var transform = entity.get(eng.Transform).?;

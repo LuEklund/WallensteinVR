@@ -16,7 +16,6 @@ const AssetManager = @import("../asset_manager/AssetManager.zig");
 const Context = @import("Context.zig");
 const Input = @import("../Input/Input.zig");
 const IoCtx = @import("../Input/Context.zig");
-var quit: std.atomic.Value(bool) = .init(false);
 
 const window_width: c_int = 1600;
 const window_height: c_int = 900;
@@ -29,12 +28,12 @@ pub const Renderer = struct {
             loader.c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME,
         };
         const xr_layers = &[_][*:0]const u8{
-            "XR_APILAYER_LUNARG_core_validation",
-            "XR_APILAYER_LUNARG_api_dump",
+            // "XR_APILAYER_LUNARG_core_validation",
+            // "XR_APILAYER_LUNARG_api_dump",
         };
 
         const vk_layers = &[_][*:0]const u8{
-            "VK_LAYER_KHRONOS_validation",
+            // "VK_LAYER_KHRONOS_validation",
         };
 
         try xr.validateExtensions(allocator, xr_extensions);
@@ -140,7 +139,7 @@ pub const Renderer = struct {
     pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
         const ctx = try world.getResource(Context);
         defer allocator.destroy(ctx);
-        std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
+        // std.debug.print("\n\n=========[EXITED while loop]===========\n\n", {});
         try loader.xrCheck(c.vkDeviceWaitIdle(ctx.vk_logical_device));
 
         c.vkDestroyPipeline(ctx.vk_logical_device, ctx.pipeline, null);
@@ -154,7 +153,7 @@ pub const Renderer = struct {
     }
 
     pub fn beginFrame(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
-        std.debug.print("\n\n=========[BEGIN FRAME]===========\n\n", .{}); //TODO: QUITE APP
+        // std.debug.print("\n\n=========[BEGIN FRAME]===========\n\n", .{}); //TODO: QUITE APP
         var ctx = try world.getResource(Context);
         var eventData = c.XrEventDataBuffer{
             .type = c.XR_TYPE_EVENT_DATA_BUFFER,
@@ -198,12 +197,12 @@ pub const Renderer = struct {
                         std.debug.print("OpenXR runtime requested shutdown.\n", .{}); //TODO: Quit APP
                     },
                     else => {
-                        std.log.err("Unknown event STATE received: {any}", .{event.state});
+                        // std.log.err("Unknown event STATE received: {any}", .{event.state});
                     },
                 }
             },
             else => {
-                std.log.err("Unknown event TYPE received: {any}", .{eventData.type});
+                // std.log.err("Unknown event TYPE received: {any}", .{eventData.type});
             },
         }
 
@@ -225,7 +224,7 @@ pub const Renderer = struct {
     pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
         var ctx = try world.getResource(Context);
         if (ctx.running == false) return;
-        std.debug.print("\n\n=========[BEGIN RENDER]===========\n\n", .{});
+        // std.debug.print("\n\n=========[BEGIN RENDER]===========\n\n", .{});
 
         if (ctx.should_render == c.VK_FALSE) {
             var end_frame_info = c.XrFrameEndInfo{
@@ -261,7 +260,7 @@ pub const Renderer = struct {
             // quit.store(should_quit, .release);
         }
         ctx.last_rendered_image_index = active_index;
-        std.debug.print("\n\n=========[RENDER DONE]===========\n\n", .{});
+        // std.debug.print("\n\n=========[RENDER DONE]===========\n\n", .{});
     }
 };
 
@@ -426,6 +425,8 @@ fn renderEye(
     }
 
     const io_ctx = try world.getResource(IoCtx);
+    std.debug.print("\nplayer-pos {any}\n", .{io_ctx.player_pos});
+    std.debug.print("xr-pos {any}\n", .{view[0].pose.position});
     for (0..2) |i| {
         const view_matrix: nz.Mat4(f32) = .inverse(.mul(
             .translate(.{ view[i].pose.position.x + io_ctx.player_pos[0], view[i].pose.position.y + io_ctx.player_pos[1], view[i].pose.position.z + io_ctx.player_pos[2] }),
@@ -638,10 +639,7 @@ fn renderEye(
 }
 
 pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
-    var scale: nz.Mat4(f32) = .identity(2);
-    scale.d[0] = transform.scale[0];
-    scale.d[5] = transform.scale[1];
-    scale.d[10] = transform.scale[2];
+    const scale: nz.Mat4(f32) = .scale(transform.scale);
 
     const rotation: nz.Mat4(f32) = .identity(1);
 

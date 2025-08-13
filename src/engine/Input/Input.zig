@@ -48,7 +48,7 @@ pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocato
     var ctx = try world.getResource(GfxContext);
     var io_ctx = try world.getResource(IoCtx);
 
-    std.debug.print("\n\n=========[Polling Events]===========\n\n", .{});
+    // std.debug.print("\n\n=========[Polling Events]===========\n\n", .{});
 
     while (sdl.events.poll()) |sdl_event| {
         switch (sdl_event) {
