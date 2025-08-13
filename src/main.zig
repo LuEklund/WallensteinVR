@@ -115,7 +115,7 @@ pub fn playerUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.
     const io_ctx = try world.getResource(eng.IoCtx);
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
-        const transform = entity.get(eng.Transform).?;
+        var transform = entity.get(eng.Transform).?;
         transform.position = @bitCast(io_ctx.hand_pose[@intFromEnum(hand.side)].position);
     }
 }

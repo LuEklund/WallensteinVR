@@ -40,11 +40,13 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             hand_pose_space_l,
             hand_pose_space_r,
         },
+        .player_pos = @splat(0),
     };
     try world.setResource(allocator, IoCtx, context);
 }
 pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
     var ctx = try world.getResource(GfxContext);
+    var io_ctx = try world.getResource(IoCtx);
 
     std.debug.print("\n\n=========[Polling Events]===========\n\n", .{});
 
@@ -62,15 +64,29 @@ pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocato
                 );
             },
             .key_down => |key| {
-                if (key.key == .escape) {
-                    ctx.should_quit = true;
+                switch (key.key.?) {
+                    .escape => ctx.should_quit = true,
+                    // .w => io_ctx.player_pos[2] -= 0.016,
+                    // .s => io_ctx.player_pos[2] += 0.016,
+                    // .a => io_ctx.player_pos[0] -= 0.016,
+                    // .d => io_ctx.player_pos[0] += 0.016,
+                    // .q => io_ctx.player_pos[1] -= 0.016,
+                    // .e => io_ctx.player_pos[1] += 0.016,
+                    else => {},
                 }
             },
             else => {},
         }
     }
+    // const keyboard = sdl.keyboard.getState();
+    const keyboard = sdl.c.SDL_GetKeyboardState(null);
+    if (keyboard[@intFromEnum(sdl.Scancode.w)]) io_ctx.player_pos[2] -= 0.016;
+    if (keyboard[@intFromEnum(sdl.Scancode.s)]) io_ctx.player_pos[2] += 0.016;
+    if (keyboard[@intFromEnum(sdl.Scancode.a)]) io_ctx.player_pos[0] -= 0.016;
+    if (keyboard[@intFromEnum(sdl.Scancode.d)]) io_ctx.player_pos[0] += 0.016;
+    if (keyboard[@intFromEnum(sdl.Scancode.q)]) io_ctx.player_pos[1] -= 0.016;
+    if (keyboard[@intFromEnum(sdl.Scancode.e)]) io_ctx.player_pos[1] += 0.016;
 
-    const io_ctx: *IoCtx = try world.getResource(IoCtx);
     _ = try pollAction(ctx, io_ctx); //TODO  QUit app
 }
 // pub fn deint() !void {}
@@ -174,6 +190,9 @@ pub fn pollAction(
                 (spaceLocation.locationFlags & c.XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0)
             {
                 io_ctx.hand_pose[i] = spaceLocation.pose;
+                io_ctx.hand_pose[i].position.x += io_ctx.player_pos[0];
+                io_ctx.hand_pose[i].position.y += io_ctx.player_pos[1];
+                io_ctx.hand_pose[i].position.z += io_ctx.player_pos[2];
             } else {
                 io_ctx.hand_pose_state[i].isActive = 0;
             }

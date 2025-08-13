@@ -15,6 +15,7 @@ const root = @import("../root.zig");
 const AssetManager = @import("../asset_manager/AssetManager.zig");
 const Context = @import("Context.zig");
 const Input = @import("../Input/Input.zig");
+const IoCtx = @import("../Input/Context.zig");
 var quit: std.atomic.Value(bool) = .init(false);
 
 const window_width: c_int = 1600;
@@ -424,9 +425,10 @@ fn renderEye(
         ptr_start += 16;
     }
 
+    const io_ctx = try world.getResource(IoCtx);
     for (0..2) |i| {
         const view_matrix: nz.Mat4(f32) = .inverse(.mul(
-            .translate(.{ view[i].pose.position.x, view[i].pose.position.y, view[i].pose.position.z }),
+            .translate(.{ view[i].pose.position.x + io_ctx.player_pos[0], view[i].pose.position.y + io_ctx.player_pos[1], view[i].pose.position.z + io_ctx.player_pos[2] }),
             .fromQuaternion(.{ view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z, view[i].pose.orientation.w }),
         ));
         @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);

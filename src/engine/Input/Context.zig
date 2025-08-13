@@ -1,4 +1,5 @@
 const loader = @import("loader");
+const nz = @import("numz");
 const c = loader.c;
 
 grabbed_block: [2]i32 = .{ -1, -1 },
@@ -23,3 +24,5 @@ hand_pose_state: [2]c.XrActionStatePose = .{
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
 },
+
+player_pos: nz.Vec3(f32),
