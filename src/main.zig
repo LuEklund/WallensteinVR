@@ -14,7 +14,7 @@ pub fn main() !void {
         smp_allocator;
 
     var world: World(
-        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand },
+        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand, eng.Player },
     ) = .init();
     defer world.deinit(allocator);
     //Engine Init
@@ -39,6 +39,7 @@ pub fn main() !void {
     //Game Init
     try world.runSystems(allocator, .{
         someInitSystem,
+        ininitPlayer,
     });
 
     const io_ctx: *eng.IoCtx = try world.getResource(eng.IoCtx);
@@ -58,12 +59,30 @@ pub fn main() !void {
 }
 
 pub fn ininitPlayer(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
+    //PLAYER
+    _ = try world.spawn(allocator, .{
+        eng.Transform{
+            .position = .{ 0, 1, 0 },
+            .scale = .{ 1, 1, 1 },
+        },
+        eng.Player{},
+    });
+    //HANDS
+    _ = try world.spawn(allocator, .{
+        eng.Transform{
+            .position = .{ 0, 0, 0 },
+            .scale = .{ 0.1, 0.1, 0.1 },
+        },
+        eng.Mesh{ .name = "basket.obj" },
+        game.Hand{ .side = .left },
+    });
     _ = try world.spawn(allocator, .{
         eng.Transform{
             .position = .{ 0, 0, 0 },
             .scale = .{ 0.1, 0.1, 0.1 },
         },
         eng.Mesh{ .name = "cube.obj" },
+        game.Hand{ .side = .right },
     });
 }
 
@@ -88,22 +107,6 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
 
     _ = try world.spawn(allocator, .{
         eng.Transform{
-            .position = .{ 0, 0, 0 },
-            .scale = .{ 0.1, 0.1, 0.1 },
-        },
-        eng.Mesh{ .name = "basket.obj" },
-        game.Hand{ .side = .left },
-    });
-    _ = try world.spawn(allocator, .{
-        eng.Transform{
-            .position = .{ 0, 0, 0 },
-            .scale = .{ 0.1, 0.1, 0.1 },
-        },
-        eng.Mesh{ .name = "cube.obj" },
-        game.Hand{ .side = .right },
-    });
-    _ = try world.spawn(allocator, .{
-        eng.Transform{
             .position = .{ 0, -0.5, 0 },
             .scale = .{ 1, 1, 1 },
         },
@@ -112,12 +115,26 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
 }
 
 pub fn playerUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
-    var query = world.query(&.{ game.Hand, eng.Transform });
-    // const ctx = try world.getResource(GfxContext);
     const io_ctx = try world.getResource(eng.IoCtx);
+    var query_player = world.query(&.{ eng.Player, eng.Transform });
+    while (query_player.next()) |entity| {
+        var transform = entity.get(eng.Transform).?;
+        if (io_ctx.keyboard.isActive(.w)) transform.position[2] -= 0.016;
+        if (io_ctx.keyboard.isActive(.s)) transform.position[2] += 0.016;
+        if (io_ctx.keyboard.isActive(.a)) transform.position[0] -= 0.016;
+        if (io_ctx.keyboard.isActive(.d)) transform.position[0] += 0.016;
+        if (io_ctx.keyboard.isActive(.q)) transform.position[1] -= 0.016;
+        if (io_ctx.keyboard.isActive(.e)) transform.position[1] += 0.016;
+        if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] -= 0.016;
+        if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] += 0.016;
+    }
 
-    io_ctx.player_pos[0] += io_ctx.trackpad_state[0].currentState.x / 100;
-    io_ctx.player_pos[2] += io_ctx.trackpad_state[0].currentState.y / 100;
+    var query = world.query(&.{ game.Hand, eng.Transform });
+
+    // if (io_ctx.keyboard.isActive(.left)) io_ctx.p += 0.016;
+    // if (io_ctx.keyboard.isActive(.right)) io_ctx.player_pos[1] += 0.016;
+    // io_ctx.player_pos[0] += io_ctx.trackpad_state[0].currentState.x / 100;
+    // io_ctx.player_pos[2] += io_ctx.trackpad_state[0].currentState.y / 100;
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
         var transform = entity.get(eng.Transform).?;

@@ -96,17 +96,11 @@ pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocato
             else => {},
         }
     }
-    // const keyboard = sdl.keyboard.getState();
-    const keyboard = sdl.c.SDL_GetKeyboardState(null);
-    if (keyboard[@intFromEnum(sdl.Scancode.w)]) io_ctx.player_pos[2] -= 0.016;
-    if (keyboard[@intFromEnum(sdl.Scancode.s)]) io_ctx.player_pos[2] += 0.016;
-    if (keyboard[@intFromEnum(sdl.Scancode.a)]) io_ctx.player_pos[0] -= 0.016;
-    if (keyboard[@intFromEnum(sdl.Scancode.d)]) io_ctx.player_pos[0] += 0.016;
-    if (keyboard[@intFromEnum(sdl.Scancode.q)]) io_ctx.player_pos[1] -= 0.016;
-    if (keyboard[@intFromEnum(sdl.Scancode.e)]) io_ctx.player_pos[1] += 0.016;
+    io_ctx.keyboard.keys = sdl.keyboard.getState();
 
     _ = try pollAction(ctx, io_ctx); //TODO  QUit app
 }
+
 // pub fn deint() !void {}
 pub fn recordCurrentBindings(xr_session: c.XrSession, xr_instance: c.XrInstance) !void {
     var hand_paths: [2]c.XrPath = .{ 0, 0 };

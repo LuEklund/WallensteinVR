@@ -1,6 +1,7 @@
 const loader = @import("loader");
 const nz = @import("numz");
 const c = loader.c;
+const sdl = @import("sdl3");
 
 grabbed_block: [2]i32 = .{ -1, -1 },
 near_block: [2]i32 = .{ -1, -1 },
@@ -28,3 +29,11 @@ hand_pose_state: [2]c.XrActionStatePose = .{
 },
 
 player_pos: nz.Vec3(f32),
+keyboard: Keyboard = undefined,
+
+pub const Keyboard = struct {
+    keys: []const bool = undefined,
+    pub fn isActive(self: *@This(), key: sdl.Scancode) bool {
+        return self.keys[@intFromEnum(key)];
+    }
+};

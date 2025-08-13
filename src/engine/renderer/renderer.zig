@@ -424,14 +424,32 @@ fn renderEye(
         ptr_start += 16;
     }
 
-    const io_ctx = try world.getResource(IoCtx);
-    // std.debug.print("\nplayer-pos {any}\n", .{io_ctx.player_pos});
-    // std.debug.print("xr-pos {any}\n", .{view[0].pose.position});
+    // const io_ctx = try world.getResource(IoCtx);
+
+    var query = world.query(&.{ root.Player, root.Transform });
+    var player_transform: root.Transform = .{};
+    while (query.next()) |ent| {
+        const transform = ent.get(root.Transform).?;
+        player_transform = transform.*;
+    }
+    std.debug.print("\nPlayer: .{any}\n", .{player_transform});
     for (0..2) |i| {
-        const view_matrix: nz.Mat4(f32) = .inverse(.mul(
-            .translate(.{ view[i].pose.position.x + io_ctx.player_pos[0], view[i].pose.position.y + io_ctx.player_pos[1], view[i].pose.position.z + io_ctx.player_pos[2] }),
-            .fromQuaternion(.{ view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z, view[i].pose.orientation.w }),
+        var view_matrix: nz.Mat4(f32) = .inverse(.mul(
+            .translate(.{
+                view[i].pose.position.x + player_transform.position[0],
+                view[i].pose.position.y + player_transform.position[1],
+                view[i].pose.position.z + player_transform.position[2],
+            }),
+            .fromQuaternion(.{
+                view[i].pose.orientation.x,
+                view[i].pose.orientation.y,
+                view[i].pose.orientation.z,
+                view[i].pose.orientation.w,
+            }),
         ));
+        view_matrix.d[3] += player_transform.rotation[0];
+        view_matrix.d[7] += player_transform.rotation[1];
+        view_matrix.d[11] += player_transform.rotation[2];
         @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
         ptr_start += 16;
     }
