@@ -422,29 +422,22 @@ pub fn getPath(instance: c.XrInstance, name: [*:0]const u8) !c.XrPath {
 //NOTE: https://amini-allight.org/post/openxr-tutorial-part-9
 //NOTE: https://registry.khronos.org/OpenXR/specs/1.0/html/xrspec.html#semantic-path-interaction-profiles
 //TODO: Dymanic Headset Select? Instead of JUST HTC VIVE
-pub fn suggestBindings(instance: c.XrInstance, leftHandAction: c.XrAction, rightHandAction: c.XrAction, leftGrabAction: c.XrAction, rightGrabAction: c.XrAction) !void {
-    const leftHandPath: c.XrPath = try getPath(instance, "/user/hand/left/input/grip/pose");
-    const rightHandPath: c.XrPath = try getPath(instance, "/user/hand/right/input/grip/pose");
-    const leftButtonPath: c.XrPath = try getPath(instance, "/user/hand/left/input/select/click");
-    const rightButtonPath: c.XrPath = try getPath(instance, "/user/hand/right/input/select/click");
-    const interactionProfilePath: c.XrPath = try getPath(instance, "/interaction_profiles/khr/simple_controller");
 
-    const suggestedBindings = [4]c.XrActionSuggestedBinding{
-        .{ .action = leftHandAction, .binding = leftHandPath },
-        .{ .action = rightHandAction, .binding = rightHandPath },
-        .{ .action = leftGrabAction, .binding = leftButtonPath },
-        .{ .action = rightGrabAction, .binding = rightButtonPath },
-    };
-
+pub fn createSuggestedBinding(instance: c.XrInstance, action: c.XrAction, name: [*:0]const u8) !c.XrActionSuggestedBinding {
+    const action_path = try getPath(instance, name);
+    return .{ .action = action, .binding = action_path };
+}
+pub fn suggestBindings(instance: c.XrInstance, profile_path: c.XrPath, bindings: []const c.XrActionSuggestedBinding) !void {
     var suggestedBinding = c.XrInteractionProfileSuggestedBinding{
         .type = c.XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING,
-        .interactionProfile = interactionProfilePath,
-        .countSuggestedBindings = 4,
-        .suggestedBindings = &suggestedBindings[0],
+        .interactionProfile = profile_path,
+        .countSuggestedBindings = @intCast(bindings.len),
+        .suggestedBindings = &bindings[0],
     };
 
     try loader.xrCheck(c.xrSuggestInteractionProfileBindings(instance, &suggestedBinding));
 }
+
 pub fn attachActionSet(session: c.XrSession, actionSet: c.XrActionSet) !void {
     var actionSetsAttachInfo = c.XrSessionActionSetsAttachInfo{
         .type = c.XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO,

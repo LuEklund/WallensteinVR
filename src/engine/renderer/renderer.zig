@@ -425,8 +425,8 @@ fn renderEye(
     }
 
     const io_ctx = try world.getResource(IoCtx);
-    std.debug.print("\nplayer-pos {any}\n", .{io_ctx.player_pos});
-    std.debug.print("xr-pos {any}\n", .{view[0].pose.position});
+    // std.debug.print("\nplayer-pos {any}\n", .{io_ctx.player_pos});
+    // std.debug.print("xr-pos {any}\n", .{view[0].pose.position});
     for (0..2) |i| {
         const view_matrix: nz.Mat4(f32) = .inverse(.mul(
             .translate(.{ view[i].pose.position.x + io_ctx.player_pos[0], view[i].pose.position.y + io_ctx.player_pos[1], view[i].pose.position.z + io_ctx.player_pos[2] }),

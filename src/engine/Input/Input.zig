@@ -15,14 +15,37 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     try paths.append(allocator, "/user/hand/left");
     try paths.append(allocator, "/user/hand/right");
     defer paths.deinit(allocator);
-    const grab_cube_action = try xr.createAction(gfx_ctx.xr_instance, action_set, "grab-cube", c.XR_ACTION_TYPE_FLOAT_INPUT, paths);
     const palm_pose_action = try xr.createAction(gfx_ctx.xr_instance, action_set, "palm-pose", c.XR_ACTION_TYPE_POSE_INPUT, paths);
+    const grab_cube_action = try xr.createAction(gfx_ctx.xr_instance, action_set, "grab-cube", c.XR_ACTION_TYPE_FLOAT_INPUT, paths);
+    const trackpad_action = try xr.createAction(gfx_ctx.xr_instance, action_set, "trackpad-2d", c.XR_ACTION_TYPE_VECTOR2F_INPUT, paths);
 
     const hand_paths_l = try xr.createXrPath(gfx_ctx.xr_instance, "/user/hand/left".ptr);
     const hand_paths_r = try xr.createXrPath(gfx_ctx.xr_instance, "/user/hand/right".ptr);
 
-    try xr.suggestBindings(gfx_ctx.xr_instance, palm_pose_action, palm_pose_action, grab_cube_action, grab_cube_action);
-
+    const suggested_bindings = [_]c.XrActionSuggestedBinding{
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, palm_pose_action, "/user/hand/left/input/grip/pose"),
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, palm_pose_action, "/user/hand/right/input/grip/pose"),
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, grab_cube_action, "/user/hand/left/input/select/click"),
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, grab_cube_action, "/user/hand/right/input/select/click"),
+    };
+    try xr.suggestBindings(
+        gfx_ctx.xr_instance,
+        try xr.getPath(gfx_ctx.xr_instance, "/interaction_profiles/khr/simple_controller"),
+        &suggested_bindings,
+    );
+    const suggested_bindings_vive = [_]c.XrActionSuggestedBinding{
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, palm_pose_action, "/user/hand/left/input/grip/pose"),
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, palm_pose_action, "/user/hand/right/input/grip/pose"),
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, grab_cube_action, "/user/hand/left/input/trigger/click"),
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, grab_cube_action, "/user/hand/right/input/trigger/click"),
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, trackpad_action, "/user/hand/left/input/trackpad"),
+        try xr.createSuggestedBinding(gfx_ctx.xr_instance, trackpad_action, "/user/hand/right/input/trackpad"),
+    };
+    try xr.suggestBindings(
+        gfx_ctx.xr_instance,
+        try xr.getPath(gfx_ctx.xr_instance, "/interaction_profiles/htc/vive_controller"),
+        &suggested_bindings_vive,
+    );
     const hand_pose_space_l = try xr.createActionPoses(gfx_ctx.xr_instance, gfx_ctx.xr_session, palm_pose_action, "/user/hand/left");
     const hand_pose_space_r = try xr.createActionPoses(gfx_ctx.xr_instance, gfx_ctx.xr_session, palm_pose_action, "/user/hand/right");
     try xr.attachActionSet(gfx_ctx.xr_session, action_set);
@@ -40,6 +63,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             hand_pose_space_l,
             hand_pose_space_r,
         },
+        .trackpad_action = trackpad_action,
         .player_pos = @splat(0),
     };
     try world.setResource(allocator, IoCtx, context);
@@ -66,12 +90,6 @@ pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocato
             .key_down => |key| {
                 switch (key.key.?) {
                     .escape => ctx.should_quit = true,
-                    // .w => io_ctx.player_pos[2] -= 0.016,
-                    // .s => io_ctx.player_pos[2] += 0.016,
-                    // .a => io_ctx.player_pos[0] -= 0.016,
-                    // .d => io_ctx.player_pos[0] += 0.016,
-                    // .q => io_ctx.player_pos[1] -= 0.016,
-                    // .e => io_ctx.player_pos[1] += 0.016,
                     else => {},
                 }
             },
@@ -203,6 +221,21 @@ pub fn pollAction(
         actionStateGetInfo.action = io_ctx.grab_cube_action;
         actionStateGetInfo.subactionPath = io_ctx.hand_paths[i];
         try loader.xrCheck(c.xrGetActionStateFloat(ctx.xr_session, &actionStateGetInfo, &io_ctx.grab_state[i]));
+        if (io_ctx.grab_state[i].isActive != 0) {
+            std.debug.print("\ngrab : {any}\n", .{io_ctx.grab_state[i].currentState});
+        }
+    }
+
+    for (0..2) |i| {
+        actionStateGetInfo.action = io_ctx.trackpad_action;
+        actionStateGetInfo.subactionPath = io_ctx.hand_paths[i];
+        try loader.xrCheck(c.xrGetActionStateVector2f(ctx.xr_session, &actionStateGetInfo, &io_ctx.trackpad_state[i]));
+        if (io_ctx.trackpad_state[i].isActive != 0) {
+            std.debug.print("\nTrackpad pos: {d}, {d}\n", .{
+                io_ctx.trackpad_state[i].currentState.x,
+                io_ctx.trackpad_state[i].currentState.y,
+            });
+        }
     }
 
     return false;
