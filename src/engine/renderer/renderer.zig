@@ -3,7 +3,6 @@ const log = @import("std").log;
 const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
-const input = @import("input.zig");
 const VulkanSwapchain = @import("VulkanSwapchain.zig");
 const XrSwapchain = @import("XrSwapchain.zig");
 const loader = @import("loader");
@@ -45,17 +44,6 @@ pub const Renderer = struct {
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xrd, xr_instance);
         const xr_system_id: c.XrSystemId = try xr.getSystem(xr_instance);
 
-        const action_set: c.XrActionSet = try xr.createActionSet(xr_instance);
-        var paths: std.ArrayListUnmanaged([*:0]const u8) = .empty;
-        try paths.append(allocator, "/user/hand/left");
-        try paths.append(allocator, "/user/hand/right");
-        defer paths.deinit(allocator);
-        const m_grabCubeAction = try xr.createAction(xr_instance, action_set, "grab-cube", c.XR_ACTION_TYPE_FLOAT_INPUT, paths);
-        const m_palmPoseAction = try xr.createAction(xr_instance, action_set, "palm-pose", c.XR_ACTION_TYPE_POSE_INPUT, paths);
-
-        const m_handPaths_l = try xr.createXrPath(xr_instance, "/user/hand/left".ptr);
-        const m_handPaths_r = try xr.createXrPath(xr_instance, "/user/hand/right".ptr);
-
         const xr_graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const xr_instance_extensions: []const [*:0]const u8 =
             try xr.getVulkanInstanceRequirements(xrd, allocator, xr_instance, xr_system_id);
 
@@ -74,12 +62,6 @@ pub const Renderer = struct {
         const vk_logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(vk_physical_device, queue_family_index, vk_device_extensions);
 
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, vk_physical_device, vk_logical_device, queue_family_index);
-
-        try xr.suggestBindings(xr_instance, m_palmPoseAction, m_palmPoseAction, m_grabCubeAction, m_grabCubeAction);
-
-        const hand_pose_space_l = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/left");
-        const hand_pose_space_r = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/right");
-        try xr.attachActionSet(xr_session, action_set);
 
         const vulkan_swapchain: VulkanSwapchain = try .init(vk_physical_device, vk_logical_device, spectator_view.sdl_surface, window_width, window_height);
         const xr_swapchain: XrSwapchain = try .init(2, vk_physical_device, xr_instance, xr_system_id, xr_session);
@@ -115,7 +97,6 @@ pub const Renderer = struct {
             .fragment_shader = fragment_shader,
             .pipeline_layout = pipeline_layout,
             .vkid = vkid,
-            .action_set = action_set,
             .xr_debug_messenger = xr_debug_messenger,
             .xr_instance = xr_instance,
             .xr_session = xr_session,
@@ -123,17 +104,6 @@ pub const Renderer = struct {
             .xr_space = space,
             .xr_swapchain = xr_swapchain,
             .predicted_time_frame = 0,
-            //XR POSE CONTEXTm_grabCubeAction
-            .grab_cube_action = m_grabCubeAction,
-            .palm_pose_action = m_palmPoseAction,
-            .hand_paths = .{
-                m_handPaths_l,
-                m_handPaths_r,
-            },
-            .hand_pose_space = .{
-                hand_pose_space_l,
-                hand_pose_space_r,
-            },
         };
 
         try world.setResource(allocator, Context, context);

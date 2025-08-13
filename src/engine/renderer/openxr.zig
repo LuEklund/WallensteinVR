@@ -514,3 +514,20 @@ pub fn fromXrPath(xr_instance: c.XrInstance, path: c.XrPath) ![*:0]u8 {
     try loader.xrCheck(c.xrPathToString(xr_instance, path, c.XR_MAX_PATH_LENGTH, &strl, text));
     return text;
 }
+
+pub fn createActionPoses(xr_instance: c.XrInstance, xr_session: c.XrSession, action: c.XrAction, sub_path: [*:0]const u8) !c.XrSpace {
+    var xrSpace: c.XrSpace = undefined;
+    const xrPoseIdentity: c.XrPosef = .{
+        .orientation = .{ .x = 0.0, .y = 0.0, .z = 0.0, .w = 1.0 },
+        .position = .{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    };
+    // Create frame of reference for a pose action
+    var actionSpaceCI: c.XrActionSpaceCreateInfo = .{
+        .type = c.XR_TYPE_ACTION_SPACE_CREATE_INFO,
+        .action = action,
+        .poseInActionSpace = xrPoseIdentity,
+        .subactionPath = try createXrPath(xr_instance, sub_path),
+    };
+    try loader.xrCheck(c.xrCreateActionSpace(xr_session, &actionSpaceCI, &xrSpace));
+    return xrSpace;
+}

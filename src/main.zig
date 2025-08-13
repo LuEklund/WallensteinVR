@@ -20,6 +20,7 @@ pub fn main() !void {
     //Engine Init
     try world.runSystems(allocator, .{
         eng.Renderer.init,
+        eng.Input.init,
         eng.AssetManager.init,
         eng.Renderer.initSwapchains,
     });
@@ -83,22 +84,22 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
     //     }
     // }
 
-    // _ = try world.spawn(allocator, .{
-    //     eng.Transform{
-    //         .position = .{ 0, 0, 0 },
-    //         .scale = .{ 0.1, 0.1, 0.1 },
-    //     },
-    //     eng.Mesh{ .name = "basket.obj" },
-    //     game.Hand{ .side = .left },
-    // });
-    // _ = try world.spawn(allocator, .{
-    //     eng.Transform{
-    //         .position = .{ 0, 0, 0 },
-    //         .scale = .{ 0.1, 0.1, 0.1 },
-    //     },
-    //     eng.Mesh{ .name = "cube.obj" },
-    //     game.Hand{ .side = .right },
-    // });
+    _ = try world.spawn(allocator, .{
+        eng.Transform{
+            .position = .{ 0, 0, 0 },
+            .scale = .{ 0.1, 0.1, 0.1 },
+        },
+        eng.Mesh{ .name = "basket.obj" },
+        game.Hand{ .side = .left },
+    });
+    _ = try world.spawn(allocator, .{
+        eng.Transform{
+            .position = .{ 0, 0, 0 },
+            .scale = .{ 0.1, 0.1, 0.1 },
+        },
+        eng.Mesh{ .name = "cube.obj" },
+        game.Hand{ .side = .right },
+    });
     _ = try world.spawn(allocator, .{
         eng.Transform{
             .position = .{ 0, -0.5, -5 },
@@ -110,12 +111,12 @@ pub fn someInitSystem(comps: []const type, world: *World(comps), allocator: std.
 
 pub fn playerUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
     var query = world.query(&.{ game.Hand, eng.Transform });
-    const ctx = try world.getResource(GfxContext);
+    // const ctx = try world.getResource(GfxContext);
+    const io_ctx = try world.getResource(eng.IoCtx);
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
         const transform = entity.get(eng.Transform).?;
-
-        transform.position = @bitCast(ctx.hand_pose[@intFromEnum(hand.side)].position);
+        transform.position = @bitCast(io_ctx.hand_pose[@intFromEnum(hand.side)].position);
     }
 }
 

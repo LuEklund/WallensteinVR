@@ -3,6 +3,7 @@ const nz = @import("numz");
 pub const Renderer = @import("renderer/renderer.zig").Renderer;
 pub const Input = @import("Input/Input.zig");
 pub const AssetManager = @import("asset_manager/AssetManager.zig");
+pub const IoCtx = @import("Input/Context.zig");
 
 pub const RigidBody = struct {
     force: nz.Vec3(f32) = @splat(0),
