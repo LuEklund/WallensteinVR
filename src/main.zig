@@ -114,6 +114,8 @@ pub fn playerUpdateSystem(comps: []const type, world: *World(comps), _: std.mem.
     // const ctx = try world.getResource(GfxContext);
     const io_ctx = try world.getResource(eng.IoCtx);
 
+    io_ctx.player_pos[0] += io_ctx.trackpad_state[0].currentState.x / 100;
+    io_ctx.player_pos[2] += io_ctx.trackpad_state[0].currentState.y / 100;
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
         var transform = entity.get(eng.Transform).?;
