@@ -8,6 +8,7 @@ pub const Input = @import("Input/Input.zig");
 pub const AssetManager = @import("asset_manager/AssetManager.zig");
 pub const physics = @import("physics.zig");
 pub const IoCtx = @import("Input/Context.zig");
+pub const Time = @import("time.zig");
 
 pub const BBAA = physics.BBAA;
 pub const RigidBody = physics.Rigidbody;
@@ -28,6 +29,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         AssetManager.init,
         Renderer.initSwapchains,
         Input.init,
+        Time.init,
     });
 }
 
@@ -41,6 +43,7 @@ pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     try world.runSystems(allocator, .{
         Renderer.beginFrame,
+        Time.update,
         Input.pollEvents,
         Renderer.update,
     });
