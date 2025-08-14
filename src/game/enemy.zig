@@ -128,25 +128,9 @@ fn astar(
     return error.NoPath;
 }
 
-fn clampToWalkable(map: Tilemap, pos: nz.Vec2(f32)) !nz.Vec2(f32) {
-    
-    const map_x_float = @as(f32, @floatFromInt(map.x));
-    const map_y_float = @as(f32, @floatFromInt(map.y));
-    if (pos[0] > map_x_float or pos[1] > map_y_float or pos[0] < 0 or pos[1] < 0) {
-        for (map.tiles, 0..) |element, i| {
-            if (element == 0) {
-                const index = map.getIndex(i);
-                const index_float = nz.Vec2(f32){@as(f32, @floatFromInt(index[0])), @as(f32, @floatFromInt(index[1]))};
-                return index_float;
-            }
-        }
-    }
 
-    return error.NoWalkableTile;
-}
-
-fn isPlayerOnFreeTile(map: Tilemap, pos: nz.Vec2(usize)) {
-
+fn isPlayerOnFreeTile(map: Tilemap, pos: nz.Vec2(usize)) bool {
+    return map.get(pos[0], pos[1]) == 0;
 }
 
 pub fn spwanEnemy(comps: []const type, world: *World(comps), allocator: std.mem.Allocator, map: Tilemap) !void {
@@ -180,13 +164,14 @@ pub fn enemyUpdateSystem(comps: []const type, world: *World(comps), allocator: s
     while (query_player.next()) |entity| {
         const transform = entity.get(eng.Transform).?;
         player_transform = transform.*;
-        if (io_ctx.keyboard.isActive(.k) and first_enemy == true) {
+        const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(player_transform.position[0])), @as(usize, @intFromFloat(player_transform.position[2]))};
+        if (io_ctx.keyboard.isActive(.k) and first_enemy == true and isPlayerOnFreeTile(map.*, player_pos_vec2)) {
             try spwanEnemy(comps, world, allocator, map.*);
             first_enemy = false;
         }
     }
 
-    std.debug.print("Player X: {} Y: {}", .{player_transform.position[0], player_transform.position[2]});
+    std.debug.print("Player X: {} Y: {}\n", .{player_transform.position[0], player_transform.position[2]});
 
     const enemy_speed: f32 = 0.1;
     var query_enemy = world.query(&. {eng.Enemy, eng.Transform }); 
@@ -198,11 +183,8 @@ pub fn enemyUpdateSystem(comps: []const type, world: *World(comps), allocator: s
         delta_transform = nz.normalize(delta_transform) * @as(nz.Vec3(f32), @splat(enemy_speed));
         delta_transform[1] = 0;
 
-
-        const player_pos_vec2 = try clampToWalkable(map.*, nz.Vec2(f32){player_transform.position[0], player_transform.position[2]});
-        std.debug.print("Start: ({}, {}), Ziel: ({}, {})\n", .{
-            transform.position[0], transform.position[1], player_pos_vec2[0], player_pos_vec2[1]
-        });
+        const player_pos_vec2 = nz.Vec2(f32){player_transform.position[0], player_transform.position[2]};
+        std.debug.print("Start ({any}) Goal ({any})\n", .{nz.Vec2(f32){transform.position[0], transform.position[2]}, player_pos_vec2});
 
         const tiles: []nz.Vec2(f32) = try astar(allocator, map.*, player_pos_vec2, nz.Vec2(f32){transform.position[0], transform.position[2]});
         delta_transform[0] = tiles[0][0];
