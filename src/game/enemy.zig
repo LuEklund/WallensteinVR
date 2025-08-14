@@ -155,11 +155,14 @@ pub fn enemyUpdateSystem(comps: []const type, world: *World(comps), allocator: s
     while (query_player.next()) |entity| {
         const transform = entity.get(eng.Transform).?;
         player_transform = transform.*;
-        const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(player_transform.position[0])), @as(usize, @intFromFloat(player_transform.position[2]))};
-        if (io_ctx.keyboard.isActive(.k) and isPlayerOnFreeTile(map.*, player_pos_vec2)) {
-            try spwanEnemy(comps, world, allocator, map.*);
+        if (!(player_transform.position[0] < 0 or player_transform.position[2] < 0)) {
+            const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2])))};
+            if (io_ctx.keyboard.isActive(.k) and isPlayerOnFreeTile(map.*, player_pos_vec2)) {
+                try spwanEnemy(comps, world, allocator, map.*);
+            }
+
         }
-    }
+   }
 
     //std.debug.print("Player X: {} Y: {}\n", .{player_transform.position[0], player_transform.position[2]});
 
@@ -181,24 +184,27 @@ pub fn enemyUpdateSystem(comps: []const type, world: *World(comps), allocator: s
         delta_transform = nz.normalize(delta_transform) * @as(nz.Vec3(f32), @splat(enemy_speed));
         delta_transform[1] = 0;
 
-        const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(player_transform.position[0])), @as(usize, @intFromFloat(player_transform.position[2]))};
-        const enemy_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(transform.position[0])), @as(usize, @intFromFloat(transform.position[2]))};
-        std.debug.print("Start ({any}) Goal ({any})\n", .{enemy_pos_vec2, player_pos_vec2});
 
-        if (isPlayerOnFreeTile(map.*, player_pos_vec2)) {
+        if (!(player_transform.position[0] < 0 or transform.position[0] < 0 or 
+              player_transform.position[2] < 0 or transform.position[2] < 0)) {
+            const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2])))};
+            const enemy_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(@abs(transform.position[0]))), @as(usize, @intFromFloat(@abs(transform.position[2])))};
+            std.debug.print("Start ({any}) Goal ({any})\n", .{enemy_pos_vec2, player_pos_vec2});
+
+            if (isPlayerOnFreeTile(map.*, player_pos_vec2)) {
             
-            const tiles: []nz.Vec2(usize) = try astar(allocator, map.*, player_pos_vec2, enemy_pos_vec2);
-            if (tiles.len > 1) {
-                //std.debug.print("Tiles: {}\n", .{tiles[1]});
-                const movement = lerp(nz.Vec2(f32){transform.position[0], transform.position[2]}, tiles[1], enemy.lerp_percent);
-                //std.debug.print("Movement: ({}, {})\n", .{movement[0], movement[1]});
-                transform.position[0] = movement[0]; 
-                transform.position[2] = movement[1]; 
+                const tiles: []nz.Vec2(usize) = try astar(allocator, map.*, player_pos_vec2, enemy_pos_vec2);
+                if (tiles.len > 1) {
+                    //std.debug.print("Tiles: {}\n", .{tiles[1]});
+                    const movement = lerp(nz.Vec2(f32){transform.position[0], transform.position[2]}, tiles[1], enemy.lerp_percent);
+                    //std.debug.print("Movement: ({}, {})\n", .{movement[0], movement[1]});
+                    transform.position[0] = movement[0]; 
+                    transform.position[2] = movement[1]; 
 
-                //std.debug.print("Pos: ({}, {})\n", .{transform.position[0], transform.position[1]});
-            }
-
-        }               
+                    //std.debug.print("Pos: ({}, {})\n", .{transform.position[0], transform.position[1]});
+                }
+            }               
+        }
     }
 }
 
