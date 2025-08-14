@@ -433,23 +433,25 @@ fn renderEye(
         player_transform = transform.*;
     }
     std.debug.print("\nPlayer: .{any}\n", .{player_transform});
+
     for (0..2) |i| {
+        var xr_orientation_mat: nz.Mat4(f32) = .fromQuaternion(.{
+            view[i].pose.orientation.x,
+            view[i].pose.orientation.y,
+            view[i].pose.orientation.z,
+            view[i].pose.orientation.w,
+        });
+        xr_orientation_mat = .mul(xr_orientation_mat, nz.Mat4(f32).rotate(player_transform.rotation[0], .{ 1, 0, 0 }));
+        xr_orientation_mat = .mul(xr_orientation_mat, nz.Mat4(f32).rotate(player_transform.rotation[1], .{ 0, 1, 0 }));
+        xr_orientation_mat = .mul(xr_orientation_mat, nz.Mat4(f32).rotate(player_transform.rotation[2], .{ 0, 0, 1 }));
         var view_matrix: nz.Mat4(f32) = .inverse(.mul(
             .translate(.{
                 view[i].pose.position.x + player_transform.position[0],
                 view[i].pose.position.y + player_transform.position[1],
                 view[i].pose.position.z + player_transform.position[2],
             }),
-            .fromQuaternion(.{
-                view[i].pose.orientation.x,
-                view[i].pose.orientation.y,
-                view[i].pose.orientation.z,
-                view[i].pose.orientation.w,
-            }),
+            xr_orientation_mat,
         ));
-        view_matrix.d[3] += player_transform.rotation[0];
-        view_matrix.d[7] += player_transform.rotation[1];
-        view_matrix.d[11] += player_transform.rotation[2];
         @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
         ptr_start += 16;
     }
@@ -659,7 +661,10 @@ fn renderEye(
 pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
     const scale: nz.Mat4(f32) = .scale(transform.scale);
 
-    const rotation: nz.Mat4(f32) = .identity(1);
+    var rotation: nz.Mat4(f32) = .identity(1);
+    rotation = .mul(rotation, nz.Mat4(f32).rotate(transform.rotation[0], .{ 1, 0, 0 }));
+    rotation = .mul(rotation, nz.Mat4(f32).rotate(transform.rotation[1], .{ 0, 1, 0 }));
+    rotation = .mul(rotation, nz.Mat4(f32).rotate(transform.rotation[2], .{ 0, 0, 1 }));
 
     var positon: nz.Mat4(f32) = .translate(transform.position);
 
