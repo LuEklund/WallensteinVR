@@ -1,13 +1,12 @@
+const std = @import("std");
+const World = @import("../ecs.zig").World;
 const nz = @import("numz");
 
 pub const Renderer = @import("renderer/renderer.zig").Renderer;
+pub const GfxContext = @import("renderer/Context.zig");
 pub const Input = @import("Input/Input.zig");
 pub const AssetManager = @import("asset_manager/AssetManager.zig");
-
-pub const RigidBody = struct {
-    force: nz.Vec3(f32) = @splat(0),
-    mass: f32 = 1,
-};
+pub const physics = @import("physics.zig");
 
 pub const Transform = struct {
     position: nz.Vec3(f32) = @splat(0),
@@ -18,3 +17,26 @@ pub const Transform = struct {
 pub const Mesh = struct {
     name: []const u8,
 };
+
+pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
+    try world.runSystems(allocator, .{
+        Renderer.init,
+        AssetManager.init,
+        Renderer.initSwapchains,
+    });
+}
+
+pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
+    try world.runSystems(allocator, .{
+        AssetManager.deinit,
+        Renderer.deinit,
+    });
+}
+
+pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
+    try world.runSystems(allocator, .{
+        Renderer.beginFrame,
+        Input.pollEvents,
+        Renderer.update,
+    });
+}
