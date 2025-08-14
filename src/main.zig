@@ -36,15 +36,7 @@ pub fn main() !void {
         verices,
         indices,
     );
-    //Game Init
-    try world.runSystems(allocator, .{
-        someInitSystem,
-        ininitPlayer,
-    });
 
-    const io_ctx: *eng.IoCtx = try world.getResource(eng.IoCtx);
-    io_ctx.*.player_pos[0] = @floatFromInt(map.start_x);
-    io_ctx.*.player_pos[2] = @floatFromInt(map.start_y);
     const ctx: *GfxContext = try world.getResource(GfxContext);
     while (!ctx.should_quit) {
         try world.runSystems(allocator, .{
