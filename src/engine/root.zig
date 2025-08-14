@@ -46,3 +46,5 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     });
 }
 pub const Player = struct {};
+pub const Enemy = struct {};
+

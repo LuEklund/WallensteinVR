@@ -1,4 +1,5 @@
 const std = @import("std");
+const nz = @import("numz");
 
 pub const Tilemap = struct {
     const Self = @This();
@@ -23,6 +24,13 @@ pub const Tilemap = struct {
     pub fn get(self: Self, x: usize, y: usize) u8 {
         const index = (y * self.x) + x;
         return self.tiles[index];
+    }
+
+   
+    pub fn getIndex(self: Self, index: usize) nz.Vec2(usize) {
+        const x = index % self.x;
+        const y = (index - x) / self.x;
+        return nz.Vec2(usize){ x, y };
     }
 
     pub fn set(self: Self, x: usize, y: usize, tile: u8) void {
@@ -131,6 +139,21 @@ pub fn init(allocator: std.mem.Allocator, seed: ?u64) !Tilemap {
     var map: Tilemap = try .init(allocator, 10, 10);
     map.spawnWalker(random, null);
     // map.gridSpawn(7, 0, 200);
+
+    const tiles: [100]u8 = .{
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,0,1,0,1,0,1,1,1,
+        1,0,0,1,0,0,0,0,1,1,
+        1,1,0,1,0,1,1,0,1,1,
+        1,0,0,0,0,0,1,0,0,1,
+        1,1,0,1,1,0,1,1,1,1,
+        1,1,0,0,1,0,0,0,1,1,
+        1,1,0,1,1,1,1,0,1,1,
+        1,0,0,0,0,0,0,0,0,1,
+        1,1,1,1,1,1,1,1,1,1,
+    };
+
+    @memcpy(map.tiles, &tiles);
 
     map.print();
     return map;

@@ -40,8 +40,8 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     // });
     _ = try world.spawn(allocator, .{
         eng.Transform{
-            .position = .{ 0, -0.5, -5 },
-            .scale = .{ 0.1, 0.1, 0.11 },
+            //.position = .{ 0, -0.5, -5 },
+            //.scale = .{ 0.1, 0.1, 0.11 },
         },
         eng.Mesh{ .name = "world" },
     });
