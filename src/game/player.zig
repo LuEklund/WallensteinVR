@@ -6,10 +6,9 @@ const World = @import("../ecs.zig").World;
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     _ = try world.spawn(allocator, .{
         eng.Transform{
-            .position = .{ 0, 0, 0 },
-            .scale = .{ 0.1, 0.1, 0.1 },
+            // .position = .{ 0, 0, 0 },
+            // .scale = .{ 0.1, 0.1, 0.1 },
         },
-        eng.Mesh{ .name = "cube.obj" },
     });
 }
 
