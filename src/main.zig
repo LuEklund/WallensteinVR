@@ -30,6 +30,7 @@ pub fn main() !void {
     defer allocator.free(verices);
     defer allocator.free(indices);
     const asset_manager = try world.getResource(eng.AssetManager);
+
     try asset_manager.putModel(
         allocator,
         "world",
