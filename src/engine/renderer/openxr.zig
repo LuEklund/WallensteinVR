@@ -422,29 +422,22 @@ pub fn getPath(instance: c.XrInstance, name: [*:0]const u8) !c.XrPath {
 //NOTE: https://amini-allight.org/post/openxr-tutorial-part-9
 //NOTE: https://registry.khronos.org/OpenXR/specs/1.0/html/xrspec.html#semantic-path-interaction-profiles
 //TODO: Dymanic Headset Select? Instead of JUST HTC VIVE
-pub fn suggestBindings(instance: c.XrInstance, leftHandAction: c.XrAction, rightHandAction: c.XrAction, leftGrabAction: c.XrAction, rightGrabAction: c.XrAction) !void {
-    const leftHandPath: c.XrPath = try getPath(instance, "/user/hand/left/input/grip/pose");
-    const rightHandPath: c.XrPath = try getPath(instance, "/user/hand/right/input/grip/pose");
-    const leftButtonPath: c.XrPath = try getPath(instance, "/user/hand/left/input/select/click");
-    const rightButtonPath: c.XrPath = try getPath(instance, "/user/hand/right/input/select/click");
-    const interactionProfilePath: c.XrPath = try getPath(instance, "/interaction_profiles/khr/simple_controller");
 
-    const suggestedBindings = [4]c.XrActionSuggestedBinding{
-        .{ .action = leftHandAction, .binding = leftHandPath },
-        .{ .action = rightHandAction, .binding = rightHandPath },
-        .{ .action = leftGrabAction, .binding = leftButtonPath },
-        .{ .action = rightGrabAction, .binding = rightButtonPath },
-    };
-
+pub fn createSuggestedBinding(instance: c.XrInstance, action: c.XrAction, name: [*:0]const u8) !c.XrActionSuggestedBinding {
+    const action_path = try getPath(instance, name);
+    return .{ .action = action, .binding = action_path };
+}
+pub fn suggestBindings(instance: c.XrInstance, profile_path: c.XrPath, bindings: []const c.XrActionSuggestedBinding) !void {
     var suggestedBinding = c.XrInteractionProfileSuggestedBinding{
         .type = c.XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING,
-        .interactionProfile = interactionProfilePath,
-        .countSuggestedBindings = 4,
-        .suggestedBindings = &suggestedBindings[0],
+        .interactionProfile = profile_path,
+        .countSuggestedBindings = @intCast(bindings.len),
+        .suggestedBindings = &bindings[0],
     };
 
     try loader.xrCheck(c.xrSuggestInteractionProfileBindings(instance, &suggestedBinding));
 }
+
 pub fn attachActionSet(session: c.XrSession, actionSet: c.XrActionSet) !void {
     var actionSetsAttachInfo = c.XrSessionActionSetsAttachInfo{
         .type = c.XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO,
@@ -513,4 +506,21 @@ pub fn fromXrPath(xr_instance: c.XrInstance, path: c.XrPath) ![*:0]u8 {
     const text: [c.XR_MAX_PATH_LENGTH]u8 = undefined;
     try loader.xrCheck(c.xrPathToString(xr_instance, path, c.XR_MAX_PATH_LENGTH, &strl, text));
     return text;
+}
+
+pub fn createActionPoses(xr_instance: c.XrInstance, xr_session: c.XrSession, action: c.XrAction, sub_path: [*:0]const u8) !c.XrSpace {
+    var xrSpace: c.XrSpace = undefined;
+    const xrPoseIdentity: c.XrPosef = .{
+        .orientation = .{ .x = 0.0, .y = 0.0, .z = 0.0, .w = 1.0 },
+        .position = .{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    };
+    // Create frame of reference for a pose action
+    var actionSpaceCI: c.XrActionSpaceCreateInfo = .{
+        .type = c.XR_TYPE_ACTION_SPACE_CREATE_INFO,
+        .action = action,
+        .poseInActionSpace = xrPoseIdentity,
+        .subactionPath = try createXrPath(xr_instance, sub_path),
+    };
+    try loader.xrCheck(c.xrCreateActionSpace(xr_session, &actionSpaceCI, &xrSpace));
+    return xrSpace;
 }

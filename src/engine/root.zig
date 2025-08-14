@@ -7,6 +7,7 @@ pub const GfxContext = @import("renderer/Context.zig");
 pub const Input = @import("Input/Input.zig");
 pub const AssetManager = @import("asset_manager/AssetManager.zig");
 pub const physics = @import("physics.zig");
+pub const IoCtx = @import("Input/Context.zig");
 
 pub const BBAA = physics.BBAA;
 pub const RigidBody = physics.Rigidbody;
@@ -26,6 +27,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         Renderer.init,
         AssetManager.init,
         Renderer.initSwapchains,
+        Input.init,
     });
 }
 
@@ -43,3 +45,4 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         Renderer.update,
     });
 }
+pub const Player = struct {};

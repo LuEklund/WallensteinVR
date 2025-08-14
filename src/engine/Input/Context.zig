@@ -1,9 +1,12 @@
 const loader = @import("loader");
+const nz = @import("numz");
 const c = loader.c;
+const sdl = @import("sdl3");
 
 grabbed_block: [2]i32 = .{ -1, -1 },
 near_block: [2]i32 = .{ -1, -1 },
 grab_state: [2]c.XrActionStateFloat = .{ .{ .type = c.XR_TYPE_ACTION_STATE_FLOAT }, .{ .type = c.XR_TYPE_ACTION_STATE_FLOAT } },
+trackpad_state: [2]c.XrActionStateVector2f = .{ .{ .type = c.XR_TYPE_ACTION_STATE_VECTOR2F }, .{ .type = c.XR_TYPE_ACTION_STATE_VECTOR2F } },
 hand_paths: [2]c.XrPath = .{ 0, 0 },
 hand_pose_space: [2]c.XrSpace = undefined,
 hand_pose: [2]c.XrPosef = .{
@@ -19,7 +22,18 @@ hand_pose: [2]c.XrPosef = .{
 action_set: c.XrActionSet,
 palm_pose_action: c.XrAction = undefined,
 grab_cube_action: c.XrAction = undefined,
+trackpad_action: c.XrAction = undefined,
 hand_pose_state: [2]c.XrActionStatePose = .{
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
 },
+
+player_pos: nz.Vec3(f32),
+keyboard: Keyboard = undefined,
+
+pub const Keyboard = struct {
+    keys: []const bool = undefined,
+    pub fn isActive(self: *@This(), key: sdl.Scancode) bool {
+        return self.keys[@intFromEnum(key)];
+    }
+};
