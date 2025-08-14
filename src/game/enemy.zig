@@ -6,40 +6,25 @@ const game = @import("../game/root.zig");
 const Tilemap = @import("map.zig").Tilemap;
 const nz = @import("numz");
 
-var first_enemy: bool = true;
-
 const PQEntry = struct {
-    priority: i32,
-    node: nz.Vec2(f32),
+    priority: usize,
+    node: nz.Vec2(usize),
 };
 
 const PosKey = struct {
-    x: i32,
-    y: i32,
-};
-
-const PosKeyUsize = struct {
     x: usize,
     y: usize,
 };
 
-fn toKey(v: nz.Vec2(f32)) PosKey {
+fn toKey(v: nz.Vec2(usize)) PosKey {
     return .{
-        .x = @intFromFloat(v[0]),
-        .y = @intFromFloat(v[1]),
+        .x = v[0],
+        .y = v[1],
     };
 }
 
-fn toKeyUsize(v: nz.Vec2(f32)) PosKeyUsize {
-    return .{
-        .x = @intFromFloat(v[0]),
-        .y = @intFromFloat(v[1]),
-    };
-}
-
-fn heuristic(x: nz.Vec2(f32), y: nz.Vec2(f32)) f32 {
-    // Manhattan Distance
-    return @abs(x[0] - y[0]) + @abs(x[1] - y[1]);
+fn heuristic(x: nz.Vec2(usize), y: nz.Vec2(usize)) usize {
+    return @abs(x[0] -| y[0]) +| @abs(x[1] -| y[1]);
 }
 
 fn pqLessThan(_: void, a: PQEntry, b: PQEntry) std.math.Order {
@@ -48,16 +33,23 @@ fn pqLessThan(_: void, a: PQEntry, b: PQEntry) std.math.Order {
         else .eq;
 }
 
-fn astar(
-    allocator: std.mem.Allocator, map: Tilemap, player_pos: nz.Vec2(f32), pos: nz.Vec2(f32)) ![]nz.Vec2(f32) {
+fn lerp(a: nz.Vec2(f32), b: nz.Vec2(usize), t: f32) nz.Vec2(f32) {
+    const b_float = nz.Vec2(f32){ @as(f32, @floatFromInt(b[0])), @as(f32, @floatFromInt(b[1]))};
+    const c = a * @as(nz.Vec2(f32), @splat((1 - t)));
+    const d = b_float * @as(nz.Vec2(f32), @splat(t));
+    return c + d;
+}
 
-    var path = std.ArrayList(nz.Vec2(f32)).init(allocator);
+fn astar(
+    allocator: std.mem.Allocator, map: Tilemap, player_pos: nz.Vec2(usize), pos: nz.Vec2(usize)) ![]nz.Vec2(usize) {
+
+    var path = std.ArrayList(nz.Vec2(usize)).init(allocator);
     errdefer path.deinit();
 
     var came_from = std.AutoHashMap(PosKey, PosKey).init(allocator);
     defer came_from.deinit();
 
-    var cost_so_far = std.AutoHashMap(PosKey, i32).init(allocator);
+    var cost_so_far = std.AutoHashMap(PosKey, usize).init(allocator);
     defer cost_so_far.deinit();
 
     var pq = std.PriorityQueue(PQEntry, void, pqLessThan).init(allocator, {});
@@ -66,7 +58,7 @@ fn astar(
     try pq.add(.{ .priority = 0, .node = pos });
     try cost_so_far.put(toKey(pos), 0);
 
-    const dirs = [_][2]f32 {
+    const dirs = [_][2]i32 {
         .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1}, .{ 0, -1 },
     };
 
@@ -79,12 +71,12 @@ fn astar(
 
             var cur_key = toKey(cur);
             while (came_from.get(cur_key)) |prev_key| {
-                cur = nz.Vec2(f32){ @floatFromInt(prev_key.x), @floatFromInt(prev_key.y) };
+                cur = nz.Vec2(usize){ prev_key.x, prev_key.y };
                 cur_key = prev_key;
                 try path.append(cur);
             }
 
-            std.mem.reverse(nz.Vec2(f32), path.items);
+            std.mem.reverse(nz.Vec2(usize), path.items);
 
             std.debug.print("Found Path ({} steps):\n", .{path.items.len});
             for (path.items) |p| {
@@ -97,20 +89,17 @@ fn astar(
         const cur_cost = cost_so_far.get(toKey(current)).?;
 
         for (dirs) |dir| {
-            const neighbor = nz.Vec2(f32){
-                current[0] + dir[0],
-                current[1] + dir[1],
+            const neighbor = nz.Vec2(usize){
+                @intCast(@as(i32, @intCast(current[0])) + dir[0]),
+                @intCast(@as(i32, @intCast(current[1])) + dir[1]),
             };
             if (neighbor[0] < 0 or neighbor[1] < 0
-                or neighbor[0] >= @as(f32, @floatFromInt(map.x))
-                or neighbor[1] >= @as(f32, @floatFromInt(map.y))) {
+                or neighbor[0] >= map.x
+                or neighbor[1] >= map.y) {
                 continue;
             }
 
-            if (map.get(
-                @as(usize, @intFromFloat(neighbor[0])),
-                @as(usize, @intFromFloat(neighbor[1])),
-            ) == 1) continue;
+            if (map.get(neighbor[0], neighbor[1]) == 1) continue;
 
             const new_cost = cur_cost + 1;
             const neighbor_key = toKey(neighbor);
@@ -118,7 +107,7 @@ fn astar(
 
             if (old_cost == null or new_cost < old_cost.?) {
                 try cost_so_far.put(neighbor_key, new_cost);
-                const priority = new_cost + @as(i32, @intFromFloat(heuristic(neighbor, player_pos)));
+                const priority = new_cost + heuristic(neighbor, player_pos);
                 try pq.add(.{ .priority = priority, .node = neighbor });
                 try came_from.put(neighbor_key, toKey(current));
             }
@@ -136,17 +125,19 @@ fn isPlayerOnFreeTile(map: Tilemap, pos: nz.Vec2(usize)) bool {
 pub fn spwanEnemy(comps: []const type, world: *World(comps), allocator: std.mem.Allocator, map: Tilemap) !void {
     var prng = std.Random.DefaultPrng.init(std.crypto.random.int(u64));
     const random = prng.random();
-    var pos_x = random.int(usize) % (map.x-1);
-    var pos_y = random.int(usize) % (map.y-1);
+    var pos_x = random.int(usize) % (map.x);
+    var pos_y = random.int(usize) % (map.y);
 
     while (map.get(pos_x, pos_y) == 1) {
-        pos_x = random.int(usize) % (map.x-1);
-        pos_y = random.int(usize) % (map.y-1);
+        pos_x = random.int(usize) % (map.x);
+        pos_y = random.int(usize) % (map.y);
     }
 
 
     _ = try world.spawn(allocator, .{
-        eng.Enemy{},
+        eng.Enemy{
+            .lerp_percent = 0.0,
+        },
         eng.Transform{
             .position = .{@floatFromInt(pos_x), 1, @floatFromInt(pos_y)},
             .scale = .{ 1, 1, 1 }
@@ -165,33 +156,49 @@ pub fn enemyUpdateSystem(comps: []const type, world: *World(comps), allocator: s
         const transform = entity.get(eng.Transform).?;
         player_transform = transform.*;
         const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(player_transform.position[0])), @as(usize, @intFromFloat(player_transform.position[2]))};
-        if (io_ctx.keyboard.isActive(.k) and first_enemy == true and isPlayerOnFreeTile(map.*, player_pos_vec2)) {
+        if (io_ctx.keyboard.isActive(.k) and isPlayerOnFreeTile(map.*, player_pos_vec2)) {
             try spwanEnemy(comps, world, allocator, map.*);
-            first_enemy = false;
         }
     }
 
-    std.debug.print("Player X: {} Y: {}\n", .{player_transform.position[0], player_transform.position[2]});
+    //std.debug.print("Player X: {} Y: {}\n", .{player_transform.position[0], player_transform.position[2]});
 
     const enemy_speed: f32 = 0.1;
     var query_enemy = world.query(&. {eng.Enemy, eng.Transform }); 
     while (query_enemy.next()) |entity| {
         const transform: *eng.Transform = entity.get(eng.Transform).?;
+        var enemy = entity.get(eng.Enemy).?;
+        const time: *eng.time.Time = try world.getResource(eng.time.Time);
+        enemy.lerp_percent += 0.01 * @as(f32, @floatCast(time.delta_time));
+        if (enemy.lerp_percent > 1.0) {
+            enemy.lerp_percent = 0.0;
+        }
+        //std.debug.print("Lerp P: {}\n", .{enemy.lerp_percent});
+
         var delta_transform: nz.Vec3(f32) = .{ player_transform.position[0] - transform.position[0],
                                                player_transform.position[1] - transform.position[1],
                                                player_transform.position[2] - transform.position[2] };
         delta_transform = nz.normalize(delta_transform) * @as(nz.Vec3(f32), @splat(enemy_speed));
         delta_transform[1] = 0;
 
-        const player_pos_vec2 = nz.Vec2(f32){player_transform.position[0], player_transform.position[2]};
-        std.debug.print("Start ({any}) Goal ({any})\n", .{nz.Vec2(f32){transform.position[0], transform.position[2]}, player_pos_vec2});
+        const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(player_transform.position[0])), @as(usize, @intFromFloat(player_transform.position[2]))};
+        const enemy_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(transform.position[0])), @as(usize, @intFromFloat(transform.position[2]))};
+        std.debug.print("Start ({any}) Goal ({any})\n", .{enemy_pos_vec2, player_pos_vec2});
 
-        const tiles: []nz.Vec2(f32) = try astar(allocator, map.*, player_pos_vec2, nz.Vec2(f32){transform.position[0], transform.position[2]});
-        delta_transform[0] = tiles[0][0];
-        delta_transform[2] = tiles[0][1];
-                            
-        transform.position += delta_transform;
+        if (isPlayerOnFreeTile(map.*, player_pos_vec2)) {
+            
+            const tiles: []nz.Vec2(usize) = try astar(allocator, map.*, player_pos_vec2, enemy_pos_vec2);
+            if (tiles.len > 1) {
+                //std.debug.print("Tiles: {}\n", .{tiles[1]});
+                const movement = lerp(nz.Vec2(f32){transform.position[0], transform.position[2]}, tiles[1], enemy.lerp_percent);
+                //std.debug.print("Movement: ({}, {})\n", .{movement[0], movement[1]});
+                transform.position[0] = movement[0]; 
+                transform.position[2] = movement[1]; 
+
+                //std.debug.print("Pos: ({}, {})\n", .{transform.position[0], transform.position[1]});
+            }
+
+        }               
     }
-    
 }
 
