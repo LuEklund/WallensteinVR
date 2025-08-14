@@ -435,23 +435,24 @@ fn renderEye(
     std.debug.print("\nPlayer: .{any}\n", .{player_transform});
 
     for (0..2) |i| {
-        var xr_orientation_mat: nz.Mat4(f32) = .fromQuaternion(.{
+        const xr_orientation_mat: nz.Mat4(f32) = .fromQuaternion(.{
             view[i].pose.orientation.x,
             view[i].pose.orientation.y,
             view[i].pose.orientation.z,
             view[i].pose.orientation.w,
         });
-        xr_orientation_mat = .mul(xr_orientation_mat, nz.Mat4(f32).rotate(player_transform.rotation[0], .{ 1, 0, 0 }));
-        xr_orientation_mat = .mul(xr_orientation_mat, nz.Mat4(f32).rotate(player_transform.rotation[1], .{ 0, 1, 0 }));
-        xr_orientation_mat = .mul(xr_orientation_mat, nz.Mat4(f32).rotate(player_transform.rotation[2], .{ 0, 0, 1 }));
-        var view_matrix: nz.Mat4(f32) = .inverse(.mul(
-            .translate(.{
-                view[i].pose.position.x + player_transform.position[0],
-                view[i].pose.position.y + player_transform.position[1],
-                view[i].pose.position.z + player_transform.position[2],
-            }),
-            xr_orientation_mat,
-        ));
+
+        var local_orientation_mat: nz.Mat4(f32) = .identity(1);
+        local_orientation_mat = .mul(local_orientation_mat, .rotate(player_transform.rotation[0], .{ 1, 0, 0 }));
+        local_orientation_mat = .mul(local_orientation_mat, .rotate(player_transform.rotation[1], .{ 0, 1, 0 }));
+        local_orientation_mat = .mul(local_orientation_mat, .rotate(player_transform.rotation[2], .{ 0, 0, 1 }));
+
+        const local_location_mat = nz.Mat4(f32).translate(.{
+            view[i].pose.position.x + player_transform.position[0],
+            view[i].pose.position.y + player_transform.position[1],
+            view[i].pose.position.z + player_transform.position[2],
+        });
+        var view_matrix = nz.Mat4(f32).inverse(local_location_mat.mul(local_orientation_mat.mul(xr_orientation_mat)));
         @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
         ptr_start += 16;
     }

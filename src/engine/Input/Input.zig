@@ -225,10 +225,10 @@ pub fn pollAction(
         actionStateGetInfo.subactionPath = io_ctx.hand_paths[i];
         try loader.xrCheck(c.xrGetActionStateVector2f(ctx.xr_session, &actionStateGetInfo, &io_ctx.trackpad_state[i]));
         // if (io_ctx.trackpad_state[i].isActive != 0) {
-        //     std.debug.print("\nTrackpad pos: {d}, {d}\n", .{
-        //         io_ctx.trackpad_state[i].currentState.x,
-        //         io_ctx.trackpad_state[i].currentState.y,
-        //     });
+        std.debug.print("\nTrackpad pos: {d}, {d}\n", .{
+            io_ctx.trackpad_state[i].currentState.x,
+            io_ctx.trackpad_state[i].currentState.y,
+        });
         // }
     }
 
