@@ -121,7 +121,7 @@ pub const Tilemap = struct {
     }
 };
 
-pub fn initLevel(allocator: std.mem.Allocator, seed: ?u64) !Tilemap {
+pub fn init(allocator: std.mem.Allocator, seed: ?u64) !Tilemap {
     var prng = std.Random.DefaultPrng.init(seed orelse std.crypto.random.int(u64));
     const random = prng.random();
     // defer std.debug.print("SEED: {d}\n", .{seed});
