@@ -3,7 +3,6 @@ const log = @import("std").log;
 const builtin = @import("builtin");
 const xr = @import("openxr.zig");
 const vk = @import("vulkan.zig");
-const input = @import("input.zig");
 const VulkanSwapchain = @import("VulkanSwapchain.zig");
 const XrSwapchain = @import("XrSwapchain.zig");
 const loader = @import("loader");
@@ -16,7 +15,7 @@ const root = @import("../root.zig");
 const AssetManager = @import("../asset_manager/AssetManager.zig");
 const Context = @import("Context.zig");
 const Input = @import("../Input/Input.zig");
-var quit: std.atomic.Value(bool) = .init(false);
+const IoCtx = @import("../Input/Context.zig");
 
 const window_width: c_int = 1600;
 const window_height: c_int = 900;
@@ -29,12 +28,12 @@ pub const Renderer = struct {
             loader.c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME,
         };
         const xr_layers = &[_][*:0]const u8{
-            "XR_APILAYER_LUNARG_core_validation",
-            "XR_APILAYER_LUNARG_api_dump",
+            // "XR_APILAYER_LUNARG_core_validation",
+            // "XR_APILAYER_LUNARG_api_dump",
         };
 
         const vk_layers = &[_][*:0]const u8{
-            "VK_LAYER_KHRONOS_validation",
+            // "VK_LAYER_KHRONOS_validation",
         };
 
         try xr.validateExtensions(allocator, xr_extensions);
@@ -44,17 +43,6 @@ pub const Renderer = struct {
         const xrd = try xr.Dispatcher.init(xr_instance);
         const xr_debug_messenger: c.XrDebugUtilsMessengerEXT = try xr.createDebugMessenger(xrd, xr_instance);
         const xr_system_id: c.XrSystemId = try xr.getSystem(xr_instance);
-
-        const action_set: c.XrActionSet = try xr.createActionSet(xr_instance);
-        var paths: std.ArrayListUnmanaged([*:0]const u8) = .empty;
-        try paths.append(allocator, "/user/hand/left");
-        try paths.append(allocator, "/user/hand/right");
-        defer paths.deinit(allocator);
-        const m_grabCubeAction = try xr.createAction(xr_instance, action_set, "grab-cube", c.XR_ACTION_TYPE_FLOAT_INPUT, paths);
-        const m_palmPoseAction = try xr.createAction(xr_instance, action_set, "palm-pose", c.XR_ACTION_TYPE_POSE_INPUT, paths);
-
-        const m_handPaths_l = try xr.createXrPath(xr_instance, "/user/hand/left".ptr);
-        const m_handPaths_r = try xr.createXrPath(xr_instance, "/user/hand/right".ptr);
 
         const xr_graphics_requirements: c.XrGraphicsRequirementsVulkanKHR, const xr_instance_extensions: []const [*:0]const u8 =
             try xr.getVulkanInstanceRequirements(xrd, allocator, xr_instance, xr_system_id);
@@ -74,12 +62,6 @@ pub const Renderer = struct {
         const vk_logical_device: c.VkDevice, const queue: c.VkQueue = try vk.createLogicalDevice(vk_physical_device, queue_family_index, vk_device_extensions);
 
         const xr_session: c.XrSession = try xr.createSession(xr_instance, xr_system_id, vk_instance, vk_physical_device, vk_logical_device, queue_family_index);
-
-        try xr.suggestBindings(xr_instance, m_palmPoseAction, m_palmPoseAction, m_grabCubeAction, m_grabCubeAction);
-
-        const hand_pose_space_l = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/left");
-        const hand_pose_space_r = try input.createActionPoses(xr_instance, xr_session, m_palmPoseAction, "/user/hand/right");
-        try xr.attachActionSet(xr_session, action_set);
 
         const vulkan_swapchain: VulkanSwapchain = try .init(vk_physical_device, vk_logical_device, spectator_view.sdl_surface, window_width, window_height);
         const xr_swapchain: XrSwapchain = try .init(2, vk_physical_device, xr_instance, xr_system_id, xr_session);
@@ -115,7 +97,6 @@ pub const Renderer = struct {
             .fragment_shader = fragment_shader,
             .pipeline_layout = pipeline_layout,
             .vkid = vkid,
-            .action_set = action_set,
             .xr_debug_messenger = xr_debug_messenger,
             .xr_instance = xr_instance,
             .xr_session = xr_session,
@@ -123,17 +104,6 @@ pub const Renderer = struct {
             .xr_space = space,
             .xr_swapchain = xr_swapchain,
             .predicted_time_frame = 0,
-            //XR POSE CONTEXTm_grabCubeAction
-            .grab_cube_action = m_grabCubeAction,
-            .palm_pose_action = m_palmPoseAction,
-            .hand_paths = .{
-                m_handPaths_l,
-                m_handPaths_r,
-            },
-            .hand_pose_space = .{
-                hand_pose_space_l,
-                hand_pose_space_r,
-            },
         };
 
         try world.setResource(allocator, Context, context);
@@ -169,7 +139,7 @@ pub const Renderer = struct {
     pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
         const ctx = try world.getResource(Context);
         defer allocator.destroy(ctx);
-        std.debug.print("\n\n=========[EXITED while loop]===========\n\n", .{});
+        // std.debug.print("\n\n=========[EXITED while loop]===========\n\n", {});
         try loader.xrCheck(c.vkDeviceWaitIdle(ctx.vk_logical_device));
 
         c.vkDestroyPipeline(ctx.vk_logical_device, ctx.pipeline, null);
@@ -183,7 +153,7 @@ pub const Renderer = struct {
     }
 
     pub fn beginFrame(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
-        std.debug.print("\n\n=========[BEGIN FRAME]===========\n\n", .{}); //TODO: QUITE APP
+        // std.debug.print("\n\n=========[BEGIN FRAME]===========\n\n", .{}); //TODO: QUITE APP
         var ctx = try world.getResource(Context);
         var eventData = c.XrEventDataBuffer{
             .type = c.XR_TYPE_EVENT_DATA_BUFFER,
@@ -227,12 +197,12 @@ pub const Renderer = struct {
                         std.debug.print("OpenXR runtime requested shutdown.\n", .{}); //TODO: Quit APP
                     },
                     else => {
-                        std.log.err("Unknown event STATE received: {any}", .{event.state});
+                        // std.log.err("Unknown event STATE received: {any}", .{event.state});
                     },
                 }
             },
             else => {
-                std.log.err("Unknown event TYPE received: {any}", .{eventData.type});
+                // std.log.err("Unknown event TYPE received: {any}", .{eventData.type});
             },
         }
 
@@ -254,7 +224,7 @@ pub const Renderer = struct {
     pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
         var ctx = try world.getResource(Context);
         if (ctx.running == false) return;
-        std.debug.print("\n\n=========[BEGIN RENDER]===========\n\n", .{});
+        // std.debug.print("\n\n=========[BEGIN RENDER]===========\n\n", .{});
 
         if (ctx.should_render == c.VK_FALSE) {
             var end_frame_info = c.XrFrameEndInfo{
@@ -290,7 +260,7 @@ pub const Renderer = struct {
             // quit.store(should_quit, .release);
         }
         ctx.last_rendered_image_index = active_index;
-        std.debug.print("\n\n=========[RENDER DONE]===========\n\n", .{});
+        // std.debug.print("\n\n=========[RENDER DONE]===========\n\n", .{});
     }
 };
 
@@ -454,11 +424,32 @@ fn renderEye(
         ptr_start += 16;
     }
 
+    // const io_ctx = try world.getResource(IoCtx);
+
+    var query = world.query(&.{ root.Player, root.Transform });
+    var player_transform: root.Transform = .{};
+    while (query.next()) |ent| {
+        const transform = ent.get(root.Transform).?;
+        player_transform = transform.*;
+    }
+    std.debug.print("\nPlayer: .{any}\n", .{player_transform});
     for (0..2) |i| {
-        const view_matrix: nz.Mat4(f32) = .inverse(.mul(
-            .translate(.{ view[i].pose.position.x, view[i].pose.position.y, view[i].pose.position.z }),
-            .fromQuaternion(.{ view[i].pose.orientation.x, view[i].pose.orientation.y, view[i].pose.orientation.z, view[i].pose.orientation.w }),
+        var view_matrix: nz.Mat4(f32) = .inverse(.mul(
+            .translate(.{
+                view[i].pose.position.x + player_transform.position[0],
+                view[i].pose.position.y + player_transform.position[1],
+                view[i].pose.position.z + player_transform.position[2],
+            }),
+            .fromQuaternion(.{
+                view[i].pose.orientation.x,
+                view[i].pose.orientation.y,
+                view[i].pose.orientation.z,
+                view[i].pose.orientation.w,
+            }),
         ));
+        view_matrix.d[3] += player_transform.rotation[0];
+        view_matrix.d[7] += player_transform.rotation[1];
+        view_matrix.d[11] += player_transform.rotation[2];
         @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
         ptr_start += 16;
     }
@@ -666,10 +657,7 @@ fn renderEye(
 }
 
 pub fn renderMesh(transform: root.Transform, model: AssetManager.Model, command_buffer: c.VkCommandBuffer, layput: c.VkPipelineLayout) void {
-    var scale: nz.Mat4(f32) = .identity(2);
-    scale.d[0] = transform.scale[0];
-    scale.d[5] = transform.scale[1];
-    scale.d[10] = transform.scale[2];
+    const scale: nz.Mat4(f32) = .scale(transform.scale);
 
     const rotation: nz.Mat4(f32) = .identity(1);
 

@@ -6,12 +6,14 @@ pub const Tilemap = struct {
     tiles: []u8,
     x: usize,
     y: usize,
+    start_x: usize,
+    start_y: usize,
 
     pub fn init(allocator: std.mem.Allocator, x: usize, y: usize) !Self {
         const tiles: []u8 = try allocator.alloc(u8, x * y);
         @memset(tiles, 1);
 
-        return .{ .tiles = tiles, .x = x, .y = y };
+        return .{ .tiles = tiles, .x = x, .y = y, .start_x = 0, .start_y = 0 };
     }
 
     pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
@@ -28,23 +30,23 @@ pub const Tilemap = struct {
         self.tiles[index] = tile;
     }
 
-    pub fn spawnWalker(self: Self, random: std.Random, iterations: ?usize) void {
+    pub fn spawnWalker(self: *Self, random: std.Random, iterations: ?usize) void {
         var x: usize = random.int(usize) % self.x;
         var y: usize = random.int(usize) % self.y;
 
-        const start_x = x;
-        const start_y = y;
-        defer self.set(start_x, start_y, 254);
+        self.start_x = x;
+        self.start_y = y;
+        defer self.set(self.start_x, self.start_y, 254);
 
         const i = iterations orelse 10000;
         std.debug.print("ITS {d}\n", .{i});
         for (0..i) |_| {
             const decision: u8 = random.int(u8) % 4;
             switch (decision) {
-                0 => x += 1,
-                1 => y += 1,
-                2 => x -= 1,
-                3 => y -= 1,
+                0 => x +|= 1,
+                1 => y +|= 1,
+                2 => x -|= 1,
+                3 => y -|= 1,
                 else => unreachable,
             }
 
@@ -126,7 +128,7 @@ pub fn init(allocator: std.mem.Allocator, seed: ?u64) !Tilemap {
     const random = prng.random();
     // defer std.debug.print("SEED: {d}\n", .{seed});
 
-    var map: Tilemap = try .init(allocator, 150, 150);
+    var map: Tilemap = try .init(allocator, 10, 10);
     map.spawnWalker(random, null);
     // map.gridSpawn(7, 0, 200);
 

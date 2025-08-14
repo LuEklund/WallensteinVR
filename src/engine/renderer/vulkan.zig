@@ -402,7 +402,7 @@ pub fn createPipeline(
         .rasterizerDiscardEnable = c.VK_FALSE,
         .polygonMode = c.VK_POLYGON_MODE_FILL,
         .lineWidth = 1,
-        .cullMode = c.VK_CULL_MODE_NONE,
+        .cullMode = c.VK_CULL_MODE_BACK_BIT,
         .frontFace = c.VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .depthBiasEnable = c.VK_FALSE,
         .depthBiasConstantFactor = 0,
