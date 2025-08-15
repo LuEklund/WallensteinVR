@@ -116,9 +116,11 @@ pub const Renderer = struct {
         // std.debug.print("\ntextures get; {any}\n", .{it.});
         var texture_image_view: std.ArrayListUnmanaged(c.VkImageView) = .empty;
         var texture_sampler: std.ArrayListUnmanaged(c.VkSampler) = .empty;
+        var texture_name: std.ArrayListUnmanaged([]const u8) = .empty;
         defer texture_image_view.deinit(allocator);
         defer texture_sampler.deinit(allocator);
         while (it.next()) |entry| {
+            try texture_name.append(allocator, entry.key_ptr.*);
             try texture_image_view.append(allocator, entry.value_ptr.texture_image_view);
             try texture_sampler.append(allocator, entry.value_ptr.texture_sample);
         }
@@ -135,6 +137,7 @@ pub const Renderer = struct {
             ctx.descriptor_set_layout,
             texture_image_view.items,
             texture_sampler.items,
+            texture_name.items,
         );
     }
 
@@ -512,7 +515,7 @@ fn renderEye(
         pipeline_layout,
         0,
         1,
-        &image.descriptor_set[0],
+        &image.descriptor_set.get("basket.jpg").?,
         0,
         null,
     );
@@ -525,18 +528,16 @@ fn renderEye(
         const transform = entity.get(root.Transform).?.*;
         const mesh = entity.get(root.Mesh).?.*;
         const texture = entity.get(root.Texture).?.*;
-        if (texture.id < image.descriptor_set.len) {
-            c.vkCmdBindDescriptorSets(
-                image.command_buffer,
-                c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-                pipeline_layout,
-                0,
-                1,
-                &image.descriptor_set[texture.id],
-                0,
-                null,
-            );
-        }
+        c.vkCmdBindDescriptorSets(
+            image.command_buffer,
+            c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipeline_layout,
+            0,
+            1,
+            &image.descriptor_set.get(texture.name).?,
+            0,
+            null,
+        );
         const asset_manager = try world.getResource(AssetManager);
         const model = asset_manager.getModel(mesh.name);
         renderMesh(transform, model, image.command_buffer, pipeline_layout);

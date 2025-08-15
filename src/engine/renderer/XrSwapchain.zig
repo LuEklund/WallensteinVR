@@ -119,6 +119,7 @@ pub fn createSwapchainImages(
     descriptor_set_layout: c.VkDescriptorSetLayout,
     texture_image_view: []c.VkImageView,
     texture_sampler: []c.VkSampler,
+    texture_names: [][]const u8,
 ) !void {
     try loader.xrCheck(c.xrEnumerateSwapchainImages(self.color_swapchain, 0, &self.image_count, null));
     if (self.image_count > 16) @panic("More than 16 XrSwapchainImagesVulkanKHR\n");
@@ -151,6 +152,7 @@ pub fn createSwapchainImages(
             self.xr_vk_depth_images[i],
             texture_image_view,
             texture_sampler,
+            texture_names,
         );
     }
 }
@@ -170,7 +172,7 @@ pub const SwapchainImage = struct {
     memory: c.VkDeviceMemory,
     buffer: c.VkBuffer,
     command_buffer: c.VkCommandBuffer,
-    descriptor_set: []c.VkDescriptorSet,
+    descriptor_set: std.StringArrayHashMapUnmanaged(c.VkDescriptorSet),
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -185,6 +187,7 @@ pub const SwapchainImage = struct {
         depth_iamge: c.XrSwapchainImageVulkanKHR,
         texture_image_views: []c.VkImageView,
         texture_samplers: []c.VkSampler,
+        texture_names: [][]const u8,
     ) !Self {
         const width = my_xr_swapchain.width;
         const height = my_xr_swapchain.height;
@@ -296,11 +299,11 @@ pub const SwapchainImage = struct {
         try loader.vkCheck(c.vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &command_buffer));
 
         var descriptor_write: std.ArrayListUnmanaged(c.VkWriteDescriptorSet) = .empty;
-        var descriptor_sets: std.ArrayListUnmanaged(c.VkDescriptorSet) = .empty;
         var image_infos: std.ArrayListUnmanaged(c.VkDescriptorImageInfo) = .empty;
         defer image_infos.deinit(allocator);
-
-        for (texture_samplers, texture_image_views, 0..) |texture_sampler, texture_image_view, i| {
+        var descriptor_sets: std.StringArrayHashMapUnmanaged(c.VkDescriptorSet) = .empty;
+        for (texture_samplers, texture_image_views, texture_names, 0..) |texture_sampler, texture_image_view, name, i| {
+            std.debug.print("\nNAME: {s}\n", .{name});
             var descriptor_set_allocate_info = c.VkDescriptorSetAllocateInfo{
                 .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                 .descriptorPool = descriptor_pool,
@@ -334,7 +337,7 @@ pub const SwapchainImage = struct {
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 .pImageInfo = &image_infos.items[i],
             } });
-            try descriptor_sets.append(allocator, descriptor_set);
+            try descriptor_sets.put(allocator, name, descriptor_set);
         }
 
         c.vkUpdateDescriptorSets(
@@ -395,6 +398,7 @@ pub const SwapchainImage = struct {
         try loader.vkCheck(c.vkAllocateMemory(device, &image_allocate_info, null, &image_memory));
 
         try loader.vkCheck(c.vkBindImageMemory(device, vk_image, image_memory, 0));
+
         return .{
             .device = device,
             .command_pool = command_pool,
@@ -407,7 +411,7 @@ pub const SwapchainImage = struct {
             .memory = memory,
             .buffer = buffer,
             .command_buffer = command_buffer,
-            .descriptor_set = try descriptor_sets.toOwnedSlice(allocator),
+            .descriptor_set = descriptor_sets,
         };
     }
 
