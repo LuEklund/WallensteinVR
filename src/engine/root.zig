@@ -23,6 +23,10 @@ pub const Mesh = struct {
     name: []const u8,
 };
 
+pub const Texture = struct {
+    id: u8,
+};
+
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     try world.runSystems(allocator, .{
         Renderer.init,
@@ -52,4 +56,3 @@ pub const Player = struct {};
 pub const Enemy = struct {
     lerp_percent: f32,
 };
-
