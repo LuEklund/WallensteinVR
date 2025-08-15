@@ -38,7 +38,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
 
 pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
     const io_ctx = try world.getResource(eng.IoCtx);
-    const time = try world.getResource(eng.Time.Time);
+    const time = try world.getResource(eng.time.Time);
     var query_player = world.query(&.{ eng.Player, eng.Transform });
     var player = query_player.next().?;
     var transform = player.get(eng.Transform).?;

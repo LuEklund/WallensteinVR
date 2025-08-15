@@ -1,4 +1,5 @@
 const std = @import("std");
+const nz = @import("numz");
 
 pub const Tilemap = struct {
     const Self = @This();
@@ -23,6 +24,13 @@ pub const Tilemap = struct {
     pub fn get(self: Self, x: usize, y: usize) u8 {
         const index = (y * self.x) + x;
         return self.tiles[index];
+    }
+
+   
+    pub fn getIndex(self: Self, index: usize) nz.Vec2(usize) {
+        const x = index % self.x;
+        const y = (index - x) / self.x;
+        return nz.Vec2(usize){ x, y };
     }
 
     pub fn set(self: Self, x: usize, y: usize, tile: u8) void {
@@ -128,10 +136,58 @@ pub fn init(allocator: std.mem.Allocator, seed: ?u64) !Tilemap {
     const random = prng.random();
     // defer std.debug.print("SEED: {d}\n", .{seed});
 
-    var map: Tilemap = try .init(allocator, 10, 10);
+    var map: Tilemap = try .init(allocator, 20, 20);
     map.spawnWalker(random, null);
     // map.gridSpawn(7, 0, 200);
+
+    const SIZE = 20;
+const tiles: [SIZE*SIZE]u8 = .{
+    // row 0 (top border)
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    // row 1
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 2
+    1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,1,
+    // row 3
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 4
+    1,0,1,0,1,1,0,1,0,1,0,1,0,1,1,0,1,0,1,1,
+    // row 5
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 6
+    1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,1,1,0,1,1,
+    // row 7
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 8
+    1,0,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,1,1,
+    // row 9
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 10
+    1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,1,
+    // row 11
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 12
+    1,0,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,1,1,
+    // row 13
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 14
+    1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,1,
+    // row 15
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 16
+    1,0,1,0,1,1,0,1,0,1,0,1,0,1,1,0,1,0,1,1,
+    // row 17
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 18
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    // row 19 (bottom border)
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+};
+
+
+    @memcpy(map.tiles, &tiles);
 
     map.print();
     return map;
 }
+

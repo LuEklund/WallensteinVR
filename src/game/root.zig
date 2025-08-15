@@ -3,6 +3,7 @@ const World = @import("../ecs.zig").World;
 const nz = @import("numz");
 pub const map = @import("map.zig");
 pub const player = @import("player.zig");
+pub const enemy = @import("enemy.zig");
 pub const some = @import("some.zig");
 
 pub const Hand = struct {
@@ -23,6 +24,7 @@ pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     try world.runSystems(allocator, .{
         player.update,
+        enemy.update,
         some.update,
     });
 }
