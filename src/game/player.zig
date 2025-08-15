@@ -24,6 +24,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             .scale = .{ 0.1, 0.1, 0.1 },
         },
         eng.Mesh{ .name = "basket.obj" },
+        eng.Texture{ .id = 1 },
         game.Hand{ .side = .left },
     });
     _ = try world.spawn(allocator, .{
@@ -32,6 +33,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             .scale = .{ 0.1, 0.1, 0.1 },
         },
         eng.Mesh{ .name = "cube.obj" },
+        eng.Texture{ .id = 1 },
         game.Hand{ .side = .right },
     });
 }

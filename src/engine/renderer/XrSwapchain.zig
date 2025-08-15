@@ -110,14 +110,15 @@ pub fn init(eye_count: comptime_int, physical_deivce: c.VkPhysicalDevice, instan
 
 pub fn createSwapchainImages(
     self: *@This(),
+    allocator: std.mem.Allocator,
     physical_device: c.VkPhysicalDevice,
     device: c.VkDevice,
     render_pass: c.VkRenderPass,
     command_pool: c.VkCommandPool,
     descriptor_pool: c.VkDescriptorPool,
     descriptor_set_layout: c.VkDescriptorSetLayout,
-    texture_image_view: c.VkImageView,
-    texture_sampler: c.VkSampler,
+    texture_image_view: []c.VkImageView,
+    texture_sampler: []c.VkSampler,
 ) !void {
     try loader.xrCheck(c.xrEnumerateSwapchainImages(self.color_swapchain, 0, &self.image_count, null));
     if (self.image_count > 16) @panic("More than 16 XrSwapchainImagesVulkanKHR\n");
@@ -138,6 +139,7 @@ pub fn createSwapchainImages(
 
     for (0..self.image_count) |i| {
         self.swapchain_images[i] = try .init(
+            allocator,
             physical_device,
             device,
             render_pass,
@@ -168,9 +170,10 @@ pub const SwapchainImage = struct {
     memory: c.VkDeviceMemory,
     buffer: c.VkBuffer,
     command_buffer: c.VkCommandBuffer,
-    descriptor_set: c.VkDescriptorSet,
+    descriptor_set: []c.VkDescriptorSet,
 
     pub fn init(
+        allocator: std.mem.Allocator,
         physical_device: c.VkPhysicalDevice,
         device: c.VkDevice,
         render_pass: c.VkRenderPass,
@@ -180,8 +183,8 @@ pub const SwapchainImage = struct {
         my_xr_swapchain: *XrSwapchain,
         image: c.XrSwapchainImageVulkanKHR,
         depth_iamge: c.XrSwapchainImageVulkanKHR,
-        texture_image_view: c.VkImageView,
-        texture_sampler: c.VkSampler,
+        texture_image_views: []c.VkImageView,
+        texture_samplers: []c.VkSampler,
     ) !Self {
         const width = my_xr_swapchain.width;
         const height = my_xr_swapchain.height;
@@ -283,51 +286,64 @@ pub const SwapchainImage = struct {
             .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             .commandBufferCount = 1,
         };
-
-        var command_buffer: c.VkCommandBuffer = undefined;
-        try loader.vkCheck(c.vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &command_buffer));
-
-        var descriptor_set_allocate_info = c.VkDescriptorSetAllocateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = descriptor_pool,
-            .descriptorSetCount = 1,
-            .pSetLayouts = &descriptor_set_layout,
-        };
-
-        var descriptor_set: c.VkDescriptorSet = undefined;
-        try loader.vkCheck(c.vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, &descriptor_set));
-
         var descriptor_buffer_info = c.VkDescriptorBufferInfo{
             .buffer = buffer,
             .offset = 0,
             .range = c.VK_WHOLE_SIZE,
         };
 
-        var descriptor_texture_info: c.VkDescriptorImageInfo = .{
-            .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = texture_image_view,
-            .sampler = texture_sampler,
-        };
+        var command_buffer: c.VkCommandBuffer = undefined;
+        try loader.vkCheck(c.vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &command_buffer));
 
-        var descriptor_write = [_]c.VkWriteDescriptorSet{ .{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = descriptor_set,
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &descriptor_buffer_info,
-        }, .{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = descriptor_set,
-            .dstBinding = 1,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &descriptor_texture_info,
-        } };
+        var descriptor_write: std.ArrayListUnmanaged(c.VkWriteDescriptorSet) = .empty;
+        var descriptor_sets: std.ArrayListUnmanaged(c.VkDescriptorSet) = .empty;
+        var image_infos: std.ArrayListUnmanaged(c.VkDescriptorImageInfo) = .empty;
+        defer image_infos.deinit(allocator);
 
-        c.vkUpdateDescriptorSets(device, descriptor_write.len, &descriptor_write, 0, null);
+        for (texture_samplers, texture_image_views, 0..) |texture_sampler, texture_image_view, i| {
+            var descriptor_set_allocate_info = c.VkDescriptorSetAllocateInfo{
+                .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = descriptor_pool,
+                .descriptorSetCount = 1,
+                .pSetLayouts = &descriptor_set_layout,
+            };
+
+            var descriptor_set: c.VkDescriptorSet = undefined;
+            try loader.vkCheck(c.vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, &descriptor_set));
+
+            try image_infos.append(allocator, .{
+                .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = texture_image_view,
+                .sampler = texture_sampler,
+            });
+
+            try descriptor_write.appendSlice(allocator, &.{ .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = &descriptor_buffer_info,
+            }, .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set,
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &image_infos.items[i],
+            } });
+            try descriptor_sets.append(allocator, descriptor_set);
+        }
+
+        c.vkUpdateDescriptorSets(
+            device,
+            @intCast(descriptor_write.items.len),
+            descriptor_write.items.ptr,
+            0,
+            null,
+        );
 
         var imageCreateInfo: c.VkImageCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -391,7 +407,7 @@ pub const SwapchainImage = struct {
             .memory = memory,
             .buffer = buffer,
             .command_buffer = command_buffer,
-            .descriptor_set = descriptor_set,
+            .descriptor_set = try descriptor_sets.toOwnedSlice(allocator),
         };
     }
 

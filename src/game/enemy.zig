@@ -127,9 +127,20 @@ pub fn spawn(comps: []const type, world: *World(comps), allocator: std.mem.Alloc
         pos_y = random.int(usize) % (map.y);
     }
 
-    _ = try world.spawn(allocator, .{ eng.Enemy{
-        .lerp_percent = 0.0,
-    }, eng.Transform{ .position = .{ @floatFromInt(pos_x), 1, @floatFromInt(pos_y) }, .scale = .{ 0.5, 0.5, 0.5 } }, eng.Mesh{ .name = "asdasd" } });
+    _ = try world.spawn(
+        allocator,
+        .{
+            eng.Enemy{
+                .lerp_percent = 0.0,
+            },
+            eng.Transform{
+                .position = .{ @floatFromInt(pos_x), 1, @floatFromInt(pos_y) },
+                .scale = .{ 0.4, 0.4, 0.4 },
+            },
+            eng.Texture{ .id = 0 },
+            eng.Mesh{ .name = "xyzdragon.obj" },
+        },
+    );
 }
 
 pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -151,7 +162,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 
     //std.debug.print("Player X: {} Y: {}\n", .{player_transform.position[0], player_transform.position[2]});
 
-    const enemy_speed: f32 = 0.01;
+    const enemy_speed: f32 = 0.001;
     const enemy_radar_distance: f32 = 5.0;
     var query_enemy = world.query(&.{ eng.Enemy, eng.Transform });
     while (query_enemy.next()) |entity| {
@@ -168,7 +179,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 
         std.debug.print("Distance: {}\n", .{nz.distance(transform.position, player_transform.position)});
         if (!(player_transform.position[0] < 0 or transform.position[0] < 0 or
-            player_transform.position[2] < 0 or transform.position[2] < 0) and 
+            player_transform.position[2] < 0 or transform.position[2] < 0) and
             nz.distance(transform.position, player_transform.position) <= enemy_radar_distance)
         {
             const player_pos_vec2 = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2]))) };
@@ -182,7 +193,6 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
                     transform.position[0] = movement[0];
                     transform.position[2] = movement[1];
 
-
                     //std.debug.print("Tiles: {}\n", .{tiles[1]});
                     //std.debug.print("Movement: ({}, {})\n", .{movement[0], movement[1]});
                     //std.debug.print("Pos: ({}, {})\n", .{transform.position[0], transform.position[1]});
@@ -191,4 +201,3 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         }
     }
 }
-

@@ -9,14 +9,23 @@ const Obj = @import("Obj.zig");
 const Self = @This();
 
 var replacement_model_vertices = [_]f32{
-    0.5, 0.5, 0.5, 1.0, 0.0, 0.0, 1.0, 0.0, // 0: Top-Front-Right
-    0.5, 0.5, -0.5, 1.0, 0.0, 0.0, 1.0, 0.0, // 1: Top-Back-Right
-    0.5, -0.5, 0.5, 1.0, 0.0, 0.0, 1.0, 0.0, // 2: Bottom-Front-Right
-    0.5, -0.5, -0.5, 1.0, 0.0, 0.0, 1.0, 0.0, // 3: Bottom-Back-Right
-    -0.5, 0.5, 0.5, 1.0, 0.0, 0.0, 1.0, 0.0, // 4: Top-Front-Left
-    -0.5, 0.5, -0.5, 1.0, 0.0, 0.0, 1.0, 0.0, // 5: Top-Back-Left
-    -0.5, -0.5, 0.5, 1.0, 0.0, 0.0, 1.0, 0.0, // 6: Bottom-Front-Left
-    -0.5, -0.5, -0.5, 1.0, 0.0, 0.0, 1.0, 0.0, // 7: Bottom-Back-Left
+    // pos.x pos.y pos.z   u    v     nx   ny   nz
+    // 0: Top-Front-Right
+    0.5,  0.5,  0.5,  1.0, 0.0, 0.0, 0.0, 1.0,
+    // 1: Top-Back-Right
+    0.5,  0.5,  -0.5, 0.0, 0.0, 0.0, 0.0, -1.0,
+    // 2: Bottom-Front-Right
+    0.5,  -0.5, 0.5,  1.0, 1.0, 0.0, 0.0, 1.0,
+    // 3: Bottom-Back-Right
+    0.5,  -0.5, -0.5, 0.0, 1.0, 0.0, 0.0, -1.0,
+    // 4: Top-Front-Left
+    -0.5, 0.5,  0.5,  0.0, 0.0, 0.0, 0.0, 1.0,
+    // 5: Top-Back-Left
+    -0.5, 0.5,  -0.5, 1.0, 0.0, 0.0, 0.0, -1.0,
+    // 6: Bottom-Front-Left
+    -0.5, -0.5, 0.5,  0.0, 1.0, 0.0, 0.0, 1.0,
+    // 7: Bottom-Back-Left
+    -0.5, -0.5, -0.5, 1.0, 1.0, 0.0, 0.0, -1.0,
 };
 
 var replacement_model_indices = [_]u32{
@@ -157,7 +166,6 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
         const surface: *c.SDL_Surface = c.SDL_ConvertSurface(surface1, c.SDL_PIXELFORMAT_ABGR8888);
         std.debug.print("\nLoad Texture: {s}, width: {d}, height: {d}, format: {d}\n", .{ local_path_z, surface.*.w, surface.*.h, surface.*.format });
 
-        // if (true) @panic("XDDDD");
         const texture_buffer = try vk.createBuffer(
             ctx.vk_physical_device,
             ctx.vk_logical_device,
@@ -227,6 +235,8 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
         };
         try asset_manager.textures.put(allocator, path, texture);
     }
+    std.debug.print("\nASSETS: {any}\n", .{asset_manager.textures});
+    // if (true) @panic("XDDDD");
 }
 
 pub fn getModel(self: Self, asset_name: []const u8) Model {

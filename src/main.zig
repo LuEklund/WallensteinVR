@@ -14,7 +14,7 @@ pub fn main() !void {
         smp_allocator;
 
     var world: World(
-        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand, eng.Player, eng.Enemy},
+        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand, eng.Player, eng.Enemy, eng.Texture },
     ) = .init();
     defer world.deinit(allocator);
 
@@ -23,7 +23,7 @@ pub fn main() !void {
         game.init,
     });
 
-    var map = try game.map.init(allocator, null);
+    var map = try game.map.init(allocator, 19);
     defer map.deinit(allocator);
     try world.setResource(allocator, game.map.Tilemap, &map);
     const verices: []f32, const indices: []u32 = try map.toModel(allocator);

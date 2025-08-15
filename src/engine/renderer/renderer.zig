@@ -109,28 +109,32 @@ pub const Renderer = struct {
         try world.setResource(allocator, Context, context);
     }
 
-    pub fn initSwapchains(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
+    pub fn initSwapchains(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
         const ctx = try world.getResource(Context);
         const asset_manager = try world.getResource(AssetManager);
         var it = asset_manager.textures.iterator();
-        var texture_image_view: c.VkImageView = undefined;
-        var texture_sampler: c.VkSampler = undefined;
+        // std.debug.print("\ntextures get; {any}\n", .{it.});
+        var texture_image_view: std.ArrayListUnmanaged(c.VkImageView) = .empty;
+        var texture_sampler: std.ArrayListUnmanaged(c.VkSampler) = .empty;
+        defer texture_image_view.deinit(allocator);
+        defer texture_sampler.deinit(allocator);
         while (it.next()) |entry| {
-            texture_image_view = entry.value_ptr.texture_image_view;
-            texture_sampler = entry.value_ptr.texture_sample;
-            break;
+            try texture_image_view.append(allocator, entry.value_ptr.texture_image_view);
+            try texture_sampler.append(allocator, entry.value_ptr.texture_sample);
         }
+        std.debug.print("\ntextures get; {any}\n", .{texture_image_view.items.len});
 
         try ctx.vk_swapchain.createSwapchainImages(ctx.command_pool);
         try ctx.xr_swapchain.createSwapchainImages(
+            allocator,
             ctx.vk_physical_device,
             ctx.vk_logical_device,
             ctx.render_pass,
             ctx.command_pool,
             ctx.descriptor_pool,
             ctx.descriptor_set_layout,
-            texture_image_view,
-            texture_sampler,
+            texture_image_view.items,
+            texture_sampler.items,
         );
     }
 
@@ -502,12 +506,37 @@ fn renderEye(
     c.vkCmdSetScissor(image.command_buffer, 0, 1, &scissor);
 
     c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-    c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
+    c.vkCmdBindDescriptorSets(
+        image.command_buffer,
+        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        pipeline_layout,
+        0,
+        1,
+        &image.descriptor_set[0],
+        0,
+        null,
+    );
 
-    var it = world.query(&.{ root.Transform, root.Mesh });
+    // std.debug.print("\ndesc; {any}\n", .{image.descriptor_set});
+    // if (true) @panic("XD");
+
+    var it = world.query(&.{ root.Transform, root.Mesh, root.Texture });
     while (it.next()) |entity| {
         const transform = entity.get(root.Transform).?.*;
         const mesh = entity.get(root.Mesh).?.*;
+        const texture = entity.get(root.Texture).?.*;
+        if (texture.id < image.descriptor_set.len) {
+            c.vkCmdBindDescriptorSets(
+                image.command_buffer,
+                c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipeline_layout,
+                0,
+                1,
+                &image.descriptor_set[texture.id],
+                0,
+                null,
+            );
+        }
         const asset_manager = try world.getResource(AssetManager);
         const model = asset_manager.getModel(mesh.name);
         renderMesh(transform, model, image.command_buffer, pipeline_layout);
