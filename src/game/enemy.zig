@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const World = @import("../ecs.zig").World;
 const eng = @import("../engine/root.zig");
@@ -28,21 +27,17 @@ fn heuristic(x: nz.Vec2(usize), y: nz.Vec2(usize)) usize {
 }
 
 fn pqLessThan(_: void, a: PQEntry, b: PQEntry) std.math.Order {
-    return if (a.priority < b.priority) .lt
-        else if (a.priority > b.priority) .gt
-        else .eq;
+    return if (a.priority < b.priority) .lt else if (a.priority > b.priority) .gt else .eq;
 }
 
 fn lerp(a: nz.Vec2(f32), b: nz.Vec2(usize), t: f32) nz.Vec2(f32) {
-    const b_float = nz.Vec2(f32){ @as(f32, @floatFromInt(b[0])), @as(f32, @floatFromInt(b[1]))};
+    const b_float = nz.Vec2(f32){ @as(f32, @floatFromInt(b[0])), @as(f32, @floatFromInt(b[1])) };
     const c = a * @as(nz.Vec2(f32), @splat((1 - t)));
     const d = b_float * @as(nz.Vec2(f32), @splat(t));
     return c + d;
 }
 
-fn astar(
-    allocator: std.mem.Allocator, map: Tilemap, player_pos: nz.Vec2(usize), pos: nz.Vec2(usize)) ![]nz.Vec2(usize) {
-
+fn astar(allocator: std.mem.Allocator, map: Tilemap, player_pos: nz.Vec2(usize), pos: nz.Vec2(usize)) ![]nz.Vec2(usize) {
     var path = std.ArrayList(nz.Vec2(usize)).init(allocator);
     errdefer path.deinit();
 
@@ -58,8 +53,8 @@ fn astar(
     try pq.add(.{ .priority = 0, .node = pos });
     try cost_so_far.put(toKey(pos), 0);
 
-    const dirs = [_][2]i32 {
-        .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1}, .{ 0, -1 },
+    const dirs = [_][2]i32{
+        .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1 }, .{ 0, -1 },
     };
 
     while (pq.count() > 0) {
@@ -93,9 +88,7 @@ fn astar(
                 @intCast(@as(i32, @intCast(current[0])) + dir[0]),
                 @intCast(@as(i32, @intCast(current[1])) + dir[1]),
             };
-            if (neighbor[0] < 0 or neighbor[1] < 0
-                or neighbor[0] >= map.x
-                or neighbor[1] >= map.y) {
+            if (neighbor[0] < 0 or neighbor[1] < 0 or neighbor[0] >= map.x or neighbor[1] >= map.y) {
                 continue;
             }
 
@@ -117,12 +110,7 @@ fn astar(
     return error.NoPath;
 }
 
-
-fn isPlayerOnFreeTile(map: Tilemap, pos: nz.Vec2(usize)) bool {
-    return map.get(pos[0], pos[1]) == 0;
-}
-
-pub fn spwanEnemy(comps: []const type, world: *World(comps), allocator: std.mem.Allocator, map: Tilemap) !void {
+pub fn spawn(comps: []const type, world: *World(comps), allocator: std.mem.Allocator, map: Tilemap) !void {
     var prng = std.Random.DefaultPrng.init(std.crypto.random.int(u64));
     const random = prng.random();
     var pos_x = random.int(usize) % (map.x);
@@ -133,41 +121,32 @@ pub fn spwanEnemy(comps: []const type, world: *World(comps), allocator: std.mem.
         pos_y = random.int(usize) % (map.y);
     }
 
-
-    _ = try world.spawn(allocator, .{
-        eng.Enemy{
-            .lerp_percent = 0.0,
-        },
-        eng.Transform{
-            .position = .{@floatFromInt(pos_x), 1, @floatFromInt(pos_y)},
-            .scale = .{ 1, 1, 1 }
-        },
-        eng.Mesh{ .name = "asdasd"}
-    });
+    _ = try world.spawn(allocator, .{ eng.Enemy{
+        .lerp_percent = 0.0,
+    }, eng.Transform{ .position = .{ @floatFromInt(pos_x), 1, @floatFromInt(pos_y) }, .scale = .{ 1, 1, 1 } }, eng.Mesh{ .name = "asdasd" } });
 }
 
-pub fn enemyUpdateSystem(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
+pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     const io_ctx = try world.getResource(eng.IoCtx);
     var query_player = world.query(&.{ eng.Player, eng.Transform });
     const map: *Tilemap = try world.getResource(Tilemap);
-    
+
     var player_transform: eng.Transform = undefined;
     while (query_player.next()) |entity| {
         const transform = entity.get(eng.Transform).?;
         player_transform = transform.*;
         if (!(player_transform.position[0] < 0 or player_transform.position[2] < 0)) {
-            const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2])))};
-            if (io_ctx.keyboard.isActive(.k) and isPlayerOnFreeTile(map.*, player_pos_vec2)) {
-                try spwanEnemy(comps, world, allocator, map.*);
+            const player_pos_vec2 = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2]))) };
+            if (io_ctx.keyboard.isActive(.k) and map.get(player_pos_vec2[0], player_pos_vec2[1]) == 0) {
+                try spawn(comps, world, allocator, map.*);
             }
-
         }
-   }
+    }
 
     //std.debug.print("Player X: {} Y: {}\n", .{player_transform.position[0], player_transform.position[2]});
 
     const enemy_speed: f32 = 0.1;
-    var query_enemy = world.query(&. {eng.Enemy, eng.Transform }); 
+    var query_enemy = world.query(&.{ eng.Enemy, eng.Transform });
     while (query_enemy.next()) |entity| {
         const transform: *eng.Transform = entity.get(eng.Transform).?;
         var enemy = entity.get(eng.Enemy).?;
@@ -178,33 +157,29 @@ pub fn enemyUpdateSystem(comps: []const type, world: *World(comps), allocator: s
         }
         //std.debug.print("Lerp P: {}\n", .{enemy.lerp_percent});
 
-        var delta_transform: nz.Vec3(f32) = .{ player_transform.position[0] - transform.position[0],
-                                               player_transform.position[1] - transform.position[1],
-                                               player_transform.position[2] - transform.position[2] };
+        var delta_transform: nz.Vec3(f32) = .{ player_transform.position[0] - transform.position[0], player_transform.position[1] - transform.position[1], player_transform.position[2] - transform.position[2] };
         delta_transform = nz.normalize(delta_transform) * @as(nz.Vec3(f32), @splat(enemy_speed));
         delta_transform[1] = 0;
 
+        if (!(player_transform.position[0] < 0 or transform.position[0] < 0 or
+            player_transform.position[2] < 0 or transform.position[2] < 0))
+        {
+            const player_pos_vec2 = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2]))) };
+            const enemy_pos_vec2 = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(transform.position[0]))), @as(usize, @intFromFloat(@abs(transform.position[2]))) };
+            std.debug.print("Start ({any}) Goal ({any})\n", .{ enemy_pos_vec2, player_pos_vec2 });
 
-        if (!(player_transform.position[0] < 0 or transform.position[0] < 0 or 
-              player_transform.position[2] < 0 or transform.position[2] < 0)) {
-            const player_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2])))};
-            const enemy_pos_vec2 = nz.Vec2(usize){@as(usize, @intFromFloat(@abs(transform.position[0]))), @as(usize, @intFromFloat(@abs(transform.position[2])))};
-            std.debug.print("Start ({any}) Goal ({any})\n", .{enemy_pos_vec2, player_pos_vec2});
-
-            if (isPlayerOnFreeTile(map.*, player_pos_vec2)) {
-            
+            if (map.get(player_pos_vec2[0], player_pos_vec2[1]) == 0) {
                 const tiles: []nz.Vec2(usize) = try astar(allocator, map.*, player_pos_vec2, enemy_pos_vec2);
                 if (tiles.len > 1) {
                     //std.debug.print("Tiles: {}\n", .{tiles[1]});
-                    const movement = lerp(nz.Vec2(f32){transform.position[0], transform.position[2]}, tiles[1], enemy.lerp_percent);
+                    const movement = lerp(nz.Vec2(f32){ transform.position[0], transform.position[2] }, tiles[1], enemy.lerp_percent);
                     //std.debug.print("Movement: ({}, {})\n", .{movement[0], movement[1]});
-                    transform.position[0] = movement[0]; 
-                    transform.position[2] = movement[1]; 
+                    transform.position[0] = movement[0];
+                    transform.position[2] = movement[1];
 
                     //std.debug.print("Pos: ({}, {})\n", .{transform.position[0], transform.position[1]});
                 }
-            }               
+            }
         }
     }
 }
-
