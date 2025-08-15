@@ -137,7 +137,7 @@ pub fn spawn(comps: []const type, world: *World(comps), allocator: std.mem.Alloc
                 .position = .{ @floatFromInt(pos_x), 1, @floatFromInt(pos_y) },
                 .scale = .{ 0.4, 0.4, 0.4 },
             },
-            eng.Texture{ .id = 0 },
+            eng.Texture{ .name = "bing.jpg" },
             eng.Mesh{ .name = "xyzdragon.obj" },
         },
     );

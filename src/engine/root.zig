@@ -24,7 +24,7 @@ pub const Mesh = struct {
 };
 
 pub const Texture = struct {
-    id: u8,
+    name: []const u8,
 };
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
