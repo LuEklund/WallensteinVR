@@ -415,6 +415,10 @@ pub const SwapchainImage = struct {
         };
     }
 
+    pub fn getDescriptorSet(self: Self, desc_name: []const u8) c.VkDescriptorSet {
+        return self.descriptor_set.get(desc_name) orelse self.descriptor_set.get("default").?;
+    }
+
     pub fn deinit(self: Self) void {
         std.debug.print("Destroyed SwapChainImage\n", .{});
         _ = c.vkFreeDescriptorSets(self.device, self.descriptor_pool, 1, &self.descriptor_set);

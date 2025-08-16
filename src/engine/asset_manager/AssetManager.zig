@@ -49,6 +49,16 @@ var replacement_model_indices = [_]u32{
     2, 7, 3,
 };
 
+var replacement_texture_pixels = [_]u32{
+    0xFF000000, 0xFF000000, 0xFF000000, 0xFFFF00FF, 0xFFFF00FF, 0xFF000000, 0xFF000000, 0xFF000000,
+    0xFF000000, 0xFF000000, 0xFF000000, 0xFFFF00FF, 0xFFFF00FF, 0xFF000000, 0xFF000000, 0xFF000000,
+    0xFF000000, 0xFF000000, 0xFF000000, 0xFFFF00FF, 0xFFFF00FF, 0xFF000000, 0xFF000000, 0xFF000000,
+    0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF,
+    0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF, 0xFFFF00FF,
+    0xFF000000, 0xFF000000, 0xFF000000, 0xFFFF00FF, 0xFFFF00FF, 0xFF000000, 0xFF000000, 0xFF000000,
+    0xFF000000, 0xFF000000, 0xFF000000, 0xFFFF00FF, 0xFFFF00FF, 0xFF000000, 0xFF000000, 0xFF000000,
+    0xFF000000, 0xFF000000, 0xFF000000, 0xFFFF00FF, 0xFFFF00FF, 0xFF000000, 0xFF000000, 0xFF000000,
+};
 ctx: *Context,
 
 models: std.StringHashMapUnmanaged(Model),
@@ -144,6 +154,11 @@ pub fn createModelFromBuffers(physical_device: c.VkPhysicalDevice, logical_devic
 }
 
 pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Context) !void {
+    try asset_manager.textures.put(
+        allocator,
+        "default",
+        try createTextureFromBuffer(ctx, @ptrCast(replacement_texture_pixels[0..].ptr), 8, 8),
+    );
     const dir_path = "../../assets/textures"; // assets/textures
     const paths = try findAssetsFromDir(allocator, dir_path, ".jpg");
     for (paths) |path| {
@@ -166,77 +181,84 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
         const surface: *c.SDL_Surface = c.SDL_ConvertSurface(surface1, c.SDL_PIXELFORMAT_ABGR8888);
         std.debug.print("\nLoad Texture: {s}, width: {d}, height: {d}, format: {d}\n", .{ local_path_z, surface.*.w, surface.*.h, surface.*.format });
 
-        const texture_buffer = try vk.createBuffer(
-            ctx.vk_physical_device,
-            ctx.vk_logical_device,
-            c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            @intCast(surface.h * surface.h),
-            @sizeOf(u32),
-            surface.pixels.?,
+        try asset_manager.textures.put(
+            allocator,
+            path,
+            try createTextureFromBuffer(ctx, surface.pixels.?, @intCast(surface.w), @intCast(surface.h)),
         );
-        const image_buffer = try vk.createImage(
-            ctx.vk_physical_device,
-            ctx.vk_logical_device,
-            @intCast(surface.w),
-            @intCast(surface.h),
-            c.VK_FORMAT_R8G8B8A8_SRGB,
-            c.VK_IMAGE_TILING_OPTIMAL,
-            c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_SAMPLED_BIT,
-            c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        );
-
-        try vk.transitionImageLayout(
-            ctx.vk_logical_device,
-            ctx.vk_queue,
-            ctx.command_pool,
-            image_buffer.texture_image,
-            c.VK_FORMAT_R8G8B8A8_SRGB,
-            c.VK_IMAGE_LAYOUT_UNDEFINED,
-            c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        );
-        try vk.copyBufferToImage(
-            ctx.vk_logical_device,
-            ctx.vk_queue,
-            ctx.command_pool,
-            texture_buffer.buffer,
-            image_buffer.texture_image,
-            @intCast(surface.w),
-            @intCast(surface.h),
-        );
-        try vk.transitionImageLayout(
-            ctx.vk_logical_device,
-            ctx.vk_queue,
-            ctx.command_pool,
-            image_buffer.texture_image,
-            c.VK_FORMAT_R8G8B8A8_SRGB,
-            c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        );
-
-        const texture_image_view = try vk.createImageView(
-            ctx.vk_logical_device,
-            image_buffer.texture_image,
-            c.VK_IMAGE_VIEW_TYPE_2D,
-            c.VK_FORMAT_R8G8B8A8_SRGB,
-            c.VK_IMAGE_ASPECT_COLOR_BIT,
-            1,
-        );
-
-        const texture_sample = try vk.createTextureSampler(
-            ctx.vk_physical_device,
-            ctx.vk_logical_device,
-        );
-
-        const texture: Texture = .{
-            .staging_buffer = texture_buffer,
-            .image_buffer = image_buffer,
-            .texture_image_view = texture_image_view,
-            .texture_sample = texture_sample,
-        };
-        try asset_manager.textures.put(allocator, path, texture);
     }
     std.debug.print("\nASSETS: {any}\n", .{asset_manager.textures});
     // if (true) @panic("XDDDD");
+}
+
+fn createTextureFromBuffer(ctx: *Context, pixels: *anyopaque, width: u32, heigth: u32) !Texture {
+    const texture_buffer = try vk.createBuffer(
+        ctx.vk_physical_device,
+        ctx.vk_logical_device,
+        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        width * heigth,
+        @sizeOf(u32),
+        pixels,
+    );
+    const image_buffer = try vk.createImage(
+        ctx.vk_physical_device,
+        ctx.vk_logical_device,
+        width,
+        heigth,
+        c.VK_FORMAT_R8G8B8A8_SRGB,
+        c.VK_IMAGE_TILING_OPTIMAL,
+        c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_SAMPLED_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    );
+
+    try vk.transitionImageLayout(
+        ctx.vk_logical_device,
+        ctx.vk_queue,
+        ctx.command_pool,
+        image_buffer.texture_image,
+        c.VK_FORMAT_R8G8B8A8_SRGB,
+        c.VK_IMAGE_LAYOUT_UNDEFINED,
+        c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    );
+    try vk.copyBufferToImage(
+        ctx.vk_logical_device,
+        ctx.vk_queue,
+        ctx.command_pool,
+        texture_buffer.buffer,
+        image_buffer.texture_image,
+        width,
+        heigth,
+    );
+    try vk.transitionImageLayout(
+        ctx.vk_logical_device,
+        ctx.vk_queue,
+        ctx.command_pool,
+        image_buffer.texture_image,
+        c.VK_FORMAT_R8G8B8A8_SRGB,
+        c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    );
+
+    const texture_image_view = try vk.createImageView(
+        ctx.vk_logical_device,
+        image_buffer.texture_image,
+        c.VK_IMAGE_VIEW_TYPE_2D,
+        c.VK_FORMAT_R8G8B8A8_SRGB,
+        c.VK_IMAGE_ASPECT_COLOR_BIT,
+        1,
+    );
+
+    const texture_sample = try vk.createTextureSampler(
+        ctx.vk_physical_device,
+        ctx.vk_logical_device,
+    );
+
+    return .{
+        .staging_buffer = texture_buffer,
+        .image_buffer = image_buffer,
+        .texture_image_view = texture_image_view,
+        .texture_sample = texture_sample,
+    };
 }
 
 pub fn getModel(self: Self, asset_name: []const u8) Model {
