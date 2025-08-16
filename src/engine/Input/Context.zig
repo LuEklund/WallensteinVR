@@ -27,8 +27,9 @@ hand_pose_state: [2]c.XrActionStatePose = .{
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
     .{ .type = c.XR_TYPE_ACTION_STATE_POSE },
 },
+xr_space: c.XrSpace,
+xr_views: [2]c.XrView,
 
-player_pos: nz.Vec3(f32),
 keyboard: Keyboard = undefined,
 
 pub const Keyboard = struct {

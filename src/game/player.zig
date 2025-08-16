@@ -11,10 +11,12 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     // io_ctx.*.player_pos[2] = @floatFromInt(map.start_y);
     //PLAYER
     _ = try world.spawn(allocator, .{
+        eng.Mesh{ .name = "csdsd" },
         eng.Transform{
             .position = .{ 0, 1, 0 },
-            .scale = .{ 1, 1, 1 },
+            .scale = .{ 0.1, 0.1, 0.1 },
         },
+        eng.Texture{ .name = "s" },
         eng.Player{},
     });
     //HANDS
@@ -84,7 +86,6 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     transform.position[2] += io_ctx.trackpad_state[0].currentState.y * forward[2] * @as(f32, @floatCast(time.delta_time));
 
     transform.rotation[1] -= io_ctx.trackpad_state[1].currentState.x * @as(f32, @floatCast(time.delta_time));
-    io_ctx.hand_pose[0].position = .{ .x = 0, .y = 0, .z = -1 };
 
     if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @floatCast(time.delta_time);
     if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @floatCast(time.delta_time);
@@ -92,7 +93,19 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
         var hand_transform = entity.get(eng.Transform).?;
-        hand_transform.position = @bitCast(io_ctx.hand_pose[@intFromEnum(hand.side)].position);
-        hand_transform.position += transform.position;
+        const local_hand_pos: nz.Vec3(f32) = @bitCast(io_ctx.hand_pose[@intFromEnum(hand.side)].position);
+
+        const rotated_hand_pos = nz.Vec3(f32){
+            local_hand_pos[0] * cos_yaw - local_hand_pos[2] * -sin_yaw,
+            local_hand_pos[1],
+            local_hand_pos[0] * -sin_yaw + local_hand_pos[2] * cos_yaw,
+        };
+
+        hand_transform.rotation = transform.rotation;
+        hand_transform.position = transform.position + rotated_hand_pos;
+        // hand_transform.position = transform.position + rotated_hand_pos + @as(
+        // nz.Vec3(f32),
+        // @bitCast(io_ctx.xr_views[0].pose.position),
+        // );
     }
 }

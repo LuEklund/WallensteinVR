@@ -49,6 +49,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     const hand_pose_space_l = try xr.createActionPoses(gfx_ctx.xr_instance, gfx_ctx.xr_session, palm_pose_action, "/user/hand/left");
     const hand_pose_space_r = try xr.createActionPoses(gfx_ctx.xr_instance, gfx_ctx.xr_session, palm_pose_action, "/user/hand/right");
     try xr.attachActionSet(gfx_ctx.xr_session, action_set);
+    const space: c.XrSpace = try xr.createSpace(gfx_ctx.xr_session);
 
     const context = try allocator.create(IoCtx);
     context.* = .{
@@ -64,7 +65,8 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             hand_pose_space_r,
         },
         .trackpad_action = trackpad_action,
-        .player_pos = @splat(0),
+        .xr_views = undefined,
+        .xr_space = space,
     };
     try world.setResource(allocator, IoCtx, context);
 }
@@ -196,15 +198,12 @@ pub fn pollAction(
         try loader.xrCheck(c.xrGetActionStatePose(ctx.xr_session, &actionStateGetInfo, @ptrCast(&io_ctx.hand_pose_state[i])));
         if (io_ctx.hand_pose_state[i].isActive != 0) {
             var spaceLocation: c.XrSpaceLocation = .{ .type = c.XR_TYPE_SPACE_LOCATION };
-            const res: c.XrResult = c.xrLocateSpace(io_ctx.hand_pose_space[i], ctx.xr_space, ctx.predicted_time_frame, &spaceLocation);
+            const res: c.XrResult = c.xrLocateSpace(io_ctx.hand_pose_space[i], io_ctx.xr_space, ctx.predicted_time_frame, &spaceLocation);
             if (c.XR_UNQUALIFIED_SUCCESS(res) and
                 (spaceLocation.locationFlags & c.XR_SPACE_LOCATION_POSITION_VALID_BIT) != 0 and
                 (spaceLocation.locationFlags & c.XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0)
             {
                 io_ctx.hand_pose[i] = spaceLocation.pose;
-                io_ctx.hand_pose[i].position.x += io_ctx.player_pos[0];
-                io_ctx.hand_pose[i].position.y += io_ctx.player_pos[1];
-                io_ctx.hand_pose[i].position.z += io_ctx.player_pos[2];
             } else {
                 io_ctx.hand_pose_state[i].isActive = 0;
             }
@@ -225,12 +224,44 @@ pub fn pollAction(
         actionStateGetInfo.subactionPath = io_ctx.hand_paths[i];
         try loader.xrCheck(c.xrGetActionStateVector2f(ctx.xr_session, &actionStateGetInfo, &io_ctx.trackpad_state[i]));
         // if (io_ctx.trackpad_state[i].isActive != 0) {
-        std.debug.print("\nTrackpad pos: {d}, {d}\n", .{
-            io_ctx.trackpad_state[i].currentState.x,
-            io_ctx.trackpad_state[i].currentState.y,
-        });
+        // std.debug.print("\nTrackpad pos: {d}, {d}\n", .{
+        //     io_ctx.trackpad_state[i].currentState.x,
+        //     io_ctx.trackpad_state[i].currentState.y,
+        // });
         // }
     }
+
+    var view_locate_info = c.XrViewLocateInfo{
+        .type = c.XR_TYPE_VIEW_LOCATE_INFO,
+        .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+        .displayTime = ctx.predicted_time_frame,
+        .space = io_ctx.xr_space,
+        .next = null,
+    };
+
+    var view_state = c.XrViewState{
+        .type = c.XR_TYPE_VIEW_STATE,
+        .next = null,
+    };
+
+    var view_count: u32 = 2;
+    var views: [2]c.XrView = .{ .{
+        .type = c.XR_TYPE_VIEW,
+        .next = null,
+    }, .{
+        .type = c.XR_TYPE_VIEW,
+        .next = null,
+    } };
+
+    try loader.xrCheck(c.xrLocateViews(
+        ctx.xr_session,
+        &view_locate_info,
+        &view_state,
+        view_count,
+        &view_count,
+        @ptrCast(&views[0]),
+    ));
+    io_ctx.xr_views = views;
 
     return false;
 }
