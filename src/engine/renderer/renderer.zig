@@ -534,7 +534,7 @@ fn renderEye(
             pipeline_layout,
             0,
             1,
-            &image.descriptor_set.get(texture.name).?,
+            &image.getDescriptorSet(texture.name),
             0,
             null,
         );

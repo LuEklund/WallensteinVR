@@ -43,7 +43,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             // .position = .{ 0, -0.5, -5 },
             // .scale = .{ 0.1, 0.1, 1},
         },
-        eng.Texture{ .name = "error_wall.jpg" },
+        eng.Texture{ .name = "error_swall.jpg" },
         eng.Mesh{ .name = "world" },
     });
 }

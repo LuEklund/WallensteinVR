@@ -24,7 +24,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             .scale = .{ 0.1, 0.1, 0.1 },
         },
         eng.Mesh{ .name = "basket.obj" },
-        eng.Texture{ .name = "basket.jpg" },
+        eng.Texture{ .name = "bassket.jpg" },
         game.Hand{ .side = .left },
     });
     _ = try world.spawn(allocator, .{
@@ -40,6 +40,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
 
 pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
     const io_ctx = try world.getResource(eng.IoCtx);
+
     const time = try world.getResource(eng.time.Time);
     var query_player = world.query(&.{ eng.Player, eng.Transform });
     var player = query_player.next().?;
@@ -83,6 +84,7 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     transform.position[2] += io_ctx.trackpad_state[0].currentState.y * forward[2] * @as(f32, @floatCast(time.delta_time));
 
     transform.rotation[1] -= io_ctx.trackpad_state[1].currentState.x * @as(f32, @floatCast(time.delta_time));
+    io_ctx.hand_pose[0].position = .{ .x = 0, .y = 0, .z = -1 };
 
     if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @floatCast(time.delta_time);
     if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @floatCast(time.delta_time);
