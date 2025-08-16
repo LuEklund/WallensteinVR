@@ -63,14 +63,13 @@ pub const AudioPlayer = struct {
         if (queue_size < sound.len * 8) try sdlCheck(c.SDL_PutAudioStreamData(sound.stream, &buffer, @intCast(sound.len)));
     }
 
-    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *@This()) void {
         for (self.sounds) |sound| {
             if (sound.stream) |s| {
                 c.SDL_DestroyAudioStream(s);
             }
             c.SDL_free(@ptrCast(sound.ptr));
         }
-        allocator.free(self.sounds);
         c.SDL_CloseAudioDevice(self.device_id);
     }
 };
