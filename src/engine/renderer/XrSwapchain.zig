@@ -183,6 +183,7 @@ pub const SwapchainImage = struct {
         texture_image_view: c.VkImageView,
         texture_sampler: c.VkSampler,
     ) !Self {
+        _ = render_pass;
         const width = my_xr_swapchain.width;
         const height = my_xr_swapchain.height;
         const image_view = try vk.createImageView(
@@ -221,23 +222,23 @@ pub const SwapchainImage = struct {
         var depth_image_view: c.VkImageView = undefined;
         try loader.vkCheck(c.vkCreateImageView(device, &depth_image_view_create_info, null, &depth_image_view));
 
-        var image_views: [2]c.VkImageView = .{
-            image_view,
-            depth_image_view,
-        };
+        // var image_views: [2]c.VkImageView = .{
+        //     image_view,
+        //     depth_image_view,
+        // };
 
-        var framebuffer_create_info = c.VkFramebufferCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .renderPass = render_pass,
-            .attachmentCount = image_views.len,
-            .pAttachments = &image_views[0],
-            .width = width,
-            .height = height,
-            .layers = 1,
-        };
+        // var framebuffer_create_info = c.VkFramebufferCreateInfo{
+        //     .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        //     .renderPass = render_pass,
+        //     .attachmentCount = image_views.len,
+        //     .pAttachments = &image_views[0],
+        //     .width = width,
+        //     .height = height,
+        //     .layers = 1,
+        // };
 
-        var framebuffer: c.VkFramebuffer = undefined;
-        try loader.vkCheck(c.vkCreateFramebuffer(device, &framebuffer_create_info, null, &framebuffer));
+        // var framebuffer: c.VkFramebuffer = undefined;
+        // try loader.vkCheck(c.vkCreateFramebuffer(device, &framebuffer_create_info, null, &framebuffer));
 
         var create_info = c.VkBufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -387,7 +388,7 @@ pub const SwapchainImage = struct {
             .vk_dup_image = vk_image,
             .vk_image_memory = image_memory,
             .image_view = image_view,
-            .framebuffer = framebuffer,
+            .framebuffer = null,
             .memory = memory,
             .buffer = buffer,
             .command_buffer = command_buffer,

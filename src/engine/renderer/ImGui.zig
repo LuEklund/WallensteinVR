@@ -5,8 +5,8 @@ const Context = @import("Context.zig");
 const imgui = @import("imgui").c;
 const vk = @import("vulkan.zig");
 
-frame_buffer_width: u32 = 0,
-frame_buffer_height: u32 = 0,
+// frame_buffer_width: u32 = 0,
+// frame_buffer_height: u32 = 0,
 descriptor_pool: c.VkDescriptorPool = null,
 cmd_buffers: []c.VkCommandBuffer = undefined,
 f: f32 = 0.0,
@@ -24,8 +24,8 @@ qRot2: [4]f32 = [_]f32{ 1.0, 0.0, 0.0, 0.0 },
 dir: [4]f32 = [_]f32{ 1.0, 0.0, 0.0, 0.0 },
 
 pub fn init(allocator: std.mem.Allocator, gfx_ctx: *Context) !@This() {
-    const frame_buffer_width = gfx_ctx.vk_swapchain.width;
-    const frame_buffer_height = gfx_ctx.vk_swapchain.height;
+    // const frame_buffer_width = gfx_ctx.vk_swapchain.width;
+    // const frame_buffer_height = gfx_ctx.vk_swapchain.height;
 
     var pool_size = [_]c.VkDescriptorPoolSize{
         .{ .type = c.VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = 1000 },
@@ -64,10 +64,10 @@ pub fn init(allocator: std.mem.Allocator, gfx_ctx: *Context) !@This() {
     const io = imgui.ImGui_GetIO();
     io.*.ConfigFlags |= imgui.ImGuiConfigFlags_NavEnableKeyboard;
     io.*.ConfigFlags |= imgui.ImGuiConfigFlags_NavEnableSetMousePos;
-    io.*.DisplaySize.x = @floatFromInt(frame_buffer_width);
-    io.*.DisplaySize.y = @floatFromInt(frame_buffer_height);
+    // io.*.DisplaySize.x = @floatFromInt(frame_buffer_width);
+    // io.*.DisplaySize.y = @floatFromInt(frame_buffer_height);
 
-    imgui.ImGui_GetStyle().*.FontScaleMain = 1.5;
+    // imgui.ImGui_GetStyle().*.FontScaleMain = 1.5;
     // imgui.ImGui_StyleColorsDark();
 
     _ = imgui.cImGui_ImplSDL3_InitForVulkan(@ptrCast(&gfx_ctx.spectator_view.sdl_window));
@@ -83,14 +83,19 @@ pub fn init(allocator: std.mem.Allocator, gfx_ctx: *Context) !@This() {
         .Queue = @ptrCast(gfx_ctx.vk_queue),
         .PipelineCache = null,
         .DescriptorPool = @ptrCast(descriptor_pool),
-        .RenderPass = @ptrCast(gfx_ctx.render_pass),
+        .RenderPass = null,
         .Subpass = 0,
         .MinImageCount = 3,
         .ImageCount = gfx_ctx.vk_swapchain.image_count,
         .MSAASamples = loader.c.VK_SAMPLE_COUNT_1_BIT,
-        .UseDynamicRendering = false,
+        .UseDynamicRendering = true,
         .Allocator = null,
         .CheckVkResultFn = checkVKResult,
+        .PipelineRenderingCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &gfx_ctx.vk_swapchain.format,
+        },
     };
 
     _ = imgui.cImGui_ImplVulkan_Init(&imgui_vulkan_info);
@@ -106,8 +111,8 @@ pub fn init(allocator: std.mem.Allocator, gfx_ctx: *Context) !@This() {
     std.debug.print("cmd  buff: .{any}\n", .{cmd_buffers});
     // if (true) @panic("LOL");
     return .{
-        .frame_buffer_height = frame_buffer_height,
-        .frame_buffer_width = frame_buffer_width,
+        // .frame_buffer_height = null,
+        // .frame_buffer_width = null,
         .descriptor_pool = descriptor_pool,
         .cmd_buffers = cmd_buffers,
     };
@@ -130,7 +135,7 @@ pub fn deinit() !void {
 }
 
 pub fn prepareCommandBuffer(self: *@This(), cmd_buffer: c.VkCommandBuffer, image: u32, gfx_ctx: *Context) !c.VkCommandBuffer {
-    // _ = self;
+    _ = self;
     std.debug.print("Image num : .{any}\n", .{image});
     std.debug.print("cmd  buff: .{any}\n", .{cmd_buffer});
     var color_attachment_info: c.VkRenderingAttachmentInfo = .{
@@ -152,18 +157,18 @@ pub fn prepareCommandBuffer(self: *@This(), cmd_buffer: c.VkCommandBuffer, image
         .pColorAttachments = &color_attachment_info,
     };
     // c.vkCmdBeginRendering(cmd_buffer, &rendering_info);
-    c.vkCmdBeginRendering(self.cmd_buffers[image], &rendering_info);
+    c.vkCmdBeginRendering(cmd_buffer, &rendering_info);
 
     const draw_data = imgui.ImGui_GetDrawData();
     if (draw_data.*.Valid) {
         // imgui.cImGui_ImplVulkan_RenderDrawData(draw_data, @ptrCast(cmd_buffer));
-        imgui.cImGui_ImplVulkan_RenderDrawData(draw_data, @ptrCast(self.cmd_buffers[image]));
+        imgui.cImGui_ImplVulkan_RenderDrawData(draw_data, @ptrCast(cmd_buffer));
     } else {
         @panic("AAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
     }
 
     // try loader.vkCheck(c.vkEndCommandBuffer(cmd_buffer));
-    return self.cmd_buffers[image];
+    return cmd_buffer;
 }
 
 pub fn updateGUI(self: *@This(), ctx: *Context) !void {

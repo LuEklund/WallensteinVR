@@ -84,39 +84,39 @@ pub fn update(
             c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         );
 
-        var region: c.VkImageBlit = .{
-            .srcSubresource = .{
-                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                .mipLevel = 0,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            },
-            .srcOffsets = .{
-                .{ .x = 0, .y = 0, .z = 0 },
-                .{ .x = @intCast(ctx.xr_swapchain.width), .y = @intCast(ctx.xr_swapchain.height), .z = 1 },
-            },
-            .dstSubresource = .{
-                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                .mipLevel = 0,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            },
-            .dstOffsets = .{
-                .{ .x = 0, .y = 0, .z = 0 },
-                .{ .x = @intCast(ctx.vk_swapchain.width), .y = @intCast(ctx.vk_swapchain.height), .z = 1 },
-            },
-        };
+        // var region: c.VkImageBlit = .{
+        //     .srcSubresource = .{
+        //         .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+        //         .mipLevel = 0,
+        //         .baseArrayLayer = 0,
+        //         .layerCount = 1,
+        //     },
+        //     .srcOffsets = .{
+        //         .{ .x = 0, .y = 0, .z = 0 },
+        //         .{ .x = @intCast(ctx.xr_swapchain.width), .y = @intCast(ctx.xr_swapchain.height), .z = 1 },
+        //     },
+        //     .dstSubresource = .{
+        //         .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+        //         .mipLevel = 0,
+        //         .baseArrayLayer = 0,
+        //         .layerCount = 1,
+        //     },
+        //     .dstOffsets = .{
+        //         .{ .x = 0, .y = 0, .z = 0 },
+        //         .{ .x = @intCast(ctx.vk_swapchain.width), .y = @intCast(ctx.vk_swapchain.height), .z = 1 },
+        //     },
+        // };
 
-        c.vkCmdBlitImage(
-            element.command_buffer,
-            ctx.xr_swapchain.swapchain_images[ctx.last_rendered_image_index].vk_dup_image,
-            c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            element.image,
-            c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1,
-            &region,
-            c.VK_FILTER_LINEAR,
-        );
+        // c.vkCmdBlitImage(
+        //     element.command_buffer,
+        //     ctx.xr_swapchain.swapchain_images[ctx.last_rendered_image_index].vk_dup_image,
+        //     c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        //     element.image,
+        //     c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        //     1,
+        //     &region,
+        //     c.VK_FILTER_LINEAR,
+        // );
 
         try vk.imageMemBarrier(
             element.command_buffer,
@@ -126,7 +126,7 @@ pub fn update(
             c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         );
 
-        const gui_buf = try ctx.imgui.prepareCommandBuffer(element.command_buffer, ctx.image_index, ctx);
+        _ = try ctx.imgui.prepareCommandBuffer(element.command_buffer, ctx.image_index, ctx);
         try vk.imageMemBarrier(
             element.command_buffer,
             element.image,
@@ -136,7 +136,7 @@ pub fn update(
         );
         try loader.vkCheck(c.vkEndCommandBuffer(element.command_buffer));
 
-        var cmd_bffrs = [_]c.VkCommandBuffer{ element.command_buffer, gui_buf };
+        var cmd_bffrs = [_]c.VkCommandBuffer{element.command_buffer};
         var waitStage: c.VkPipelineStageFlags = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
 
         var submitInfo: c.VkSubmitInfo = .{

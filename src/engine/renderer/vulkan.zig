@@ -107,12 +107,18 @@ pub fn createLogicalDevice(physical_device: c.VkPhysicalDevice, graphics_queue_f
 
     var multiview_features = c.VkPhysicalDeviceMultiviewFeatures{
         .sType = c.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES,
-        .multiview = 1,
+        .multiview = c.VK_TRUE,
+    };
+
+    var dynamic_rendering_feature = c.VkPhysicalDeviceVulkan13Features{
+        .sType = c.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .pNext = &multiview_features,
+        .dynamicRendering = c.VK_TRUE,
     };
 
     const device_info = c.VkDeviceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = &multiview_features,
+        .pNext = &dynamic_rendering_feature,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_info,
         .pEnabledFeatures = &features,
@@ -349,6 +355,7 @@ pub fn createPipeline(
     fragment_shader: c.VkShaderModule,
     sample_count: c.VkSampleCountFlagBits,
 ) !struct { c.VkPipelineLayout, c.VkPipeline } {
+    _ = render_pass;
     var pipeline: c.VkPipeline = undefined;
 
     var push_constant_range: c.VkPushConstantRange = .{
@@ -505,7 +512,7 @@ pub fn createPipeline(
         .pColorBlendState = &color_blend_stage,
         .pDynamicState = &dynamic_state,
         .layout = pipeline_layout,
-        .renderPass = render_pass,
+        // .renderPass = render_pass,
         .subpass = 0,
         .basePipelineHandle = null,
         .basePipelineIndex = -1,

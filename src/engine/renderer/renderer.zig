@@ -83,13 +83,13 @@ pub const Renderer = struct {
 
         const vulkan_swapchain: VulkanSwapchain = try .init(vk_physical_device, vk_logical_device, spectator_view.sdl_surface, window_width, window_height);
         const xr_swapchain: XrSwapchain = try .init(2, vk_physical_device, xr_instance, xr_system_id, xr_session);
-        const render_pass: c.VkRenderPass = try vk.createRenderPass(vk_logical_device, xr_swapchain.format, xr_swapchain.depth_format, xr_swapchain.sample_count);
+        // const render_pass: c.VkRenderPass = try vk.createRenderPass(vk_logical_device, xr_swapchain.format, xr_swapchain.depth_format, xr_swapchain.sample_count);
         const command_pool: c.VkCommandPool = try vk.createCommandPool(vk_logical_device, queue_family_index);
         const descriptor_pool: c.VkDescriptorPool = try vk.createDescriptorPool(vk_logical_device);
         const descriptor_set_layout: c.VkDescriptorSetLayout = try vk.createDescriptorSetLayout(vk_logical_device);
         const vertex_shader: c.VkShaderModule = try vk.createShader(allocator, vk_logical_device, "shaders/vertex.vert.spv");
         const fragment_shader: c.VkShaderModule = try vk.createShader(allocator, vk_logical_device, "shaders/fragment.frag.spv");
-        const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(vk_logical_device, render_pass, descriptor_set_layout, vertex_shader, fragment_shader, xr_swapchain.sample_count);
+        const pipeline_layout: c.VkPipelineLayout, const pipeline: c.VkPipeline = try vk.createPipeline(vk_logical_device, null, descriptor_set_layout, vertex_shader, fragment_shader, xr_swapchain.sample_count);
 
         const acquire_fence: c.VkFence = try vk.createFence(vk_logical_device);
 
@@ -101,7 +101,7 @@ pub const Renderer = struct {
             .spectator_view = spectator_view,
             .command_pool = command_pool,
             .graphics_queue_family_index = queue_family_index,
-            .render_pass = render_pass,
+            .render_pass = null,
             .vk_fence = acquire_fence,
             .vk_debug_messenger = vk_debug_messenger,
             .vk_instance = vk_instance,
@@ -182,7 +182,7 @@ pub const Renderer = struct {
         c.vkDestroyDescriptorSetLayout(ctx.vk_logical_device, ctx.descriptor_set_layout, null);
         c.vkDestroyDescriptorPool(ctx.vk_logical_device, ctx.descriptor_pool, null);
         c.vkDestroyCommandPool(ctx.vk_logical_device, ctx.command_pool, null);
-        c.vkDestroyRenderPass(ctx.vk_logical_device, ctx.render_pass, null);
+        // c.vkDestroyRenderPass(ctx.vk_logical_device, ctx.render_pass, null);
     }
 
     pub fn beginFrame(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
@@ -412,6 +412,7 @@ fn renderEye(
     pipeline_layout: c.VkPipelineLayout,
     pipeline: c.VkPipeline,
 ) !struct { bool, u32 } {
+    _ = render_pass;
     const ctx = try world.getResource(Context);
     var acquire_image_info = c.XrSwapchainImageAcquireInfo{
         .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
@@ -477,22 +478,22 @@ fn renderEye(
 
     try loader.xrCheck(c.vkBeginCommandBuffer(image.command_buffer, &begin_info));
 
-    var clear_values: [2]c.VkClearValue = undefined;
-    clear_values[0].color.float32 = .{ 0.0, 0.0, 0.0, 1.0 };
-    clear_values[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
-    const begin_render_pass_info = c.VkRenderPassBeginInfo{
-        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass = render_pass,
-        .framebuffer = image.framebuffer,
-        .renderArea = .{
-            .offset = .{ .x = 0, .y = 0 },
-            .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
-        },
-        .clearValueCount = clear_values.len,
-        .pClearValues = &clear_values[0],
-    };
+    // var clear_values: [2]c.VkClearValue = undefined;
+    // clear_values[0].color.float32 = .{ 0.0, 0.0, 0.0, 1.0 };
+    // clear_values[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
+    // const begin_render_pass_info = c.VkRenderPassBeginInfo{
+    //     .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+    //     .renderPass = render_pass,
+    //     .framebuffer = image.framebuffer,
+    //     .renderArea = .{
+    //         .offset = .{ .x = 0, .y = 0 },
+    //         .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
+    //     },
+    //     .clearValueCount = clear_values.len,
+    //     .pClearValues = &clear_values[0],
+    // };
 
-    c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+    // c.vkCmdBeginRenderPass(image.command_buffer, &begin_render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
 
     const viewport = c.VkViewport{
         .x = 0,
