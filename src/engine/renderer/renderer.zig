@@ -75,8 +75,6 @@ pub const Renderer = struct {
 
         const acquire_fence: c.VkFence = try vk.createFence(vk_logical_device);
 
-        const space: c.XrSpace = try xr.createSpace(xr_session);
-
         const context = try allocator.create(Context);
         context.* = .{
             .spectator_view = spectator_view,
@@ -101,7 +99,6 @@ pub const Renderer = struct {
             .xr_instance = xr_instance,
             .xr_session = xr_session,
             .xr_system_id = xr_system_id,
-            .xr_space = space,
             .xr_swapchain = xr_swapchain,
             .predicted_time_frame = 0,
         };
@@ -230,6 +227,8 @@ pub const Renderer = struct {
 
     pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
         var ctx = try world.getResource(Context);
+        const io_ctx = try world.getResource(IoCtx);
+
         if (ctx.running == false) return;
         // std.debug.print("\n\n=========[BEGIN RENDER]===========\n\n", .{});
 
@@ -254,7 +253,8 @@ pub const Renderer = struct {
             world,
             ctx.xr_session,
             ctx.xr_swapchain,
-            ctx.xr_space,
+            io_ctx.xr_space,
+            io_ctx.xr_views,
             ctx.predicted_time_frame,
             ctx.vk_logical_device,
             ctx.vk_queue,
@@ -279,6 +279,7 @@ pub fn render(
     session: c.XrSession,
     swapchain: XrSwapchain,
     space: c.XrSpace,
+    views: [2]c.XrView,
     predicted_display_time: c.XrTime,
     device: c.VkDevice,
     queue: c.VkQueue,
@@ -286,42 +287,11 @@ pub fn render(
     pipeline_layout: c.VkPipelineLayout,
     pipeline: c.VkPipeline,
 ) !struct { bool, u32 } {
-    var view_locate_info = c.XrViewLocateInfo{
-        .type = c.XR_TYPE_VIEW_LOCATE_INFO,
-        .viewConfigurationType = c.XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-        .displayTime = predicted_display_time,
-        .space = space,
-        .next = null,
-    };
-
-    var view_state = c.XrViewState{
-        .type = c.XR_TYPE_VIEW_STATE,
-        .next = null,
-    };
-
-    var view_count: u32 = 2;
-    var views: [2]c.XrView = .{ .{
-        .type = c.XR_TYPE_VIEW,
-        .next = null,
-    }, .{
-        .type = c.XR_TYPE_VIEW,
-        .next = null,
-    } };
-
-    try loader.xrCheck(c.xrLocateViews(
-        session,
-        &view_locate_info,
-        &view_state,
-        view_count,
-        &view_count,
-        @ptrCast(&views[0]),
-    ));
-
     const ok, const active_index = try renderEye(
         comps,
         world,
         swapchain,
-        &views,
+        views,
         device,
         queue,
         render_pass,
@@ -378,7 +348,7 @@ fn renderEye(
     comps: []const type,
     world: *World(comps),
     xr_swapchain: XrSwapchain,
-    view: []c.XrView,
+    view: [2]c.XrView,
     device: c.VkDevice,
     queue: c.VkQueue,
     render_pass: c.VkRenderPass,
@@ -439,27 +409,31 @@ fn renderEye(
         const transform = ent.get(root.Transform).?;
         player_transform = transform.*;
     }
-    std.debug.print("\nPlayer: .{any}\n", .{player_transform});
+    // std.debug.print("\nPlayer: .{any}\n", .{player_transform});
 
     for (0..2) |i| {
-        const xr_orientation_mat: nz.Mat4(f32) = .fromQuaternion(.{
+        const xr_orientation_mat = nz.Mat4(f32).fromQuaternion(.{
             view[i].pose.orientation.x,
             view[i].pose.orientation.y,
             view[i].pose.orientation.z,
             view[i].pose.orientation.w,
         });
 
-        var local_orientation_mat: nz.Mat4(f32) = .identity(1);
-        local_orientation_mat = .mul(local_orientation_mat, .rotate(player_transform.rotation[0], .{ 1, 0, 0 }));
-        local_orientation_mat = .mul(local_orientation_mat, .rotate(player_transform.rotation[1], .{ 0, 1, 0 }));
-        local_orientation_mat = .mul(local_orientation_mat, .rotate(player_transform.rotation[2], .{ 0, 0, 1 }));
-
-        const local_location_mat = nz.Mat4(f32).translate(.{
-            view[i].pose.position.x + player_transform.position[0],
-            view[i].pose.position.y + player_transform.position[1],
-            view[i].pose.position.z + player_transform.position[2],
+        const xr_location_mat = nz.Mat4(f32).translate(.{
+            view[i].pose.position.x,
+            view[i].pose.position.y,
+            view[i].pose.position.z,
         });
-        var view_matrix = nz.Mat4(f32).inverse(local_location_mat.mul(local_orientation_mat.mul(xr_orientation_mat)));
+
+        // const vector: nz.Vec3(f32) = @splat(0);
+        // const xr_location_mat: nz.Mat4(f32) = .translate(vector);
+
+        const player_rot_mat =
+            nz.Mat4(f32).rotate(player_transform.rotation[1], .{ 0, 1, 0 });
+
+        const player_loc_mat = nz.Mat4(f32).translate(player_transform.position);
+        const world_from_view = player_loc_mat.mul(player_rot_mat.mul(xr_location_mat.mul(xr_orientation_mat)));
+        const view_matrix = nz.Mat4(f32).inverse(world_from_view);
         @memcpy(data.?[ptr_start .. ptr_start + 16], view_matrix.d[0..]);
         ptr_start += 16;
     }

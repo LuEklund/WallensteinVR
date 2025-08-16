@@ -11,10 +11,12 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     // io_ctx.*.player_pos[2] = @floatFromInt(map.start_y);
     //PLAYER
     _ = try world.spawn(allocator, .{
+        eng.Mesh{ .name = "csdsd" },
         eng.Transform{
             .position = .{ 0, 1, 0 },
-            .scale = .{ 1, 1, 1 },
+            .scale = .{ 0.1, 0.1, 0.1 },
         },
+        eng.Texture{ .name = "s" },
         eng.Player{},
     });
     //HANDS
@@ -101,18 +103,9 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
 
         hand_transform.rotation = transform.rotation;
         hand_transform.position = transform.position + rotated_hand_pos;
+        // hand_transform.position = transform.position + rotated_hand_pos + @as(
+        // nz.Vec3(f32),
+        // @bitCast(io_ctx.xr_views[0].pose.position),
+        // );
     }
-}
-
-pub fn forwardFromEuler(rotation: nz.Vec3(f32)) nz.Vec3(f32) {
-    const cy = @cos(rotation[0]);
-    const sy = @sin(rotation[0]);
-    const cp = @cos(rotation[1]);
-    const sp = @sin(rotation[1]);
-
-    return nz.normalize(.{
-        cy * cp,
-        sp,
-        sy * cp,
-    });
 }
