@@ -166,6 +166,7 @@ pub fn prepareCommandBuffer(self: *@This(), cmd_buffer: c.VkCommandBuffer, image
     } else {
         @panic("AAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
     }
+    c.vkCmdEndRendering(cmd_buffer);
 
     // try loader.vkCheck(c.vkEndCommandBuffer(cmd_buffer));
     return cmd_buffer;

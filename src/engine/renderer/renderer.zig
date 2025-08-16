@@ -516,6 +516,40 @@ fn renderEye(
     c.vkCmdBindPipeline(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     c.vkCmdBindDescriptorSets(image.command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &image.descriptor_set, 0, null);
 
+    var color_attachment: c.VkRenderingAttachmentInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = image.image_view,
+        .imageLayout = c.VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = .{ .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } } },
+    };
+
+    // Depth attachment
+    // var depth_attachment: c.VkRenderingAttachmentInfo = .{
+    //     .sType = c.VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+    //     .imageView = image.image_view,
+    //     .imageLayout = c.VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+    //     .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+    //     .storeOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+    //     .clearValue = .{ .depthStencil = .{ .depth = 1.0, .stencil = 0 } },
+    // };
+
+    // Dynamic rendering begin info
+    var renderingInfo: c.VkRenderingInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea = .{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = .{ .width = xr_swapchain.width, .height = xr_swapchain.height },
+        },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color_attachment,
+        // .pStencilAttachment = 1,
+        // .pDepthAttachment = &depth_attachment,
+    };
+
+    c.vkCmdBeginRendering(image.command_buffer, &renderingInfo);
     var it = world.query(&.{ root.Transform, root.Mesh });
     while (it.next()) |entity| {
         const transform = entity.get(root.Transform).?.*;
@@ -524,8 +558,9 @@ fn renderEye(
         const model = asset_manager.getModel(mesh.name);
         renderMesh(transform, model, image.command_buffer, pipeline_layout);
     }
+    c.vkCmdEndRendering(image.command_buffer);
 
-    c.vkCmdEndRenderPass(image.command_buffer);
+    // c.vkCmdEndRenderPass(image.command_buffer);
 
     const beforeSrcBarrier: c.VkImageMemoryBarrier = .{
         .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
