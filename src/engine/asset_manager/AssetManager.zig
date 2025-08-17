@@ -100,8 +100,6 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     try asset_manager.loadSounds(allocator);
 
     try world.setResource(allocator, Self, asset_manager);
-
-    // @panic("\nLOL\n");
 }
 
 pub fn loadSounds(asset_manager: *Self, allocator: std.mem.Allocator) !void {

@@ -28,12 +28,12 @@ pub const Renderer = struct {
             loader.c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME,
         };
         const xr_layers = &[_][*:0]const u8{
-            // "XR_APILAYER_LUNARG_core_validation",
-            // "XR_APILAYER_LUNARG_api_dump",
+            "XR_APILAYER_LUNARG_core_validation",
+            "XR_APILAYER_LUNARG_api_dump",
         };
 
         const vk_layers = &[_][*:0]const u8{
-            // "VK_LAYER_KHRONOS_validation",
+            "VK_LAYER_KHRONOS_validation",
         };
 
         try xr.validateExtensions(allocator, xr_extensions);
