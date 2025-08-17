@@ -106,8 +106,7 @@ fn astar(allocator: std.mem.Allocator, map: Tilemap, player_pos: nz.Vec2(usize),
             }
         }
     }
-
-    return error.NoPath;
+    return try path.toOwnedSlice();
 }
 
 fn getDistance2D(a: nz.Vec2(f32), b: nz.Vec2(f32)) f32 {
@@ -137,8 +136,8 @@ pub fn spawn(comps: []const type, world: *World(comps), allocator: std.mem.Alloc
                 .position = .{ @floatFromInt(pos_x), 1, @floatFromInt(pos_y) },
                 .scale = .{ 0.4, 0.4, 0.4 },
             },
-            eng.Texture{ .name = "bing.jpg" },
-            eng.Mesh{ .name = "xyzdragon.obj" },
+            eng.Texture{ .name = "33.jpg" },
+            eng.Mesh{ .name = "Gusn.obj" },
         },
     );
 }
@@ -147,56 +146,38 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     const io_ctx = try world.getResource(eng.IoCtx);
     var query_player = world.query(&.{ eng.Player, eng.Transform });
     const map: *Tilemap = try world.getResource(Tilemap);
+    var player = query_player.next().?;
 
-    var player_transform: eng.Transform = undefined;
-    while (query_player.next()) |entity| {
-        const transform = entity.get(eng.Transform).?;
-        player_transform = transform.*;
-        if (!(player_transform.position[0] < 0 or player_transform.position[2] < 0)) {
-            const player_pos_vec2 = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2]))) };
-            if (io_ctx.keyboard.isActive(.k) and map.get(player_pos_vec2[0], player_pos_vec2[1]) == 0) {
-                try spawn(comps, world, allocator, map.*);
-            }
+    var player_transform: eng.Transform = player.get(eng.Transform).?.*;
+    if (player_transform.position[0] < 0 or player_transform.position[2] < 0 or player_transform.position[0] >= @as(f32, @floatFromInt(map.x)) or player_transform.position[2] >= @as(f32, @floatFromInt(map.y))) return;
+
+    const transform = player.get(eng.Transform).?;
+    player_transform = transform.*;
+    if (!(player_transform.position[0] < 0 or player_transform.position[2] < 0)) {
+        const player_pos_vec2 = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2]))) };
+        if (io_ctx.keyboard.isActive(.k) and map.get(player_pos_vec2[0], player_pos_vec2[1]) == 0) {
+            try spawn(comps, world, allocator, map.*);
         }
     }
 
-    //std.debug.print("Player X: {} Y: {}\n", .{player_transform.position[0], player_transform.position[2]});
-
-    const enemy_speed: f32 = 0.001;
+    const enemy_speed: f32 = 6;
     const enemy_radar_distance: f32 = 15.0;
+    const time: *eng.time.Time = try world.getResource(eng.time.Time);
+    const delta_time: f32 = @floatCast(time.delta_time);
     var query_enemy = world.query(&.{ eng.Enemy, eng.Transform });
     while (query_enemy.next()) |entity| {
-        // Get Components
-        const transform: *eng.Transform = entity.get(eng.Transform).?;
-        var enemy = entity.get(eng.Enemy).?;
-        const time: *eng.time.Time = try world.getResource(eng.time.Time);
+        const enemy_transform: *eng.Transform = entity.get(eng.Transform).?;
+        if (nz.distance(enemy_transform.position, player_transform.position) <= enemy_radar_distance) {
+            const player_ipos = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2]))) };
+            const enemy_ipos = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(enemy_transform.position[0]))), @as(usize, @intFromFloat(@abs(enemy_transform.position[2]))) };
 
-        // Interpolation
-        enemy.lerp_percent += enemy_speed * @as(f32, @floatCast(time.delta_time));
-        if (enemy.lerp_percent > 1.0) {
-            enemy.lerp_percent = 0.0;
-        }
-
-        std.debug.print("Distance: {}\n", .{nz.distance(transform.position, player_transform.position)});
-        if (!(player_transform.position[0] < 0 or transform.position[0] < 0 or
-            player_transform.position[2] < 0 or transform.position[2] < 0) and
-            nz.distance(transform.position, player_transform.position) <= enemy_radar_distance)
-        {
-            const player_pos_vec2 = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(player_transform.position[0]))), @as(usize, @intFromFloat(@abs(player_transform.position[2]))) };
-            const enemy_pos_vec2 = nz.Vec2(usize){ @as(usize, @intFromFloat(@abs(transform.position[0]))), @as(usize, @intFromFloat(@abs(transform.position[2]))) };
-            std.debug.print("Start ({any}) Goal ({any})\n", .{ enemy_pos_vec2, player_pos_vec2 });
-
-            if (map.get(player_pos_vec2[0], player_pos_vec2[1]) == 0) {
-                const tiles: []nz.Vec2(usize) = try astar(allocator, map.*, player_pos_vec2, enemy_pos_vec2);
-                if (tiles.len > 1) {
-                    const movement = lerp(nz.Vec2(f32){ transform.position[0], transform.position[2] }, tiles[1], enemy.lerp_percent);
-                    transform.position[0] = movement[0];
-                    transform.position[2] = movement[1];
-
-                    std.debug.print("Tiles: {}\n", .{tiles[1]});
-                    std.debug.print("Movement: ({}, {})\n", .{ movement[0], movement[1] });
-                    std.debug.print("Pos: ({}, {})\n", .{ transform.position[0], transform.position[1] });
-                }
+            const tiles: []nz.Vec2(usize) = try astar(allocator, map.*, player_ipos, enemy_ipos);
+            if (tiles.len > 1) {
+                const mul_vec: nz.Vec3(f32) = .{ delta_time * enemy_speed, 0, delta_time * enemy_speed };
+                var ideal_tile: nz.Vec3(f32) = .{ @floatFromInt(tiles[1][0]), 0, @floatFromInt(tiles[1][1]) };
+                ideal_tile[0] += 0.5;
+                ideal_tile[2] += 0.5;
+                enemy_transform.position -= nz.normalize(enemy_transform.position - ideal_tile) * mul_vec;
             }
         }
     }

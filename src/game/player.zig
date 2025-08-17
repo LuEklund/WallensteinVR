@@ -11,7 +11,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     // io_ctx.*.player_pos[2] = @floatFromInt(map.start_y);
     //PLAYER
     _ = try world.spawn(allocator, .{
-        eng.Mesh{ .name = "csdsd" },
+        // eng.Mesh{ .name = "csdsd" },
         eng.Transform{
             .position = .{ 0, 1, 0 },
             .scale = .{ 0.1, 0.1, 0.1 },
@@ -23,19 +23,19 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
     _ = try world.spawn(allocator, .{
         eng.Transform{
             .position = .{ 0, 0, 0 },
-            .scale = .{ 0.1, 0.1, 0.1 },
+            .scale = @splat(0.03),
         },
-        eng.Mesh{ .name = "basket.obj" },
-        eng.Texture{ .name = "bassket.jpg" },
+        eng.Mesh{ .name = "Gun.obj" },
+        eng.Texture{ .name = "33.jpg" },
         game.Hand{ .side = .left },
     });
     _ = try world.spawn(allocator, .{
         eng.Transform{
             .position = .{ 0, 0, 0 },
-            .scale = .{ 0.1, 0.1, 0.1 },
+            .scale = @splat(0.03),
         },
-        eng.Mesh{ .name = "cube.obj" },
-        eng.Texture{ .name = "basket.jpg" },
+        eng.Mesh{ .name = "Gun.obj" },
+        eng.Texture{ .name = "33.jpg" },
         game.Hand{ .side = .right },
     });
 }
@@ -45,6 +45,7 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
 
     const time = try world.getResource(eng.time.Time);
     var speed: f32 = 1;
+    var rot_speed: f32 = 1;
 
     var query_player = world.query(&.{ eng.Player, eng.Transform });
     var player = query_player.next().?;
@@ -80,7 +81,10 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     if (io_ctx.keyboard.isActive(.q)) move[1] -= 1;
     if (io_ctx.keyboard.isActive(.e)) move[1] += 1;
 
-    if (io_ctx.keyboard.isActive(.left_shift)) speed = 10;
+    if (io_ctx.keyboard.isActive(.left_shift)) {
+        speed = 10;
+        rot_speed = 5;
+    }
     transform.position += @as(nz.Vec3(f32), @splat(@as(f32, @floatCast(time.delta_time)))) * move * @as(nz.Vec3(f32), @splat(speed));
 
     transform.position[0] += io_ctx.trackpad_state[0].currentState.x * right[0] * @as(f32, @floatCast(time.delta_time));
@@ -90,8 +94,8 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
 
     transform.rotation[1] -= io_ctx.trackpad_state[1].currentState.x * @as(f32, @floatCast(time.delta_time));
 
-    if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @as(f32, @floatCast(time.delta_time)) * speed;
-    if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @as(f32, @floatCast(time.delta_time)) * speed;
+    if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @as(f32, @floatCast(time.delta_time)) * rot_speed;
+    if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @as(f32, @floatCast(time.delta_time)) * rot_speed;
     var query = world.query(&.{ game.Hand, eng.Transform });
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
@@ -103,12 +107,47 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
             local_hand_pos[1],
             local_hand_pos[0] * -sin_yaw + local_hand_pos[2] * cos_yaw,
         };
-
         hand_transform.rotation = transform.rotation;
+        std.debug.print("Rot: {}\n", .{io_ctx.hand_pose[@intFromEnum(hand.side)].orientation});
+        const hand_rot: nz.Vec3(f32) = quatToEuler(@bitCast(io_ctx.hand_pose[@intFromEnum(hand.side)].orientation));
+        std.debug.print("Rot-Mat: {}\n", .{hand_rot});
+        hand_transform.rotation[0] += hand_rot[0]; // TODO: fix he Roll?
+        hand_transform.rotation[1] += hand_rot[1];
+        hand_transform.rotation[2] += hand_rot[2];
         hand_transform.position = transform.position + rotated_hand_pos;
         // hand_transform.position = transform.position + rotated_hand_pos + @as(
         // nz.Vec3(f32),
         // @bitCast(io_ctx.xr_views[0].pose.position),
         // );
     }
+}
+
+fn quatToEuler(q: nz.Vec4(f32)) nz.Vec3(f32) {
+    const x = q[0];
+    const y = q[1];
+    const z = q[2];
+    const w = q[3];
+
+    // roll (x-axis rotation)
+    const sinr_cosp = 2.0 * (w * x + y * z);
+    const cosr_cosp = 1.0 - 2.0 * (x * x + y * y);
+    const roll = std.math.atan2(sinr_cosp, cosr_cosp);
+
+    // pitch (y-axis rotation)
+    const sinp: f32 = 2.0 * (w * y - z * x);
+    var pitch: f32 = undefined;
+    if (@abs(sinp) >= 1.0) {
+        // use 90 degrees if out of range
+        pitch = 0;
+        // pitch = std.math.copysign(std.math.pi / 2.0, sinp);
+    } else {
+        pitch = std.math.asin(sinp);
+    }
+
+    // yaw (z-axis rotation)
+    const siny_cosp = 2.0 * (w * z + x * y);
+    const cosy_cosp = 1.0 - 2.0 * (y * y + z * z);
+    const yaw = std.math.atan2(siny_cosp, cosy_cosp);
+
+    return nz.Vec3(f32){ roll, pitch, -yaw };
 }
