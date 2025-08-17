@@ -98,7 +98,8 @@ pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocato
             else => {},
         }
     }
-    io_ctx.keyboard.keys = sdl.keyboard.getState();
+
+    io_ctx.keyboard.active = sdl.keyboard.getState();
 
     _ = try pollAction(ctx, io_ctx); //TODO  QUit app
 }
@@ -213,7 +214,7 @@ pub fn pollAction(
     for (0..2) |i| {
         actionStateGetInfo.action = io_ctx.grab_cube_action;
         actionStateGetInfo.subactionPath = io_ctx.hand_paths[i];
-        try loader.xrCheck(c.xrGetActionStateFloat(ctx.xr_session, &actionStateGetInfo, &io_ctx.grab_state[i]));
+        try loader.xrCheck(c.xrGetActionStateFloat(ctx.xr_session, &actionStateGetInfo, &io_ctx.trigger_state[i]));
         // if (io_ctx.grab_state[i].isActive != 0) {
         //     std.debug.print("\ngrab : {any}\n", .{io_ctx.grab_state[i].currentState});
         // }

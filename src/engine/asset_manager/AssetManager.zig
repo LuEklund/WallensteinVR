@@ -3,6 +3,7 @@ const c = @import("loader").c;
 const World = @import("../../ecs.zig").World;
 const Context = @import("../renderer/Context.zig");
 const vk = @import("../renderer/vulkan.zig");
+const audio = @import("audio.zig");
 
 const Obj = @import("Obj.zig");
 
@@ -60,9 +61,11 @@ var replacement_texture_pixels = [_]u32{
     0xFFFF00FF, 0xFF000000, 0xFF000000, 0xFFFF00FF, 0xFFFF00FF, 0xFF000000, 0xFF000000, 0xFFFF00FF,
 };
 ctx: *Context,
+audio_device: audio.Device,
 
 models: std.StringHashMapUnmanaged(Model),
 textures: std.StringHashMapUnmanaged(Texture),
+sounds: std.StringHashMapUnmanaged(audio.Sound),
 
 replacement_model: Model,
 
@@ -87,15 +90,30 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         .ctx = ctx,
         .models = .empty,
         .textures = .empty,
+        .sounds = .empty,
         .replacement_model = undefined,
+        .audio_device = try .init(),
     };
 
     try asset_manager.loadModels(allocator, ctx);
     try asset_manager.loadTextures(allocator, ctx);
+    try asset_manager.loadSounds(allocator);
 
     try world.setResource(allocator, Self, asset_manager);
 
     // @panic("\nLOL\n");
+}
+
+pub fn loadSounds(asset_manager: *Self, allocator: std.mem.Allocator) !void {
+    const sound_files = try findAssetsFromDir(allocator, "../../assets/sounds", ".wav");
+    defer allocator.free(sound_files);
+
+    for (sound_files) |file| {
+        const path = try std.fs.path.join(allocator, &.{ "../../assets/sounds", file });
+
+        std.debug.print("PATH: {s}\n", .{path});
+        try asset_manager.sounds.put(allocator, file, try .init(asset_manager.audio_device, @ptrCast(path)));
+    }
 }
 
 pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -279,6 +297,10 @@ pub fn putModel(self: *Self, allocator: std.mem.Allocator, key: []const u8, vert
 
 pub fn getTexture(self: Self, asset_name: []const u8) Texture {
     return self.textures.get(asset_name) orelse @panic("TEXTURE NOT FOUND");
+}
+
+pub fn getSound(self: Self, sound_name: []const u8) audio.Sound {
+    return self.sounds.get(sound_name) orelse @panic("SOUND NOT FOUND");
 }
 
 fn findAssetsFromDir(

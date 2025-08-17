@@ -42,6 +42,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
 
 pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
     const io_ctx = try world.getResource(eng.IoCtx);
+    const asset_manager = try world.getResource(eng.AssetManager);
 
     const time = try world.getResource(eng.time.Time);
     var speed: f32 = 1;
@@ -96,11 +97,13 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
 
     if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @as(f32, @floatCast(time.delta_time)) * rot_speed;
     if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @as(f32, @floatCast(time.delta_time)) * rot_speed;
+    if (io_ctx.keyboard.isPressed(.return_key)) try asset_manager.getSound("error.wav").play(0.5);
     var query = world.query(&.{ game.Hand, eng.Transform });
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
         var hand_transform = entity.get(eng.Transform).?;
-        const local_hand_pos: nz.Vec3(f32) = @bitCast(io_ctx.hand_pose[@intFromEnum(hand.side)].position);
+        const hand_id = @intFromEnum(hand.side);
+        const local_hand_pos: nz.Vec3(f32) = @bitCast(io_ctx.hand_pose[hand_id].position);
 
         const rotated_hand_pos = nz.Vec3(f32){
             local_hand_pos[0] * cos_yaw - local_hand_pos[2] * -sin_yaw,
@@ -108,17 +111,22 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
             local_hand_pos[0] * -sin_yaw + local_hand_pos[2] * cos_yaw,
         };
         hand_transform.rotation = transform.rotation;
-        std.debug.print("Rot: {}\n", .{io_ctx.hand_pose[@intFromEnum(hand.side)].orientation});
-        const hand_rot: nz.Vec3(f32) = quatToEuler(@bitCast(io_ctx.hand_pose[@intFromEnum(hand.side)].orientation));
+        std.debug.print("Rot: {}\n", .{io_ctx.hand_pose[hand_id].orientation});
+        const hand_rot: nz.Vec3(f32) = quatToEuler(@bitCast(io_ctx.hand_pose[hand_id].orientation));
         std.debug.print("Rot-Mat: {}\n", .{hand_rot});
         hand_transform.rotation[0] += hand_rot[0]; // TODO: fix he Roll?
         hand_transform.rotation[1] += hand_rot[1];
         hand_transform.rotation[2] += hand_rot[2];
         hand_transform.position = transform.position + rotated_hand_pos;
-        // hand_transform.position = transform.position + rotated_hand_pos + @as(
-        // nz.Vec3(f32),
-        // @bitCast(io_ctx.xr_views[0].pose.position),
-        // );
+
+        if (hand.curr_cooldown <= 0) {
+            if (io_ctx.trigger_state[hand_id].isActive != 0 and io_ctx.trigger_state[hand_id].currentState > 0.5) {
+                try asset_manager.getSound("error.wav").play(0.5);
+                hand.curr_cooldown = hand.reset_cooldown;
+            }
+        } else {
+            hand.curr_cooldown -= @floatCast(time.delta_time);
+        }
     }
 }
 

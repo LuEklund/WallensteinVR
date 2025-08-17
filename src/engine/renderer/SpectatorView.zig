@@ -10,7 +10,7 @@ sdl_surface: c.VkSurfaceKHR = undefined,
 sdl_window: sdl.video.Window = undefined,
 
 pub fn init(vulkan_instance: c.VkInstance, hight: usize, width: usize) !@This() {
-    const init_flags: sdl.InitFlags = .{ .video = true, .events = true };
+    const init_flags: sdl.InitFlags = .{ .video = true, .events = true, .audio = true };
     try sdl.init(init_flags);
     const window: sdl.video.Window = try .init("Hello SDL3", width, hight, .{ .vulkan = true, .resizable = true });
     const vk_exts = try sdl.vulkan.getInstanceExtensions();
