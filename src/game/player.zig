@@ -44,6 +44,8 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     const io_ctx = try world.getResource(eng.IoCtx);
 
     const time = try world.getResource(eng.time.Time);
+    var speed: f32 = 1;
+
     var query_player = world.query(&.{ eng.Player, eng.Transform });
     var player = query_player.next().?;
     var transform = player.get(eng.Transform).?;
@@ -54,7 +56,7 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     const forward = [3]f32{ -sin_yaw, 0, -cos_yaw };
     const right = [3]f32{ cos_yaw, 0, -sin_yaw };
 
-    std.debug.print("forward: {any}\n", .{forward});
+    // std.debug.print("forward: {any}\n", .{forward});
 
     var move = [3]f32{ 0, 0, 0 };
 
@@ -78,7 +80,8 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     if (io_ctx.keyboard.isActive(.q)) move[1] -= 1;
     if (io_ctx.keyboard.isActive(.e)) move[1] += 1;
 
-    transform.position += @as(nz.Vec3(f32), @splat(@as(f32, @floatCast(time.delta_time)))) * move;
+    if (io_ctx.keyboard.isActive(.left_shift)) speed = 10;
+    transform.position += @as(nz.Vec3(f32), @splat(@as(f32, @floatCast(time.delta_time)))) * move * @as(nz.Vec3(f32), @splat(speed));
 
     transform.position[0] += io_ctx.trackpad_state[0].currentState.x * right[0] * @as(f32, @floatCast(time.delta_time));
     transform.position[2] += io_ctx.trackpad_state[0].currentState.x * right[2] * @as(f32, @floatCast(time.delta_time));
@@ -87,8 +90,8 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
 
     transform.rotation[1] -= io_ctx.trackpad_state[1].currentState.x * @as(f32, @floatCast(time.delta_time));
 
-    if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @floatCast(time.delta_time);
-    if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @floatCast(time.delta_time);
+    if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @as(f32, @floatCast(time.delta_time)) * speed;
+    if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @as(f32, @floatCast(time.delta_time)) * speed;
     var query = world.query(&.{ game.Hand, eng.Transform });
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
