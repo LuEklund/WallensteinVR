@@ -163,7 +163,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     //std.debug.print("Player X: {} Y: {}\n", .{player_transform.position[0], player_transform.position[2]});
 
     const enemy_speed: f32 = 0.001;
-    const enemy_radar_distance: f32 = 5.0;
+    const enemy_radar_distance: f32 = 15.0;
     var query_enemy = world.query(&.{ eng.Enemy, eng.Transform });
     while (query_enemy.next()) |entity| {
         // Get Components
@@ -193,9 +193,9 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
                     transform.position[0] = movement[0];
                     transform.position[2] = movement[1];
 
-                    //std.debug.print("Tiles: {}\n", .{tiles[1]});
-                    //std.debug.print("Movement: ({}, {})\n", .{movement[0], movement[1]});
-                    //std.debug.print("Pos: ({}, {})\n", .{transform.position[0], transform.position[1]});
+                    std.debug.print("Tiles: {}\n", .{tiles[1]});
+                    std.debug.print("Movement: ({}, {})\n", .{ movement[0], movement[1] });
+                    std.debug.print("Pos: ({}, {})\n", .{ transform.position[0], transform.position[1] });
                 }
             }
         }

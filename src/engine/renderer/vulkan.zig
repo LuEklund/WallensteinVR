@@ -821,8 +821,8 @@ pub fn createTextureSampler(
 
     var samplerInfo: c.VkSamplerCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = c.VK_FILTER_LINEAR,
-        .minFilter = c.VK_FILTER_LINEAR,
+        .magFilter = c.VK_FILTER_NEAREST,
+        .minFilter = c.VK_FILTER_NEAREST,
         .addressModeU = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .addressModeV = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .addressModeW = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
