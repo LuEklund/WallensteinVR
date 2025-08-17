@@ -9,7 +9,7 @@ pub const some = @import("some.zig");
 pub const Hand = struct {
     side: enum(usize) { left = 0, right = 1 },
     curr_cooldown: f32 = 0,
-    reset_cooldown: f32 = 5,
+    reset_cooldown: f32 = 0,
 };
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {

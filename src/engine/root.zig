@@ -20,11 +20,11 @@ pub const Transform = struct {
 };
 
 pub const Mesh = struct {
-    name: []const u8,
+    name: []const u8 = "default",
 };
 
 pub const Texture = struct {
-    name: []const u8,
+    name: []const u8 = "default",
 };
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -49,6 +49,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         Renderer.beginFrame,
         time.update,
         Input.pollEvents,
+        physics.update,
         Renderer.update,
     });
 }
