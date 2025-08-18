@@ -99,6 +99,7 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
         while (it2.next()) |entity2| {
             if (entity.id == entity2.id) continue;
             const transform2 = entity2.get(Transform).?;
+            if (@abs(nz.distance(transform.position, transform2.position)) > 1.5) continue;
             const bbaa2 = entity2.get(BBAA).?;
             // const rigidbody2 = entity2.get(Rigidbody).?;
             const current_bbaa: BBAA = .{
