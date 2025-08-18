@@ -5,11 +5,16 @@ pub const map = @import("map.zig");
 pub const player = @import("player.zig");
 pub const enemy = @import("enemy.zig");
 pub const some = @import("some.zig");
+pub const bullets = @import("bullets.zig");
 
 pub const Hand = struct {
     side: enum(usize) { left = 0, right = 1 },
     curr_cooldown: f32 = 0,
     reset_cooldown: f32 = 0,
+};
+
+pub const Bullet = struct {
+    time_of_death: i128 = 0,
 };
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
@@ -27,6 +32,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     try world.runSystems(allocator, .{
         player.update,
         enemy.update,
+        bullets.update,
         some.update,
     });
 }

@@ -14,7 +14,7 @@ pub fn main() !void {
         smp_allocator;
 
     var world: World(
-        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand, eng.Player, eng.Enemy, eng.Texture, eng.BBAA },
+        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand, eng.Player, eng.Enemy, eng.Texture, eng.BBAA, game.Bullet },
     ) = .init();
     defer world.deinit(allocator);
 
@@ -39,7 +39,7 @@ pub fn main() !void {
     );
 
     const ctx: *GfxContext = try world.getResource(GfxContext);
-    try asset_manager.getSound("windows-xp-startup.wav").play(0.25);
+    try asset_manager.getSound("windows-xp-startup.wav").play(0.1);
     while (!ctx.should_quit) {
         try world.runSystems(allocator, .{
             eng.update,
