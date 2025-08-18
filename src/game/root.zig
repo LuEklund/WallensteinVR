@@ -10,7 +10,7 @@ pub const bullets = @import("bullets.zig");
 pub const Hand = struct {
     side: enum(usize) { left = 0, right = 1 },
     curr_cooldown: f32 = 0,
-    reset_cooldown: f32 = 0,
+    reset_cooldown: f32 = 1,
 };
 
 pub const Bullet = struct {

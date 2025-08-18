@@ -138,6 +138,7 @@ pub fn spawn(comps: []const type, world: *World(comps), allocator: std.mem.Alloc
             },
             eng.Texture{ .name = "33.jpg" },
             eng.Mesh{ .name = "Gusn.obj" },
+            eng.BBAA{},
         },
     );
 }
