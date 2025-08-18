@@ -30,6 +30,7 @@ pub fn World(comps: []const type) type {
 
         layout: ComponentsLayout,
         resources: std.StringHashMapUnmanaged(*anyopaque),
+        removed_queue: std.ArrayListUnmanaged(u32) = .empty,
 
         next_id: u32 = 0,
 
@@ -63,16 +64,26 @@ pub fn World(comps: []const type) type {
         }
 
         pub fn spawn(self: *Self, allocator: std.mem.Allocator, data: anytype) !u32 {
-            const entity_id: u32 = self.next_id;
-            self.next_id += 1;
+            var entity_id: u32 = self.next_id;
+            if (self.removed_queue.items.len > 0) entity_id = self.removed_queue.pop().? else self.next_id += 1;
 
             inline for (data) |entry| {
                 const T = @TypeOf(entry);
                 const map = &@field(self.layout, @typeName(T));
                 try map.put(allocator, entity_id, entry);
             }
+            std.debug.print("spawned entity with ID: {}\n", .{entity_id});
 
             return entity_id;
+        }
+
+        pub fn remove(self: *Self, allocator: std.mem.Allocator, id: u32) !void {
+            try self.removed_queue.append(allocator, id);
+            inline for (comps) |comp| {
+                var comp_hash_map: std.AutoHashMapUnmanaged(u32, comp) = @field(self.layout, @typeName(comp));
+                _ = comp_hash_map.remove(id);
+            }
+            std.debug.print("REMOVED enity with ID: {}\n", .{id});
         }
 
         pub fn query(self: *Self, search: []const type) Query(search) {
