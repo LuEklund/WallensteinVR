@@ -42,7 +42,7 @@ pub fn main() !void {
             @floatFromInt(map.end_x),
             1,
             @floatFromInt(map.end_y),
-        }, .scale = .{ 0.5, 0.5, 0.5 } },
+        }, .scale = @splat(0.5) },
         eng.Mesh{},
         eng.Texture{},
         game.collectable{},

@@ -137,8 +137,8 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
                 }
             },
             .collectable => {
-                std.debug.print("pos: {}\n", .{hand.equiped.collectable.position});
-                hand.equiped.collectable.position = hand_transform.position;
+                var c_transform = world.getComponentByEntity(eng.Transform, hand.equiped.collectable);
+                if (c_transform != null) c_transform.?.position = hand_transform.position;
             },
         }
         var query_collectable = world.query(&.{ game.collectable, eng.Transform });
@@ -148,7 +148,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
             const c_transform = entry.get(eng.Transform).?;
             if (@abs(nz.distance(c_transform.position, hand_transform.position)) < 0.5) {
                 collected.collected = true;
-                hand.equiped = .{ .collectable = c_transform };
+                hand.equiped = .{ .collectable = entry.id };
             }
         }
     }

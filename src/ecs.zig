@@ -90,6 +90,10 @@ pub fn World(comps: []const type) type {
             return .init(self);
         }
 
+        pub fn getComponentByEntity(self: Self, comptime T: type, id: u32) ?*T {
+            return @field(self.layout, @typeName(T)).getPtr(id);
+        }
+
         pub fn Query(search: []const type) type {
             return struct {
                 world: *World(comps),

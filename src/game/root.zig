@@ -10,7 +10,7 @@ const eng = @import("../engine/root.zig");
 
 pub const Hand = struct {
     side: enum(usize) { left = 0, right = 1 },
-    equiped: union(enum) { none: void, pistol: void, collectable: *eng.Transform } = .{ .pistol = {} },
+    equiped: union(enum) { none: void, pistol: void, collectable: u32 } = .{ .pistol = {} },
     curr_cooldown: f32 = 0,
     reset_cooldown: f32 = 1,
 };
