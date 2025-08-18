@@ -14,7 +14,7 @@ pub fn main() !void {
         smp_allocator;
 
     var world: World(
-        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand, eng.Player, eng.Enemy, eng.Texture, eng.BBAA, game.Bullet },
+        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand, eng.Player, eng.Enemy, eng.Texture, eng.BBAA, game.Bullet, game.collectable },
     ) = .init();
     defer world.deinit(allocator);
 
@@ -30,6 +30,23 @@ pub fn main() !void {
     defer allocator.free(verices);
     defer allocator.free(indices);
     const asset_manager = try world.getResource(eng.AssetManager);
+
+    var player_query = world.query(&.{ eng.Player, eng.Transform });
+    const player = player_query.next().?;
+    var player_transform = player.get(eng.Transform).?;
+    player_transform.position[0] = @floatFromInt(map.start_x);
+    player_transform.position[2] = @floatFromInt(map.start_y);
+
+    _ = try world.spawn(allocator, &.{
+        eng.Transform{ .position = .{
+            @floatFromInt(map.end_x),
+            1,
+            @floatFromInt(map.end_y),
+        }, .scale = .{ 0.5, 0.5, 0.5 } },
+        eng.Mesh{},
+        eng.Texture{},
+        game.collectable{},
+    });
 
     try asset_manager.putModel(
         allocator,

@@ -6,9 +6,6 @@ const nz = @import("numz");
 
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
 
-    //     const io_ctx: *eng.IoCtx = try world.getResource(eng.);
-    // io_ctx.*.player_pos[0] = @floatFromInt(map.start_x);
-    // io_ctx.*.player_pos[2] = @floatFromInt(map.start_y);
     //PLAYER
     _ = try world.spawn(allocator, .{
         // eng.Mesh{ .name = "csdsd" },
@@ -119,21 +116,40 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         hand_transform.rotation[2] += hand_rot[2];
         hand_transform.position = transform.position + rotated_hand_pos;
 
-        if (hand.curr_cooldown <= 0) {
-            if (io_ctx.trigger_state[hand_id].isActive != 0 and io_ctx.trigger_state[hand_id].currentState > 0.5) {
-                try asset_manager.getSound("error.wav").play(0.5);
-                hand.curr_cooldown = hand.reset_cooldown;
-                _ = try world.spawn(allocator, .{
-                    eng.Transform{ .position = hand_transform.position },
-                    eng.Mesh{},
-                    eng.Texture{ .name = "windows_xp.jpg" },
-                    eng.RigidBody{ .force = rotated_hand_pos * @as(nz.Vec3(f32), @splat(1)) },
-                    eng.BBAA{},
-                    game.Bullet{ .time_of_death = time.current_time_ns + 1000 * 1000 * 1000 * 60 }, //Nano * Micro * Milli * Seconds
-                });
+        switch (hand.equiped) {
+            .none => {},
+            .pistol => {
+                if (hand.curr_cooldown <= 0) {
+                    if (io_ctx.trigger_state[hand_id].isActive != 0 and io_ctx.trigger_state[hand_id].currentState > 0.5) {
+                        try asset_manager.getSound("error.wav").play(0.5);
+                        hand.curr_cooldown = hand.reset_cooldown;
+                        _ = try world.spawn(allocator, .{
+                            eng.Transform{ .position = hand_transform.position },
+                            eng.Mesh{},
+                            eng.Texture{ .name = "windows_xp.jpg" },
+                            eng.RigidBody{ .force = rotated_hand_pos * @as(nz.Vec3(f32), @splat(1)) },
+                            eng.BBAA{},
+                            game.Bullet{ .time_of_death = time.current_time_ns + 1000 * 1000 * 1000 * 60 }, //Nano * Micro * Milli * Seconds
+                        });
+                    }
+                } else {
+                    hand.curr_cooldown -= @floatCast(time.delta_time);
+                }
+            },
+            .collectable => {
+                std.debug.print("pos: {}\n", .{hand.equiped.collectable.position});
+                hand.equiped.collectable.position = hand_transform.position;
+            },
+        }
+        var query_collectable = world.query(&.{ game.collectable, eng.Transform });
+        while (query_collectable.next()) |entry| {
+            var collected = entry.get(game.collectable).?;
+            if (collected.collected == true) continue;
+            const c_transform = entry.get(eng.Transform).?;
+            if (@abs(nz.distance(c_transform.position, hand_transform.position)) < 0.5) {
+                collected.collected = true;
+                hand.equiped = .{ .collectable = c_transform };
             }
-        } else {
-            hand.curr_cooldown -= @floatCast(time.delta_time);
         }
     }
 }

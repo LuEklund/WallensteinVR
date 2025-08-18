@@ -9,12 +9,22 @@ pub const Tilemap = struct {
     y: usize,
     start_x: usize,
     start_y: usize,
+    end_x: usize,
+    end_y: usize,
 
     pub fn init(allocator: std.mem.Allocator, x: usize, y: usize) !Self {
         const tiles: []u8 = try allocator.alloc(u8, x * y);
         @memset(tiles, 1);
 
-        return .{ .tiles = tiles, .x = x, .y = y, .start_x = 0, .start_y = 0 };
+        return .{
+            .tiles = tiles,
+            .x = x,
+            .y = y,
+            .start_x = 0,
+            .start_y = 0,
+            .end_x = 0,
+            .end_y = 0,
+        };
     }
 
     pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
@@ -62,7 +72,8 @@ pub const Tilemap = struct {
 
             self.set(x, y, 0);
         }
-
+        self.end_x = x;
+        self.end_y = y;
         self.set(x, y, 255);
     }
 
@@ -78,6 +89,7 @@ pub const Tilemap = struct {
                 for (0..self.y) |iz| {
                     if (self.get(ix, iz) == 0) continue;
                     const z: f32 = @floatFromInt(iz);
+                    //TOP FACE
                     try indices.appendSlice(allocator, &.{
                         size,
                         size + 1,
@@ -87,10 +99,78 @@ pub const Tilemap = struct {
                         size + 3,
                     });
                     try verices.appendSlice(allocator, &.{
-                        x, y, z, 0.0, 0.0, 0.0, 1.0, 0.0, // bottom-left
+                        x, y + 1, z, 0.0, 0.0, 0.0, 1.0, 0.0, // bottom-left
+                        x, y + 1, z + 1, 0.0, 1.0, 0.0, 1.0, 0.0, // top-left
+                        x + 1, y + 1, z + 1, 1.0, 1.0, 0.0, 1.0, 0.0, // top-right
+                        x + 1, y + 1, z, 1.0, 0.0, 0.0, 1.0, 0.0, // bottom-right
+                    });
+                    size += 4;
+
+                    // LEFT FACE
+                    try indices.appendSlice(allocator, &.{
+                        size,
+                        size + 1,
+                        size + 2,
+                        size,
+                        size + 2,
+                        size + 3,
+                    });
+                    try verices.appendSlice(allocator, &.{
+                        x, y + 1, z, 0.0, 0.0, 0.0, 1.0, 0.0, // bottom-left
+                        x, y, z, 0.0, 1.0, 0.0, 1.0, 0.0, // top-left
+                        x, y, z + 1, 1.0, 1.0, 0.0, 1.0, 0.0, // top-right
+                        x, y + 1, z + 1, 1.0, 0.0, 0.0, 1.0, 0.0, // bottom-right
+                    });
+                    size += 4;
+
+                    //FRONT FACE
+                    try indices.appendSlice(allocator, &.{
+                        size,
+                        size + 1,
+                        size + 2,
+                        size,
+                        size + 2,
+                        size + 3,
+                    });
+                    try verices.appendSlice(allocator, &.{
+                        x, y + 1, z + 1, 0.0, 0.0, 0.0, 1.0, 0.0, // bottom-left
                         x, y, z + 1, 0.0, 1.0, 0.0, 1.0, 0.0, // top-left
                         x + 1, y, z + 1, 1.0, 1.0, 0.0, 1.0, 0.0, // top-right
-                        x + 1, y, z, 1.0, 0.0, 0.0, 1.0, 0.0, // bottom-right
+                        x + 1, y + 1, z + 1, 1.0, 0.0, 0.0, 1.0, 0.0, // bottom-right
+                    });
+                    size += 4;
+
+                    //RIGHT FACE
+                    try indices.appendSlice(allocator, &.{
+                        size,
+                        size + 1,
+                        size + 2,
+                        size,
+                        size + 2,
+                        size + 3,
+                    });
+                    try verices.appendSlice(allocator, &.{
+                        x + 1, y + 1, z + 1, 0.0, 0.0, 0.0, 1.0, 0.0, // bottom-left
+                        x + 1, y, z + 1, 0.0, 1.0, 0.0, 1.0, 0.0, // top-left
+                        x + 1, y, z, 1.0, 1.0, 0.0, 1.0, 0.0, // top-right
+                        x + 1, y + 1, z, 1.0, 0.0, 0.0, 1.0, 0.0, // bottom-right
+                    });
+                    size += 4;
+
+                    //BACK FACE
+                    try indices.appendSlice(allocator, &.{
+                        size,
+                        size + 1,
+                        size + 2,
+                        size,
+                        size + 2,
+                        size + 3,
+                    });
+                    try verices.appendSlice(allocator, &.{
+                        x + 1, y + 1, z, 0.0, 0.0, 0.0, 1.0, 0.0, // bottom-left
+                        x + 1, y, z, 0.0, 1.0, 0.0, 1.0, 0.0, // top-left
+                        x, y, z, 1.0, 1.0, 0.0, 1.0, 0.0, // top-right
+                        x, y + 1, z, 1.0, 0.0, 0.0, 1.0, 0.0, // bottom-right
                     });
                     size += 4;
                 }
