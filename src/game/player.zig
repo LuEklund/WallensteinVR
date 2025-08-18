@@ -11,9 +11,9 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         // eng.Mesh{ .name = "csdsd" },
         eng.Transform{
             .position = .{ 0, 1, 0 },
-            .scale = .{ 0.1, 0.1, 0.1 },
+            .scale = @splat(-50),
         },
-        eng.Texture{ .name = "s" },
+        eng.Texture{ .name = "bing.jpg" },
         eng.Player{},
     });
     //HANDS
@@ -147,6 +147,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
             if (collected.collected == true) continue;
             const c_transform = entry.get(eng.Transform).?;
             if (@abs(nz.distance(c_transform.position, hand_transform.position)) < 0.5) {
+                hand_transform.scale = @splat(0);
                 collected.collected = true;
                 hand.equiped = .{ .collectable = entry.id };
             }

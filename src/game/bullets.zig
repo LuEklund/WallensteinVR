@@ -2,6 +2,8 @@ const std = @import("std");
 const World = @import("../ecs.zig").World;
 const game = @import("root.zig");
 const eng = @import("../engine/root.zig");
+const nz = @import("numz");
+
 pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     var bullet_query = world.query(&.{ game.Bullet, eng.Transform, eng.BBAA });
     const time = try world.getResource(eng.time.Time);
@@ -14,6 +16,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         while (enemy_query.next()) |entity2| {
             const enemy_transform = entity2.get(eng.Transform).?;
             const enemy_bbaa = entity2.get(eng.BBAA).?;
+            if (@abs(nz.distance(bullet_transform.position, enemy_transform.position)) > 1.5) continue;
             const relative_enemy_bbaa: eng.BBAA = enemy_bbaa.toRelative(enemy_transform.position);
             if (relative_bullet_bbaa.intersect_BBAAs(relative_enemy_bbaa)) {
                 try world.remove(allocator, entity2.id);
