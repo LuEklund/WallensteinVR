@@ -110,7 +110,7 @@ pub fn loadSounds(asset_manager: *Self, allocator: std.mem.Allocator) !void {
         const path = try std.fs.path.join(allocator, &.{ "../../assets/sounds", file });
 
         std.debug.print("PATH: {s}\n", .{path});
-        try asset_manager.sounds.put(allocator, file, try .init(asset_manager.audio_device, @ptrCast(path)));
+        try asset_manager.sounds.put(allocator, file, try .init(allocator, asset_manager.audio_device, @ptrCast(path)));
     }
 }
 
