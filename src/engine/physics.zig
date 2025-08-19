@@ -35,28 +35,8 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     var it = world.query(&.{ Transform, BBAA, Rigidbody });
     while (it.next()) |entity| {
         const transform = entity.get(Transform).?;
-        const bbaa = entity.get(BBAA).?;
+        const current = entity.get(BBAA).?;
         const rigidbody = entity.get(Rigidbody).?;
-
-        var it2 = world.query(&.{ Transform, BBAA });
-        while (it2.next()) |entity2| {
-            if (entity.id == entity2.id) continue;
-            const transform2 = entity2.get(Transform).?;
-            if (@abs(nz.distance(transform.position, transform2.position)) > 1.5) continue;
-            const bbaa2 = entity2.get(BBAA).?;
-            // const rigidbody2 = entity2.get(Rigidbody).?;
-            const current_bbaa: BBAA = .{
-                .max = bbaa.max + transform.position,
-                .min = bbaa.min + transform.position,
-            };
-            const against_bbaa: BBAA = .{
-                .max = bbaa2.max + transform2.position,
-                .min = bbaa2.min + transform2.position,
-            };
-            if (current_bbaa.intersecting(against_bbaa)) {
-                std.debug.print("Enity ID {} collied with ID {}\n", .{ entity.id, entity2.id });
-            }
-        }
 
         transform.position += rigidbody.force * @as(nz.Vec3(f32), @splat(delta_time));
         for (0..3) |i| {
@@ -68,6 +48,17 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
                 0;
 
             if (@abs(rigidbody.force[i]) < rigidbody.mass / 1.5) rigidbody.force[i] = 0;
+        }
+
+        var against_it = world.query(&.{ Transform, BBAA, Rigidbody });
+        while (against_it.next()) |entry| {
+            if (entity.id == entry.id) continue;
+            const against_transform = entry.get(Transform).?;
+            if (@abs(nz.distance(transform.position, against_transform.position)) > 1.5) continue;
+            const against = entry.get(BBAA).?;
+            if (against.intersecting(current.*)) {
+                rigidbody.force = -rigidbody.force;
+            }
         }
     }
 }
