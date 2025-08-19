@@ -103,7 +103,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
 }
 
 pub fn loadSounds(asset_manager: *Self, allocator: std.mem.Allocator) !void {
-    const sound_files = try findAssetsFromDir(allocator, "../../assets/sounds", ".wav");
+    const sound_files = try findAssetsFromDir(allocator, "../../assets/sounds");
     defer allocator.free(sound_files);
 
     for (sound_files) |file| {
@@ -121,7 +121,7 @@ pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 
 pub fn loadModels(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Context) !void {
     const dir_path = "../../assets/models"; // assets/models
-    const paths = try findAssetsFromDir(allocator, "../../assets/models", ".obj");
+    const paths = try findAssetsFromDir(allocator, "../../assets/models");
 
     asset_manager.replacement_model = try createModelFromBuffers(
         ctx.vk_physical_device,
@@ -176,7 +176,7 @@ pub fn loadTextures(asset_manager: *Self, allocator: std.mem.Allocator, ctx: *Co
         try createTextureFromBuffer(ctx, @ptrCast(replacement_texture_pixels[0..].ptr), 8, 8),
     );
     const dir_path = "../../assets/textures"; // assets/textures
-    const paths = try findAssetsFromDir(allocator, dir_path, ".jpg");
+    const paths = try findAssetsFromDir(allocator, dir_path);
     for (paths) |path| {
         const local_path_z = try std.fs.path.joinZ(allocator, &.{ dir_path, path });
         defer allocator.free(local_path_z);
@@ -304,8 +304,6 @@ pub fn getSound(self: Self, sound_name: []const u8) audio.Sound {
 fn findAssetsFromDir(
     allocator: std.mem.Allocator,
     dir_path: []const u8,
-    /// Should be an extension like ".obj" for "model.obj"
-    extension: []const u8,
 ) ![][]const u8 {
     var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
     defer dir.close();
@@ -314,7 +312,7 @@ fn findAssetsFromDir(
 
     var it = dir.iterate();
     while (try it.next()) |entry| {
-        if (entry.kind == .file and std.mem.eql(u8, std.fs.path.extension(entry.name), extension)) {
+        if (entry.kind == .file) { // and std.mem.eql(u8, std.fs.path.extension(entry.name), extension)) {
             const name = try allocator.dupe(u8, entry.name);
             errdefer allocator.free(name);
             try assets.append(allocator, name);
