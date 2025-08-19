@@ -14,6 +14,7 @@ pub fn main() !void {
         smp_allocator;
 
     var world: World(
+
         &[_]type{
             eng.RigidBody,
             eng.Transform,

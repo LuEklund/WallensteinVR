@@ -39,8 +39,9 @@ pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     try world.runSystems(allocator, .{
         player.update,
+        some.update,
+        enemy.spawn,
         enemy.update,
         bullets.update,
-        some.update,
     });
 }
