@@ -14,7 +14,20 @@ pub fn main() !void {
         smp_allocator;
 
     var world: World(
-        &[_]type{ eng.RigidBody, eng.Transform, eng.Mesh, game.Hand, eng.Player, game.enemy.Enemy, eng.Texture, eng.BBAA, game.Bullet, game.collectable },
+
+        &[_]type{
+            eng.RigidBody,
+            eng.Transform,
+            eng.Mesh,
+            game.Hand,
+            eng.Player,
+            eng.Enemy,
+            eng.Texture,
+            eng.BBAA,
+            game.Bullet,
+            game.collectable,
+            game.Door,
+        },
     ) = .init();
     defer world.deinit(allocator);
 

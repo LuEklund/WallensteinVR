@@ -23,6 +23,8 @@ pub const collectable = struct {
     collected: bool = false,
 };
 
+pub const Door = struct {};
+
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     try world.runSystems(allocator, .{
         player.init,

@@ -16,7 +16,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         while (enemy_query.next()) |entity2| {
             const enemy_transform = entity2.get(eng.Transform).?;
             const enemy_bbaa = entity2.get(eng.BBAA).?;
-            if (@abs(nz.distance(bullet_transform.position, enemy_transform.position)) > 1.5) continue;
+            if (@abs(nz.distance(bullet_transform.position, enemy_transform.position)) > @max(bullet_bbaa.max[0], enemy_bbaa.max[0] + 0.5)) continue;
             const relative_enemy_bbaa: eng.BBAA = enemy_bbaa.toRelative(enemy_transform.position);
             if (relative_bullet_bbaa.intersecting(relative_enemy_bbaa)) {
                 try world.remove(allocator, entity2.id);

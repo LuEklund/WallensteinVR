@@ -99,7 +99,5 @@ pub fn update(
                 best_dir = dir;
             }
         }
-
-        if (best_dir) |dir| rigidbody.force = nz.scale(dir, enemy.speed);
     }
 }

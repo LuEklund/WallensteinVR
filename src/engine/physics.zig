@@ -10,7 +10,7 @@ pub const Rigidbody = struct {
 
 pub const BBAA = struct {
     min: nz.Vec3(f32) = @splat(0),
-    max: nz.Vec3(f32) = @splat(1),
+    max: nz.Vec3(f32) = @splat(2),
 
     pub fn intersecting(a: @This(), b: BBAA) bool {
         return (intersect(a.min[0], a.max[0], b.min[0], b.max[0]) and
