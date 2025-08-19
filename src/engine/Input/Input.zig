@@ -78,7 +78,7 @@ pub fn pollEvents(comps: []const type, world: *World(comps), _: std.mem.Allocato
 
     while (sdl.events.poll()) |sdl_event| {
         switch (sdl_event) {
-            // .quit =>
+            .quit, .terminating => if (@import("builtin").mode == .Debug) @panic("debug force close"), // This is a bad solution but god damn i want to close the stuff
             .window_resized => |wr| {
                 try ctx.vk_swapchain.recreate(
                     ctx.spectator_view.sdl_surface,

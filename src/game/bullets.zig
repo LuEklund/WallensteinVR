@@ -12,13 +12,13 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         const bullet_bbaa = entity.get(eng.BBAA).?;
         const relative_bullet_bbaa: eng.BBAA = bullet_bbaa.toRelative(bullet_transform.position);
 
-        var enemy_query = world.query(&.{ eng.Enemy, eng.Transform, eng.BBAA });
+        var enemy_query = world.query(&.{ game.enemy.Enemy, eng.Transform, eng.BBAA });
         while (enemy_query.next()) |entity2| {
             const enemy_transform = entity2.get(eng.Transform).?;
             const enemy_bbaa = entity2.get(eng.BBAA).?;
             if (@abs(nz.distance(bullet_transform.position, enemy_transform.position)) > 1.5) continue;
             const relative_enemy_bbaa: eng.BBAA = enemy_bbaa.toRelative(enemy_transform.position);
-            if (relative_bullet_bbaa.intersect_BBAAs(relative_enemy_bbaa)) {
+            if (relative_bullet_bbaa.intersecting(relative_enemy_bbaa)) {
                 try world.remove(allocator, entity2.id);
             }
         }

@@ -55,7 +55,7 @@ pub const Tilemap = struct {
         self.start_y = y;
         defer self.set(self.start_x, self.start_y, 254);
 
-        const i = iterations orelse 10000;
+        const i = iterations orelse self.x * self.y;
         std.debug.print("ITS {d}\n", .{i});
         for (0..i) |_| {
             const decision: u8 = random.int(u8) % 4;
