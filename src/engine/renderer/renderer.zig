@@ -530,8 +530,8 @@ fn renderEye(
                 null,
             );
             var hitbox_transform: root.Transform = transform;
+
             hitbox_transform.scale = bbaa.max + @as(nz.Vec3(f32), @splat(0.01));
-            hitbox_transform.position += (bbaa.max - transform.scale) / @as(nz.Vec3(f32), @splat(2));
             renderMesh(hitbox_transform, asset_manager.replacement_model, image.command_buffer, pipeline_layout);
         }
     }

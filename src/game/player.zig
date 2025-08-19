@@ -11,7 +11,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         // eng.Mesh{ .name = "csdsd" },
         eng.Transform{
             .position = .{ 0, 1, 0 },
-            .scale = @splat(-50),
+            .scale = @splat(0),
         },
         eng.Texture{ .name = "bing.jpg" },
         eng.Player{},
