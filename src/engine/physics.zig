@@ -40,7 +40,7 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
 
         transform.position += rigidbody.force * @as(nz.Vec3(f32), @splat(delta_time));
         for (0..3) |i| {
-            rigidbody.force[i] = if (rigidbody.force[i] > 0)
+            rigidbody.force[i] += if (rigidbody.force[i] > 0)
                 -rigidbody.mass
             else if (rigidbody.force[i] < 0)
                 rigidbody.mass

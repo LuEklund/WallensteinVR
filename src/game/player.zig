@@ -127,7 +127,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
                             eng.Transform{ .position = hand_transform.position },
                             eng.Mesh{},
                             eng.Texture{ .name = "windows_xp.jpg" },
-                            eng.RigidBody{ .force = rotated_hand_pos * @as(nz.Vec3(f32), @splat(1)) },
+                            eng.RigidBody{ .force = rotated_hand_pos * @as(nz.Vec3(f32), @splat(1)), .mass = 0 },
                             eng.BBAA{},
                             game.Bullet{ .time_of_death = time.current_time_ns + 1000 * 1000 * 1000 * 60 }, //Nano * Micro * Milli * Seconds
                         });
