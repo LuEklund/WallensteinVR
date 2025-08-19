@@ -489,13 +489,10 @@ fn renderEye(
         pipeline_layout,
         0,
         1,
-        &image.descriptor_set.get("basket.jpg").?,
+        &image.descriptor_set.get("default").?,
         0,
         null,
     );
-
-    // std.debug.print("\ndesc; {any}\n", .{image.descriptor_set});
-    // if (true) @panic("XD");
 
     var it = world.query(&.{ root.Transform, root.Mesh, root.Texture });
     while (it.next()) |entity| {
@@ -516,6 +513,28 @@ fn renderEye(
         const model = asset_manager.getModel(mesh.name);
         renderMesh(transform, model, image.command_buffer, pipeline_layout);
     }
+    if (true) {
+        var it2 = world.query(&.{ root.Transform, root.BBAA });
+        while (it2.next()) |entity| {
+            const asset_manager = try world.getResource(AssetManager);
+            const transform = entity.get(root.Transform).?.*;
+            const bbaa = entity.get(root.BBAA).?.*;
+            c.vkCmdBindDescriptorSets(
+                image.command_buffer,
+                c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipeline_layout,
+                0,
+                1,
+                &image.getDescriptorSet("HitBox.png"),
+                0,
+                null,
+            );
+            var hitbox_transform: root.Transform = transform;
+            hitbox_transform.scale = bbaa.max + @as(nz.Vec3(f32), @splat(0.01));
+            hitbox_transform.position += (bbaa.max - transform.scale) / @as(nz.Vec3(f32), @splat(2));
+            renderMesh(hitbox_transform, asset_manager.replacement_model, image.command_buffer, pipeline_layout);
+        }
+    }
 
     c.vkCmdEndRenderPass(image.command_buffer);
 
@@ -533,8 +552,6 @@ fn renderEye(
             .baseArrayLayer = 0,
             .layerCount = 1,
         },
-        // .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
-        // .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
     };
 
     const beforeDstBarrier: c.VkImageMemoryBarrier = .{

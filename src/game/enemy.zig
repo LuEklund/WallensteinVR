@@ -134,7 +134,7 @@ pub fn spawn(comps: []const type, world: *World(comps), allocator: std.mem.Alloc
             },
             eng.Transform{
                 .position = .{ @floatFromInt(pos_x), 1, @floatFromInt(pos_y) },
-                .scale = .{ 0.4, 0.4, 0.4 },
+                .scale = @splat(1),
             },
             eng.Texture{ .name = "33.jpg" },
             eng.Mesh{ .name = "Gusn.obj" },
