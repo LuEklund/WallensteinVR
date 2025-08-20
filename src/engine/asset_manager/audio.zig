@@ -30,6 +30,7 @@ pub const Device = struct {
 pub const Sound = struct {
     device: Device,
     streams: []?*c.SDL_AudioStream,
+    loop_stream: ?*c.SDL_AudioStream = null,
     spec: c.SDL_AudioSpec,
     ptr: [*]u8,
     len: usize,
@@ -55,6 +56,8 @@ pub const Sound = struct {
     }
 
     pub fn deinit(self: @This()) void {
+        if (self.loop_stream != null)
+            c.SDL_DestroyAudioStream(self.loop_stream);
         for (self.streams) |stream| {
             if (stream != null) c.SDL_DestroyAudioStream(stream.?);
         }
@@ -85,6 +88,18 @@ pub const Sound = struct {
         if (free_stream) |stream| {
             _ = c.SDL_SetAudioStreamGain(stream, volume);
             try sdlCheck(c.SDL_PutAudioStreamData(stream, @ptrCast(self.ptr), @intCast(self.len)));
+        }
+    }
+
+    pub fn loop(self: *@This(), volume: f32) !void {
+        if (self.loop_stream == null) {
+            self.loop_stream = c.SDL_CreateAudioStream(&self.spec, null) orelse return error.CreateLoopAudioStream;
+            try sdlCheck(c.SDL_BindAudioStream(self.device.id, self.loop_stream));
+        }
+
+        if (c.SDL_GetAudioStreamAvailable(self.loop_stream.?) == 0) {
+            _ = c.SDL_SetAudioStreamGain(self.loop_stream.?, volume);
+            try sdlCheck(c.SDL_PutAudioStreamData(self.loop_stream.?, @ptrCast(self.ptr), @intCast(self.len)));
         }
     }
 };
