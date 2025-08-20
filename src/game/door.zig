@@ -24,8 +24,8 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     while (hand_querty.next()) |entry| {
         const hand = entry.get(game.Hand).?;
         if (hand.equiped == .collectable) {
-            var gfx_context = try world.getResource(GfxContext);
-            gfx_context.should_quit = true;
+            // var gfx_context = try world.getResource(GfxContext);
+            // gfx_context.should_quit = true;
         }
     }
 }

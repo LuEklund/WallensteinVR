@@ -84,6 +84,8 @@ pub fn main() !void {
 
     const ctx: *GfxContext = try world.getResource(GfxContext);
     try asset_manager.getSound("windows-xp-startup.wav").play(0.1);
+    try asset_manager.getSound("Skib.wav").play(0.1);
+
     while (!ctx.should_quit) {
         try world.runSystems(allocator, .{
             eng.update,

@@ -8,12 +8,12 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
 
     //PLAYER
     _ = try world.spawn(allocator, .{
-        // eng.Mesh{ .name = "csdsd" },
+        eng.Mesh{ .name = "csdsd" },
         eng.Transform{
             .position = .{ 0, 1, 0 },
-            .scale = @splat(0),
+            .scale = @splat(0.1),
         },
-        eng.Texture{ .name = "bing.jpg" },
+        eng.Texture{ .name = "bisng.jpg" },
         eng.Player{},
         eng.BBAA{},
         eng.RigidBody{},
@@ -42,6 +42,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
 pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     const io_ctx = try world.getResource(eng.IoCtx);
     const asset_manager = try world.getResource(eng.AssetManager);
+    const map = try world.getResource(game.map.Tilemap);
 
     const time = try world.getResource(eng.time.Time);
     var speed: f32 = 300;
@@ -93,6 +94,13 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     rigidbody.force[0] += io_ctx.trackpad_state[0].currentState.y * forward[0] * @as(f32, @floatCast(time.delta_time)) * speed;
     rigidbody.force[2] += io_ctx.trackpad_state[0].currentState.y * forward[2] * @as(f32, @floatCast(time.delta_time)) * speed;
 
+    const to_be_pos = rigidbody.force * @as(nz.Vec3(f32), @splat(0.1));
+    const player_x: i32 = @intFromFloat(transform.position[0] + to_be_pos[0]);
+    const player_y: i32 = @intFromFloat(transform.position[2] + to_be_pos[2]);
+    if (player_x >= 0 and player_x < map.x and player_y >= 0 and player_y < map.y and map.get(@intCast(player_x), @intCast(player_y)) == 1) {
+        rigidbody.force = @splat(0);
+    } else {}
+
     transform.rotation[1] -= io_ctx.trackpad_state[1].currentState.x * @as(f32, @floatCast(time.delta_time));
 
     if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @as(f32, @floatCast(time.delta_time)) * rot_speed;
@@ -110,9 +118,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
             local_hand_pos[0] * -sin_yaw + local_hand_pos[2] * cos_yaw,
         };
         hand_transform.rotation = transform.rotation;
-        // std.debug.print("Rot: {}\n", .{io_ctx.hand_pose[hand_id].orientation});
         const hand_rot: nz.Vec3(f32) = quatToEuler(@bitCast(io_ctx.hand_pose[hand_id].orientation));
-        // std.debug.print("Rot-Mat: {}\n", .{hand_rot});
         hand_transform.rotation[0] += hand_rot[0]; // TODO: fix he Roll?
         hand_transform.rotation[1] += hand_rot[1];
         hand_transform.rotation[2] += hand_rot[2];

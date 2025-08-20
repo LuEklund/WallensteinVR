@@ -215,7 +215,7 @@ pub fn init(allocator: std.mem.Allocator, seed: ?u64) !Tilemap {
     const random = prng.random();
     // defer std.debug.print("SEED: {d}\n", .{seed});
 
-    var map: Tilemap = try .init(allocator, 100, 100);
+    var map: Tilemap = try .init(allocator, 50, 50);
     map.spawnWalker(random, null);
     // map.gridSpawn(7, 0, 200);
 
