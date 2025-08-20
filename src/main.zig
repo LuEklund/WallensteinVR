@@ -60,6 +60,21 @@ pub fn main() !void {
         game.collectable{},
     });
 
+    _ = try world.spawn(allocator, .{
+        game.Door{},
+        eng.Transform{
+            .position = .{
+                @as(f32, @floatFromInt(map.start_x)) - 0.05,
+                0,
+                @as(f32, @floatFromInt(map.start_y)) - 0.05,
+            },
+            .scale = .{ 1.1, 2.2, 1.1 },
+        },
+        eng.Texture{ .name = "error_walsl.jpg" },
+        eng.Mesh{ .name = "worldss" },
+        eng.BBAA{},
+    });
+
     try asset_manager.putModel(
         allocator,
         "world",

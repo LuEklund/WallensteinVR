@@ -12,16 +12,6 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         eng.Texture{ .name = "error_wall.jpg" },
         eng.Mesh{ .name = "world" },
     });
-
-    _ = try world.spawn(allocator, .{
-        game.Door{},
-        eng.Transform{
-            // .position = .{ 0, -0.5, -5 },
-            .scale = .{ 0.1, 0.1, 1 },
-        },
-        eng.Texture{ .name = "error_walsl.jpg" },
-        eng.Mesh{ .name = "world" },
-    });
 }
 
 pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {

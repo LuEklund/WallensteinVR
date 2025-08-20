@@ -15,6 +15,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         },
         eng.Texture{ .name = "bing.jpg" },
         eng.Player{},
+        eng.BBAA{},
     });
     //HANDS
     _ = try world.spawn(allocator, .{
@@ -94,7 +95,6 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 
     if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @as(f32, @floatCast(time.delta_time)) * rot_speed;
     if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @as(f32, @floatCast(time.delta_time)) * rot_speed;
-    if (io_ctx.keyboard.isPressed(.return_key)) try asset_manager.getSound("error.wav").play(0.5);
     var query = world.query(&.{ game.Hand, eng.Transform });
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
@@ -120,7 +120,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
             .none => {},
             .pistol => {
                 if (hand.curr_cooldown <= 0) {
-                    if (io_ctx.trigger_state[hand_id].isActive != 0 and io_ctx.trigger_state[hand_id].currentState > 0.5) {
+                    if (io_ctx.trigger_state[hand_id].isActive != 0 and (io_ctx.trigger_state[hand_id].currentState > 0.5 or io_ctx.keyboard.isPressed(.return_key))) {
                         try asset_manager.getSound("error.wav").play(0.5);
                         hand.curr_cooldown = hand.reset_cooldown;
                         _ = try world.spawn(allocator, .{

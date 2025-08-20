@@ -28,7 +28,24 @@ pub const BBAA = struct {
 };
 
 pub fn intersect(a_min: f32, a_max: f32, b_min: f32, b_max: f32) bool {
-    return a_min < b_max and a_max > b_min;
+    return a_min <= b_max and a_max >= b_min;
+}
+
+fn getClip(
+    move_min: f32,
+    move_max: f32,
+    other_min: f32,
+    other_max: f32,
+    vel: f32,
+    time: f32,
+) f32 {
+    if (vel > 0 and move_max >= other_min) {
+        return @min((other_min - move_max) * time, vel);
+    }
+    if (vel < 0 and move_min <= other_max) {
+        return @max((other_max - move_min) * time, vel);
+    }
+    return vel;
 }
 
 pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
@@ -39,37 +56,46 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
     while (it.next()) |entity| {
         const current_transform = entity.get(Transform).?;
         const current_bbaa = entity.get(BBAA).?;
-        const rigidbody = entity.get(Rigidbody).?;
-        // current_bbaa.max = @splat(2 * @abs(@sin(current_transform.position[0])));
-
-        current_transform.position += rigidbody.force * @as(nz.Vec3(f32), @splat(delta_time));
+        const current_rigidbody = entity.get(Rigidbody).?;
         const current_bbaa_relative = current_bbaa.toRelative(current_transform.position);
 
-        //     current_transform.position += rigidbody.force * @as(nz.Vec3(f32), @splat(delta_time));
-        //     if (rigidbody.mass != 0) {
-        //         for (0..3) |i| {
-        //             rigidbody.force[i] += if (rigidbody.force[i] > 0)
-        //                 -rigidbody.mass
-        //             else if (rigidbody.force[i] < 0)
-        //                 rigidbody.mass
-        //             else
-        //                 0;
+        current_transform.position += current_rigidbody.force * @as(nz.Vec3(f32), @splat(delta_time));
+        if (current_rigidbody.mass != 0) {
+            for (0..3) |i| {
+                current_rigidbody.force[i] += if (current_rigidbody.force[i] > 0)
+                    -current_rigidbody.mass
+                else if (current_rigidbody.force[i] < 0)
+                    current_rigidbody.mass
+                else
+                    0;
 
-        //             if (@abs(rigidbody.force[i]) < rigidbody.mass / 1.5) rigidbody.force[i] = 0;
-        //         }
-        //     }
+                if (@abs(current_rigidbody.force[i]) <= current_rigidbody.mass) current_rigidbody.force[i] = 0;
+            }
+        }
 
         var against_it = world.query(&.{ Transform, BBAA, Rigidbody });
+        // const vel = current_rigidbody.force * @as(nz.Vec3(f32), @splat(delta_time));
         while (against_it.next()) |entry| {
             if (entity.id == entry.id) continue;
             const against_transform = entry.get(Transform).?;
+            // const against_rigidbody = entry.get(Rigidbody).?;
             const against_bbaa = entry.get(BBAA).?;
             const against_bbaa_relative = against_bbaa.toRelative(against_transform.position);
             // if (@abs(nz.distance(transform.position, against_transform.position)) > @max(current_bbaa.max[0], against_bbaa.max[0]) + 1) continue;
             if (against_bbaa_relative.intersecting(current_bbaa_relative)) {
-                std.debug.print("SCALE {}, {}\n", .{ current_transform.scale, against_transform.scale });
-                rigidbody.force = -rigidbody.force;
+                // for (0..3) |i| {
+                //     vel[i] = getClip(
+                //         current_bbaa_relative.min[i],
+                //         current_bbaa_relative.max[i],
+                //         against_bbaa_relative.min[i],
+                //         against_bbaa_relative.max[i],
+                //         vel[i],
+                //         delta_time,
+                //     );
+                // }
             }
         }
+        // current_transform.position += current_rigidbody.force * @as(nz.Vec3(f32), @splat(delta_time));
+        // current_transform.position += vel;
     }
 }
