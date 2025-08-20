@@ -6,6 +6,7 @@ pub const player = @import("player.zig");
 pub const enemy = @import("enemy.zig");
 pub const some = @import("some.zig");
 pub const bullets = @import("bullets.zig");
+pub const door = @import("door.zig");
 const eng = @import("../engine/root.zig");
 
 pub const Hand = struct {
@@ -43,5 +44,6 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         enemy.spawn,
         enemy.update,
         bullets.update,
+        door.update,
     });
 }
