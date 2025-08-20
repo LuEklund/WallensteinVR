@@ -56,7 +56,7 @@ pub fn main() !void {
             @floatFromInt(map.end_y),
         }, .scale = @splat(0.5) },
         eng.Mesh{},
-        eng.Texture{},
+        eng.Texture{ .name = "collectable.png" },
         game.collectable{},
     });
 
@@ -70,7 +70,7 @@ pub fn main() !void {
             },
             .scale = .{ 1.1, 2.2, 1.1 },
         },
-        eng.Texture{ .name = "error_walsl.jpg" },
+        eng.Texture{ .name = "door.png" },
         eng.Mesh{ .name = "worldss" },
         eng.BBAA{},
     });
@@ -84,7 +84,6 @@ pub fn main() !void {
 
     const ctx: *GfxContext = try world.getResource(GfxContext);
     try asset_manager.getSound("windows-xp-startup.wav").play(0.1);
-    try asset_manager.getSound("Skib.wav").play(0.1);
 
     while (!ctx.should_quit) {
         try world.runSystems(allocator, .{

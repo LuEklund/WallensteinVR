@@ -9,13 +9,15 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
             // .position = .{ 0, -0.5, -5 },
             // .scale = .{ 0.1, 0.1, 1},
         },
-        eng.Texture{ .name = "error_wall.jpg" },
+        eng.Texture{ .name = "wall.png" },
         eng.Mesh{ .name = "world" },
     });
 }
 
 pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
-    _ = world;
+    const asset_manager = try world.getResource(eng.AssetManager);
+    try asset_manager.getSound("Skib.wav").loop(0.1);
+
     // var query = world.query(&.{eng.Transform});
     // var query_player = world.query(&.{eng.Player});
     // const player_id = query_player.next().?.id;

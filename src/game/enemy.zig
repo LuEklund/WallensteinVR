@@ -7,7 +7,7 @@ const nz = @import("numz");
 
 pub const Enemy = struct {
     sight: f32 = 15.0,
-    speed: f32 = 10.0,
+    speed: f32 = 1.0,
     health: f32 = 100.0,
 
     // Using a slice is better for constant data in structs
@@ -49,7 +49,7 @@ pub fn spawn(
                         .position = .{ @floatFromInt(pos_x), 1.0, @floatFromInt(pos_y) },
                         .scale = .{ 0.4, 3.0, 0.4 },
                     },
-                    eng.Texture{ .name = "33.png" },
+                    eng.Texture{ .name = "enemy.png" },
                     eng.Mesh{ .name = "Gusn.obj" },
                     eng.BBAA{},
                     eng.RigidBody{},

@@ -297,8 +297,8 @@ pub fn getTexture(self: Self, asset_name: []const u8) Texture {
     return self.textures.get(asset_name) orelse @panic("TEXTURE NOT FOUND");
 }
 
-pub fn getSound(self: Self, sound_name: []const u8) audio.Sound {
-    return self.sounds.get(sound_name) orelse @panic("SOUND NOT FOUND");
+pub fn getSound(self: Self, sound_name: []const u8) *audio.Sound {
+    return self.sounds.getPtr(sound_name) orelse @panic("SOUND NOT FOUND");
 }
 
 fn findAssetsFromDir(
