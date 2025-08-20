@@ -16,6 +16,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         eng.Texture{ .name = "bing.jpg" },
         eng.Player{},
         eng.BBAA{},
+        eng.RigidBody{},
     });
     //HANDS
     _ = try world.spawn(allocator, .{
@@ -43,12 +44,13 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     const asset_manager = try world.getResource(eng.AssetManager);
 
     const time = try world.getResource(eng.time.Time);
-    var speed: f32 = 1;
-    var rot_speed: f32 = 1;
+    var speed: f32 = 300;
+    var rot_speed: f32 = 3;
 
-    var query_player = world.query(&.{ eng.Player, eng.Transform });
+    var query_player = world.query(&.{ eng.Player, eng.Transform, eng.RigidBody });
     var player = query_player.next().?;
     var transform = player.get(eng.Transform).?;
+    var rigidbody = player.get(eng.RigidBody).?;
     const yaw = transform.rotation[1];
     const sin_yaw = @sin(yaw);
     const cos_yaw = @cos(yaw);
@@ -81,15 +83,15 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     if (io_ctx.keyboard.isActive(.e)) move[1] += 1;
 
     if (io_ctx.keyboard.isActive(.left_shift)) {
-        speed = 10;
-        rot_speed = 5;
+        speed = 2000;
+        rot_speed = 6;
     }
-    transform.position += @as(nz.Vec3(f32), @splat(@as(f32, @floatCast(time.delta_time)))) * move * @as(nz.Vec3(f32), @splat(speed));
+    rigidbody.force = @as(nz.Vec3(f32), @splat(@as(f32, @floatCast(time.delta_time)))) * move * @as(nz.Vec3(f32), @splat(speed));
 
-    transform.position[0] += io_ctx.trackpad_state[0].currentState.x * right[0] * @as(f32, @floatCast(time.delta_time));
-    transform.position[2] += io_ctx.trackpad_state[0].currentState.x * right[2] * @as(f32, @floatCast(time.delta_time));
-    transform.position[0] += io_ctx.trackpad_state[0].currentState.y * forward[0] * @as(f32, @floatCast(time.delta_time));
-    transform.position[2] += io_ctx.trackpad_state[0].currentState.y * forward[2] * @as(f32, @floatCast(time.delta_time));
+    rigidbody.force[0] += io_ctx.trackpad_state[0].currentState.x * right[0] * @as(f32, @floatCast(time.delta_time)) * speed;
+    rigidbody.force[2] += io_ctx.trackpad_state[0].currentState.x * right[2] * @as(f32, @floatCast(time.delta_time)) * speed;
+    rigidbody.force[0] += io_ctx.trackpad_state[0].currentState.y * forward[0] * @as(f32, @floatCast(time.delta_time)) * speed;
+    rigidbody.force[2] += io_ctx.trackpad_state[0].currentState.y * forward[2] * @as(f32, @floatCast(time.delta_time)) * speed;
 
     transform.rotation[1] -= io_ctx.trackpad_state[1].currentState.x * @as(f32, @floatCast(time.delta_time));
 
