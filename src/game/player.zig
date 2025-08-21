@@ -117,13 +117,36 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
             local_hand_pos[1],
             local_hand_pos[0] * -sin_yaw + local_hand_pos[2] * cos_yaw,
         };
-        hand_transform.rotation = transform.rotation;
-        const hand_rot: nz.Vec3(f32) = quatToEuler(@bitCast(io_ctx.hand_pose[hand_id].orientation));
-        hand_transform.rotation[0] += hand_rot[0]; // TODO: fix he Roll?
-        hand_transform.rotation[1] += hand_rot[1];
-        hand_transform.rotation[2] += hand_rot[2];
-        hand_transform.position = transform.position + rotated_hand_pos;
 
+        hand_transform.position = transform.position + rotated_hand_pos;
+        const hand_quat: nz.Vec4(f32) = @bitCast(io_ctx.hand_pose[hand_id].orientation);
+
+        // player yaw -> quaternion
+        const hand_yaw = transform.rotation[1];
+        const half = hand_yaw * 0.5;
+        const player_quat = nz.Vec4(f32){
+            0.0,
+            std.math.sin(half),
+            0.0,
+            std.math.cos(half),
+        };
+
+        const combined = quatMul(player_quat, hand_quat);
+
+        const pyr: nz.Vec3(f32) = quatToPYR(combined);
+
+        std.debug.print("forward {}\n", .{@as(nz.Vec3(f32), right)});
+        const sign = nz.Vec3(f32){ 1.0, 1.0, 1.0 };
+        // if (right[0] < 0) sign[0] = -1;
+
+        const target_p = pyr[0] * sign[0];
+        const target_y = pyr[1] * sign[1];
+        const target_r = pyr[2] * sign[2];
+
+        // unwrap to keep continuity
+        hand_transform.rotation[2] = unwrapAngle(hand_transform.rotation[0], target_p); // pitch
+        hand_transform.rotation[1] = unwrapAngle(hand_transform.rotation[1], target_y); // yaw
+        hand_transform.rotation[0] = unwrapAngle(hand_transform.rotation[2], target_r); // roll
         switch (hand.equiped) {
             .none => {},
             .pistol => {
@@ -163,32 +186,111 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     }
 }
 
+fn toEulerAngles(q: nz.Vec4(f32)) nz.Vec3(f32) {
+    const x = q[0];
+    const y = q[1];
+    const z = q[2];
+    const w = q[3];
+    var angles: nz.Vec3(f32) = @splat(0);
+
+    // roll (x-axis rotation)
+    const sinr_cosp: f32 = 2 * (w * x + y * z);
+    const cosr_cosp: f32 = 1 - 2 * (x * x + y * y);
+    angles[0] = std.math.atan2(sinr_cosp, cosr_cosp);
+    const pistol_pitch_offset: f32 = std.math.degreesToRadians(-35.0);
+    angles[0] += pistol_pitch_offset;
+
+    // pitch (y-axis rotation)
+    const sinp: f32 = std.math.sqrt(1 + 2 * (w * y - x * z));
+    const cosp: f32 = std.math.sqrt(1 - 2 * (w * y - x * z));
+    angles[1] = 2 * std.math.atan2(sinp, cosp) - std.math.pi / 2.0;
+
+    // yaw (z-axis rotation)
+    const siny_cosp: f32 = 2 * (w * z + x * y);
+    const cosy_cosp: f32 = 1 - 2 * (y * y + z * z);
+    angles[2] = 2 * std.math.atan2(siny_cosp, cosy_cosp);
+
+    return angles;
+}
+
 fn quatToEuler(q: nz.Vec4(f32)) nz.Vec3(f32) {
     const x = q[0];
     const y = q[1];
     const z = q[2];
     const w = q[3];
 
-    // roll (x-axis rotation)
+    var angles: nz.Vec3(f32) = @splat(0);
+
+    // roll (X axis)
     const sinr_cosp = 2.0 * (w * x + y * z);
     const cosr_cosp = 1.0 - 2.0 * (x * x + y * y);
-    const roll = std.math.atan2(sinr_cosp, cosr_cosp);
+    angles[0] = std.math.atan2(sinr_cosp, cosr_cosp);
 
-    // pitch (y-axis rotation)
-    const sinp: f32 = 2.0 * (w * y - z * x);
-    var pitch: f32 = undefined;
+    // pitch (Y axis)
+    const sinp = 2.0 * (w * y - z * x);
     if (@abs(sinp) >= 1.0) {
-        // use 90 degrees if out of range
-        pitch = 0;
-        // pitch = std.math.copysign(std.math.pi / 2.0, sinp);
+        // use 90° with sign when out of range
+        angles[1] = std.math.copysign(std.math.pi / 2.0, sinp);
     } else {
-        pitch = std.math.asin(sinp);
+        angles[1] = std.math.asin(sinp);
     }
 
-    // yaw (z-axis rotation)
+    // yaw (Z axis)
     const siny_cosp = 2.0 * (w * z + x * y);
     const cosy_cosp = 1.0 - 2.0 * (y * y + z * z);
-    const yaw = std.math.atan2(siny_cosp, cosy_cosp);
+    angles[2] = std.math.atan2(siny_cosp, cosy_cosp);
 
-    return nz.Vec3(f32){ roll, pitch, -yaw };
+    return angles;
+}
+
+fn quatMul(q1: nz.Vec4(f32), q2: nz.Vec4(f32)) nz.Vec4(f32) {
+    const x1 = q1[0];
+    const y1 = q1[1];
+    const z1 = q1[2];
+    const w1 = q1[3];
+    const x2 = q2[0];
+    const y2 = q2[1];
+    const z2 = q2[2];
+    const w2 = q2[3];
+
+    return nz.Vec4(f32){
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+    };
+}
+
+inline fn unwrapAngle(prev: f32, current: f32) f32 {
+    var delta = current - prev;
+    const two_pi: f32 = 2.0 * std.math.pi;
+    while (delta > std.math.pi) delta -= two_pi;
+    while (delta < -std.math.pi) delta += two_pi;
+    return prev + delta;
+}
+
+// quat -> [pitch, yaw, roll] (engine order)
+fn quatToPYR(q: nz.Vec4(f32)) nz.Vec3(f32) {
+    const x = q[0];
+    const y = q[1];
+    const z = q[2];
+    const w = q[3];
+
+    // yaw (around Z)
+    const siny_cosp: f32 = 2.0 * (w * z + x * y);
+    const cosy_cosp: f32 = 1.0 - 2.0 * (y * y + z * z);
+    const yaw: f32 = std.math.atan2(siny_cosp, cosy_cosp);
+
+    // pitch (around Y)
+    var sinp: f32 = 2.0 * (w * y - z * x);
+    if (sinp > 1.0) sinp = 1.0;
+    if (sinp < -1.0) sinp = -1.0;
+    const pitch: f32 = std.math.asin(sinp);
+
+    // roll (around X)
+    const sinr_cosp: f32 = 2.0 * (w * x + y * z);
+    const cosr_cosp: f32 = 1.0 - 2.0 * (x * x + y * y);
+    const roll: f32 = std.math.atan2(sinr_cosp, cosr_cosp);
+
+    return nz.Vec3(f32){ yaw, pitch, roll };
 }
