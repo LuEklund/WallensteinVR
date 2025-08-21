@@ -26,6 +26,7 @@ pub fn main() !void {
             game.Bullet,
             game.collectable,
             game.Door,
+            game.WorldMap,
         },
     ) = .init();
     defer world.deinit(allocator);
@@ -39,8 +40,8 @@ pub fn main() !void {
     defer map.deinit(allocator);
     try world.setResource(allocator, game.map.Tilemap, &map);
     const verices: []f32, const indices: []u32 = try map.toModel(allocator);
-    defer allocator.free(verices);
-    defer allocator.free(indices);
+    // defer allocator.free(verices);
+    // defer allocator.free(indices);
     const asset_manager = try world.getResource(eng.AssetManager);
 
     var player_query = world.query(&.{ eng.Player, eng.Transform });

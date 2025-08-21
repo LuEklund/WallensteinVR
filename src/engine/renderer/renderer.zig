@@ -496,8 +496,9 @@ fn renderEye(
 
     var it = world.query(&.{ root.Transform, root.Mesh, root.Texture });
     while (it.next()) |entity| {
-        const transform = entity.get(root.Transform).?.*;
         const mesh = entity.get(root.Mesh).?.*;
+        if (mesh.should_render == false) continue;
+        const transform = entity.get(root.Transform).?.*;
         const texture = entity.get(root.Texture).?.*;
         c.vkCmdBindDescriptorSets(
             image.command_buffer,

@@ -30,10 +30,13 @@ pub const Door = struct {
     change_time: f32 = 0.1,
 };
 
+pub const WorldMap = struct {};
+
 pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     try world.runSystems(allocator, .{
         player.init,
         some.init,
+        enemy.init,
     });
 }
 
@@ -45,7 +48,6 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     try world.runSystems(allocator, .{
         player.update,
         some.update,
-        enemy.spawn,
         enemy.update,
         bullets.update,
         door.update,

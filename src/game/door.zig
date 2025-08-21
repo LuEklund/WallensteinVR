@@ -5,7 +5,7 @@ const World = @import("../ecs.zig").World;
 const nz = @import("numz");
 const GfxContext = @import("../engine/renderer/Context.zig");
 
-pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !void {
+pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     var player_query = world.query(&.{ eng.Player, eng.Transform, eng.BBAA });
     const player = player_query.next().?;
     const player_transform = player.get(eng.Transform).?;
@@ -46,10 +46,33 @@ pub fn update(comps: []const type, world: *World(comps), _: std.mem.Allocator) !
 
     if (door_bbaa_relative.intersecting(player_bbaa_relative) == false) return;
 
-    var hand_querty = world.query(&.{game.Hand});
+    var hand_querty = world.query(&.{ game.Hand, eng.Mesh });
     while (hand_querty.next()) |entry| {
+        const asset_manager = try world.getResource(eng.AssetManager);
         const hand = entry.get(game.Hand).?;
         if (hand.equiped == .collectable) {
+            var enemy_ctx = try world.getResource(game.enemy.EnemyCtx);
+            enemy_ctx.can_spawm = false;
+            var enemy_querty = world.query(&.{game.enemy.Enemy});
+            while (enemy_querty.next()) |enemy_entry| {
+                try world.remove(allocator, enemy_entry.id);
+            }
+
+            try asset_manager.getSound("win.wav").play(0.5);
+
+            const hand_mesh = entry.get(eng.Mesh).?;
+            hand_mesh.should_render = true;
+            hand.equiped = .pistol;
+            _ = try world.spawn(allocator, .{
+                eng.Transform{ .position = door_transform.position + @as(nz.Vec3(f32), @splat(2.5)), .scale = @splat(-5) },
+                eng.Mesh{},
+                eng.Texture{ .name = "GameOver.jpg" },
+            });
+            var world_query = world.query(&.{ game.WorldMap, eng.Transform });
+            var world_transform = world_query.next().?.get(eng.Transform).?;
+            world_transform.scale = @splat(0.1);
+            world_transform.position = door_transform.position - @as(nz.Vec3(f32), @splat(2.5));
+
             // var gfx_context = try world.getResource(GfxContext);
             // gfx_context.should_quit = true;
         }

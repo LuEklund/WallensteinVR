@@ -11,6 +11,7 @@ pub fn init(comps: []const type, world: *World(comps), allocator: std.mem.Alloca
         },
         eng.Texture{ .name = "wall.png" },
         eng.Mesh{ .name = "world" },
+        game.WorldMap{},
     });
 }
 
