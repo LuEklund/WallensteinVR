@@ -4,6 +4,7 @@ const eng = @import("../engine/root.zig");
 const game = @import("../game/root.zig");
 const Tilemap = @import("map.zig").Tilemap;
 const nz = @import("numz");
+const GfxContext = @import("../engine/renderer/Context.zig");
 
 pub const Enemy = struct {
     sight: f32 = 15.0,
@@ -69,6 +70,7 @@ pub fn update(
     const player_transform = player_it.next().?.get(eng.Transform).?.*;
 
     const map: *Tilemap = try world.getResource(Tilemap);
+    var gfx_context = try world.getResource(GfxContext);
 
     var enemy_it = world.query(&.{ Enemy, eng.Transform, eng.RigidBody });
     while (enemy_it.next()) |entry| {
@@ -76,8 +78,13 @@ pub fn update(
         const transform = entry.get(eng.Transform).?.*;
         const rigidbody = entry.get(eng.RigidBody).?;
 
+        const player_pos_2d: nz.Vec2(f32) = .{ player_transform.position[0], player_transform.position[2] };
+        const enemy_pos_2d: nz.Vec2(f32) = .{ transform.position[0], transform.position[2] };
+
         const distance = nz.distance(transform.position, player_transform.position);
         if (distance >= enemy.sight) continue;
+        std.debug.print("Distance {}\n", .{nz.distance(enemy_pos_2d, player_pos_2d)});
+        if (nz.distance(player_pos_2d, enemy_pos_2d) <= 0.8) gfx_context.should_quit = true;
 
         var best_dir: ?nz.Vec3(f32) = null;
         var shortest_dist = distance;
@@ -99,6 +106,8 @@ pub fn update(
                 best_dir = dir;
             }
         }
-        if (best_dir) |dir| rigidbody.force = nz.scale(dir, enemy.speed);
+        if (best_dir) |dir| {
+            rigidbody.force = nz.scale(dir, enemy.speed);
+        }
     }
 }
