@@ -249,22 +249,21 @@ pub fn createRenderPass(device: c.VkDevice, color_format: c.VkFormat, depth_form
 pub fn createDescriptorPool(device: c.VkDevice) !c.VkDescriptorPool {
     var descriptor_pool: c.VkDescriptorPool = undefined;
 
-    //TODO: Frames in flight instead of 32!
     var pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
             .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 32,
+            .descriptorCount = 100,
         },
         .{
             .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = 32,
+            .descriptorCount = 100,
         },
     };
 
     var create_info = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = c.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-        .maxSets = 32,
+        .maxSets = 100,
         .poolSizeCount = pool_sizes.len,
         .pPoolSizes = &pool_sizes,
     };
