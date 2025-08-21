@@ -122,8 +122,8 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         const hand_quat: nz.Vec4(f32) = @bitCast(io_ctx.hand_pose[hand_id].orientation);
 
         // player yaw -> quaternion
-        const hand_yaw = transform.rotation[1];
-        const half = hand_yaw * 0.5;
+        const prev_hand_yaw = transform.rotation[1];
+        const half = prev_hand_yaw * 0.5;
         const player_quat = nz.Vec4(f32){
             0.0,
             std.math.sin(half),
@@ -135,7 +135,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 
         const pyr: nz.Vec3(f32) = quatToPYR(combined);
 
-        std.debug.print("forward {}\n", .{@as(nz.Vec3(f32), right)});
+        std.debug.print("forward {}\n", .{@as(nz.Vec3(f32), forward)});
         const sign = nz.Vec3(f32){ 1.0, 1.0, 1.0 };
         // if (right[0] < 0) sign[0] = -1;
 
@@ -147,6 +147,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
         hand_transform.rotation[2] = unwrapAngle(hand_transform.rotation[0], target_p); // pitch
         hand_transform.rotation[1] = unwrapAngle(hand_transform.rotation[1], target_y); // yaw
         hand_transform.rotation[0] = unwrapAngle(hand_transform.rotation[2], target_r); // roll
+
         switch (hand.equiped) {
             .none => {},
             .pistol => {
@@ -155,12 +156,18 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
                         try asset_manager.getSound("error.wav").play(0.5);
                         hand.curr_cooldown = hand.reset_cooldown;
                         _ = try world.spawn(allocator, .{
-                            eng.Transform{ .position = hand_transform.position },
+                            eng.Transform{
+                                .position = hand_transform.position + @as(nz.Vec3(f32), @splat(-0.2)),
+                                .scale = @splat(0.4),
+                            },
                             eng.Mesh{},
-                            eng.Texture{ .name = "windows_xp.jpg" },
-                            eng.RigidBody{ .force = rotated_hand_pos * @as(nz.Vec3(f32), @splat(1)), .mass = 0 },
-                            eng.BBAA{},
-                            game.Bullet{ .time_of_death = time.current_time_ns + 1000 * 1000 * 1000 * 60 }, //Nano * Micro * Milli * Seconds
+                            eng.Texture{ .name = "windows_xp.png" },
+                            eng.RigidBody{
+                                .force = rotated_hand_pos * @as(nz.Vec3(f32), @splat(10)),
+                                .mass = 0,
+                            },
+                            eng.BBAA{ .max = @splat(0.5), .min = @splat(-0.1) },
+                            game.Bullet{ .time_of_death = time.current_time_ns + 1000 * 1000 * 1000 * 3 }, //Nano * Micro * Milli * Seconds
                         });
                     }
                 } else {

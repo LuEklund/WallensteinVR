@@ -46,12 +46,12 @@ pub fn spawn(
                 .{
                     Enemy{},
                     eng.Transform{
-                        .position = .{ @floatFromInt(pos_x), 1.0, @floatFromInt(pos_y) },
+                        .position = .{ @floatFromInt(pos_x), 0, @floatFromInt(pos_y) },
                         .scale = .{ 0.4, 3.0, 0.4 },
                     },
                     eng.Texture{ .name = "enemy.png" },
                     eng.Mesh{ .name = "Gusn.obj" },
-                    eng.BBAA{},
+                    eng.BBAA{ .min = .{ -0.1, -0.1, -0.1 }, .max = .{ 0.5, 3.1, 0.5 } },
                     eng.RigidBody{},
                 },
             );
