@@ -105,10 +105,11 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 
     if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @as(f32, @floatCast(time.delta_time)) * rot_speed;
     if (io_ctx.keyboard.isActive(.right)) transform.rotation[1] -= @as(f32, @floatCast(time.delta_time)) * rot_speed;
-    var query = world.query(&.{ game.Hand, eng.Transform });
+    var query = world.query(&.{ game.Hand, eng.Transform, eng.Mesh });
     while (query.next()) |entity| {
         const hand = entity.get(game.Hand).?;
         var hand_transform = entity.get(eng.Transform).?;
+        var hand_mesh = entity.get(eng.Mesh).?;
         const hand_id = @intFromEnum(hand.side);
         const local_hand_pos: nz.Vec3(f32) = @bitCast(io_ctx.hand_pose[hand_id].position);
 
@@ -184,7 +185,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
             if (collected.collected == true) continue;
             const c_transform = entry.get(eng.Transform).?;
             if (@abs(nz.distance(c_transform.position, hand_transform.position)) < 0.5) {
-                hand_transform.scale = @splat(0);
+                hand_mesh.should_render = false;
                 collected.collected = true;
                 hand.equiped = .{ .collectable = entry.id };
             }

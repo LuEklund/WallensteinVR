@@ -9,6 +9,7 @@ const GfxContext = @import("../engine/renderer/Context.zig");
 pub const EnemyCtx = struct {
     accumulated_time: f32 = 0,
     spawn_time: f32 = 4,
+    can_spawm: bool = true,
 };
 
 pub const Enemy = struct {
@@ -30,6 +31,8 @@ pub fn spawn(
     world: *World(comps),
     allocator: std.mem.Allocator,
 ) !void {
+    const enemy_ctx = try world.getResource(EnemyCtx);
+    if (enemy_ctx.can_spawm == false) return;
     const map_resource: *Tilemap = try world.getResource(Tilemap);
     const map = map_resource.*;
 
@@ -73,6 +76,7 @@ pub fn init(
     var ctx: *EnemyCtx = try allocator.create(EnemyCtx);
     ctx.accumulated_time = 0;
     ctx.spawn_time = 2;
+    ctx.can_spawm = true;
     try world.setResource(allocator, EnemyCtx, ctx);
 }
 
@@ -91,10 +95,7 @@ pub fn update(
     var enemy_ctx = try world.getResource(EnemyCtx);
 
     enemy_ctx.accumulated_time += @floatCast(time.delta_time);
-    std.debug.print("time: {} vs {}\n", .{ enemy_ctx.accumulated_time, enemy_ctx.spawn_time });
     if (enemy_ctx.accumulated_time >= enemy_ctx.spawn_time) {
-        std.debug.print("spawned: {}\n", .{enemy_ctx.accumulated_time});
-        // _ = allocator;
         try spawn(comps, world, allocator);
         enemy_ctx.accumulated_time = 0;
     }

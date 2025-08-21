@@ -20,6 +20,7 @@ pub const Transform = struct {
 };
 
 pub const Mesh = struct {
+    should_render: bool = true,
     name: []const u8 = "default",
 };
 
