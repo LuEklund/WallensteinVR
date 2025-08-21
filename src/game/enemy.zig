@@ -6,6 +6,11 @@ const Tilemap = @import("map.zig").Tilemap;
 const nz = @import("numz");
 const GfxContext = @import("../engine/renderer/Context.zig");
 
+pub const EnemyCtx = struct {
+    accumulated_time: f32 = 0,
+    spawn_time: f32 = 4,
+};
+
 pub const Enemy = struct {
     sight: f32 = 15.0,
     speed: f32 = 1.0,
@@ -25,23 +30,22 @@ pub fn spawn(
     world: *World(comps),
     allocator: std.mem.Allocator,
 ) !void {
-    const io_ctx = try world.getResource(eng.IoCtx);
-    // Check for a specific key press to trigger spawn
-    if (!io_ctx.keyboard.isPressed(.k)) {
-        return;
-    }
-
     const map_resource: *Tilemap = try world.getResource(Tilemap);
     const map = map_resource.*;
 
     var prng = std.Random.DefaultPrng.init(std.crypto.random.int(u64));
     const random = prng.random();
 
+    var player_query = world.query(&.{ eng.Player, eng.Transform });
+    const player_transform = player_query.next().?.get(eng.Transform).?;
+    const player_pos: nz.Vec2(f32) = .{ player_transform.position[0], player_transform.position[2] };
+
     while (true) {
         const pos_x: usize = random.intRangeAtMost(usize, 0, map.x - 1);
         const pos_y: usize = random.intRangeAtMost(usize, 0, map.y - 1);
+        const spawn_pos: nz.Vec2(f32) = .{ @floatFromInt(pos_x), @floatFromInt(pos_y) };
 
-        if (map.get(pos_x, pos_y) == 0) {
+        if (map.get(pos_x, pos_y) == 0 and nz.distance(player_pos, spawn_pos) > 4) {
             _ = try world.spawn(
                 allocator,
                 .{
@@ -61,16 +65,39 @@ pub fn spawn(
     }
 }
 
+pub fn init(
+    comptime comps: []const type,
+    world: *World(comps),
+    allocator: std.mem.Allocator,
+) !void {
+    var ctx: *EnemyCtx = try allocator.create(EnemyCtx);
+    ctx.accumulated_time = 0;
+    ctx.spawn_time = 2;
+    try world.setResource(allocator, EnemyCtx, ctx);
+}
+
 pub fn update(
     comptime comps: []const type,
     world: *World(comps),
-    _: std.mem.Allocator,
+    allocator: std.mem.Allocator,
 ) !void {
     var player_it = world.query(&.{ eng.Player, eng.Transform });
     const player_transform = player_it.next().?.get(eng.Transform).?.*;
 
     const map: *Tilemap = try world.getResource(Tilemap);
     var gfx_context = try world.getResource(GfxContext);
+
+    const time = try world.getResource(eng.time.Time);
+    var enemy_ctx = try world.getResource(EnemyCtx);
+
+    enemy_ctx.accumulated_time += @floatCast(time.delta_time);
+    std.debug.print("time: {} vs {}\n", .{ enemy_ctx.accumulated_time, enemy_ctx.spawn_time });
+    if (enemy_ctx.accumulated_time >= enemy_ctx.spawn_time) {
+        std.debug.print("spawned: {}\n", .{enemy_ctx.accumulated_time});
+        // _ = allocator;
+        try spawn(comps, world, allocator);
+        enemy_ctx.accumulated_time = 0;
+    }
 
     var enemy_it = world.query(&.{ Enemy, eng.Transform, eng.RigidBody });
     while (enemy_it.next()) |entry| {
