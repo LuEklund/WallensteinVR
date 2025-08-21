@@ -300,7 +300,7 @@ pub const SwapchainImage = struct {
 
         var descriptor_write: std.ArrayListUnmanaged(c.VkWriteDescriptorSet) = .empty;
         var image_infos: std.ArrayListUnmanaged(c.VkDescriptorImageInfo) = .empty;
-        try image_infos.ensureTotalCapacity(allocator, 20); //NOTE: realloc will break this if u go above 10 images/textures
+        try image_infos.ensureTotalCapacity(allocator, 60); //NOTE: realloc will break this if u go above 10 images/textures
         defer image_infos.deinit(allocator);
         var descriptor_sets: std.StringArrayHashMapUnmanaged(c.VkDescriptorSet) = .empty;
         for (texture_samplers, texture_image_views, texture_names, 0..) |texture_sampler, texture_image_view, name, i| {

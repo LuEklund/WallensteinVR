@@ -83,7 +83,6 @@ pub fn update(
 
         const distance = nz.distance(transform.position, player_transform.position);
         if (distance >= enemy.sight) continue;
-        std.debug.print("Distance {}\n", .{nz.distance(enemy_pos_2d, player_pos_2d)});
         if (nz.distance(player_pos_2d, enemy_pos_2d) <= 0.8) gfx_context.should_quit = true;
 
         var best_dir: ?nz.Vec3(f32) = null;

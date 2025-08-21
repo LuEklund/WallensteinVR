@@ -135,7 +135,6 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 
         const pyr: nz.Vec3(f32) = quatToPYR(combined);
 
-        std.debug.print("forward {}\n", .{@as(nz.Vec3(f32), forward)});
         const sign = nz.Vec3(f32){ 1.0, 1.0, 1.0 };
         // if (right[0] < 0) sign[0] = -1;
 
