@@ -48,33 +48,12 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
 
     var hand_querty = world.query(&.{ game.Hand, eng.Mesh });
     while (hand_querty.next()) |entry| {
-        const asset_manager = try world.getResource(eng.AssetManager);
         const hand = entry.get(game.Hand).?;
         if (hand.equiped == .collectable) {
-            var enemy_ctx = try world.getResource(game.enemy.EnemyCtx);
-            enemy_ctx.can_spawm = false;
-            var enemy_querty = world.query(&.{game.enemy.Enemy});
-            while (enemy_querty.next()) |enemy_entry| {
-                try world.remove(allocator, enemy_entry.id);
-            }
-
-            try asset_manager.getSound("win.wav").play(0.5);
-
             const hand_mesh = entry.get(eng.Mesh).?;
             hand_mesh.should_render = true;
             hand.equiped = .pistol;
-            _ = try world.spawn(allocator, .{
-                eng.Transform{ .position = door_transform.position + @as(nz.Vec3(f32), @splat(2.5)), .scale = @splat(-5) },
-                eng.Mesh{},
-                eng.Texture{ .name = "GameOver.jpg" },
-            });
-            var world_query = world.query(&.{ game.WorldMap, eng.Transform });
-            var world_transform = world_query.next().?.get(eng.Transform).?;
-            world_transform.scale = @splat(0.1);
-            world_transform.position = door_transform.position - @as(nz.Vec3(f32), @splat(2.5));
-
-            // var gfx_context = try world.getResource(GfxContext);
-            // gfx_context.should_quit = true;
+            try game.gameOver(comps, world, allocator, door_transform, true);
         }
     }
 }

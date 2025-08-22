@@ -43,6 +43,7 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     const io_ctx = try world.getResource(eng.IoCtx);
     const asset_manager = try world.getResource(eng.AssetManager);
     const map = try world.getResource(game.map.Tilemap);
+    const enemy_ctx = try world.getResource(game.enemy.EnemyCtx);
 
     const time = try world.getResource(eng.time.Time);
     var speed: f32 = 300;
@@ -97,10 +98,11 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     const to_be_pos = rigidbody.force * @as(nz.Vec3(f32), @splat(0.1));
     const player_x: i32 = @intFromFloat(transform.position[0] + to_be_pos[0]);
     const player_y: i32 = @intFromFloat(transform.position[2] + to_be_pos[2]);
-    if (player_x >= 0 and player_x < map.x and player_y >= 0 and player_y < map.y and map.get(@intCast(player_x), @intCast(player_y)) == 1) {
-        rigidbody.force = @splat(0);
-    } else {}
-
+    if (enemy_ctx.can_spawm == true) {
+        if (player_x >= 0 and player_x < map.x and player_y >= 0 and player_y < map.y and map.get(@intCast(player_x), @intCast(player_y)) == 1) {
+            rigidbody.force = @splat(0);
+        }
+    }
     transform.rotation[1] -= io_ctx.trackpad_state[1].currentState.x * @as(f32, @floatCast(time.delta_time));
 
     if (io_ctx.keyboard.isActive(.left)) transform.rotation[1] += @as(f32, @floatCast(time.delta_time)) * rot_speed;
