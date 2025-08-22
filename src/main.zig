@@ -36,7 +36,7 @@ pub fn main() !void {
         game.init,
     });
 
-    var map = try game.map.init(allocator, null);
+    var map = try game.map.init(allocator, 42);
     defer map.deinit(allocator);
     try world.setResource(allocator, game.map.Tilemap, &map);
     const verices: []f32, const indices: []u32 = try map.toModel(allocator);

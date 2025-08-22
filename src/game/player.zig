@@ -177,18 +177,22 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
                 }
             },
             .collectable => {
-                var c_transform = world.getComponentByEntity(eng.Transform, hand.equiped.collectable);
-                if (c_transform != null) c_transform.?.position = hand_transform.position;
+                var collect_transform = world.getComponentByEntity(eng.Transform, hand.equiped.collectable);
+                if (collect_transform != null) {
+                    collect_transform.?.position = hand_transform.position;
+                    collect_transform.?.rotation = hand_transform.rotation;
+                }
             },
         }
         var query_collectable = world.query(&.{ game.collectable, eng.Transform });
         while (query_collectable.next()) |entry| {
             var collected = entry.get(game.collectable).?;
             if (collected.collected == true) continue;
-            const c_transform = entry.get(eng.Transform).?;
-            if (@abs(nz.distance(c_transform.position, hand_transform.position)) < 0.5) {
+            const collect_transform = entry.get(eng.Transform).?;
+            if (@abs(nz.distance(collect_transform.position, hand_transform.position)) < 0.5) {
                 hand_mesh.should_render = false;
                 collected.collected = true;
+                collect_transform.scale = @splat(0.1);
                 hand.equiped = .{ .collectable = entry.id };
             }
         }
