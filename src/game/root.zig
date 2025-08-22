@@ -44,6 +44,32 @@ pub fn deinit(comps: []const type, world: *World(comps), allocator: std.mem.Allo
     try world.runSystems(allocator, .{});
 }
 
+pub fn gameOver(comps: []const type, world: *World(comps), allocator: std.mem.Allocator, end_transform: *eng.Transform, win: bool) !void {
+    const asset_manager = try world.getResource(eng.AssetManager);
+    var enemy_ctx = try world.getResource(enemy.EnemyCtx);
+    enemy_ctx.can_spawm = false;
+    var enemy_querty = world.query(&.{enemy.Enemy});
+    while (enemy_querty.next()) |enemy_entry| {
+        try world.remove(allocator, enemy_entry.id);
+    }
+
+    if (win == true) {
+        try asset_manager.getSound("win.wav").play(0.5);
+    } else {
+        try asset_manager.getSound("loss.wav").play(0.5);
+    }
+
+    _ = try world.spawn(allocator, .{
+        eng.Transform{ .position = end_transform.position + @as(nz.Vec3(f32), @splat(2.5)), .scale = @splat(-5) },
+        eng.Mesh{},
+        eng.Texture{ .name = "GameOver.jpg" },
+    });
+    var world_query = world.query(&.{ WorldMap, eng.Transform });
+    var world_transform = world_query.next().?.get(eng.Transform).?;
+    world_transform.scale = @splat(0.1);
+    world_transform.position = end_transform.position - @as(nz.Vec3(f32), @splat(2.5));
+}
+
 pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allocator) !void {
     try world.runSystems(allocator, .{
         player.update,

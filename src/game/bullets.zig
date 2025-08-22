@@ -19,6 +19,8 @@ pub fn update(comps: []const type, world: *World(comps), allocator: std.mem.Allo
             if (@abs(nz.distance(bullet_transform.position, enemy_transform.position)) > 4) continue;
             const relative_enemy_bbaa: eng.BBAA = enemy_bbaa.toRelative(enemy_transform.position);
             if (relative_bullet_bbaa.intersecting(relative_enemy_bbaa)) {
+                const asset_manager = try world.getResource(eng.AssetManager);
+                try asset_manager.getSound("hitHurt.wav").play(0.36);
                 try world.remove(allocator, entity2.id);
             }
         }

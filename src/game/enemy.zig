@@ -85,14 +85,14 @@ pub fn update(
     world: *World(comps),
     allocator: std.mem.Allocator,
 ) !void {
+    const enemy_ctx = try world.getResource(EnemyCtx);
+    if (enemy_ctx.can_spawm == false) return;
     var player_it = world.query(&.{ eng.Player, eng.Transform });
-    const player_transform = player_it.next().?.get(eng.Transform).?.*;
+    const player_transform = player_it.next().?.get(eng.Transform).?;
 
     const map: *Tilemap = try world.getResource(Tilemap);
-    var gfx_context = try world.getResource(GfxContext);
 
     const time = try world.getResource(eng.time.Time);
-    var enemy_ctx = try world.getResource(EnemyCtx);
 
     enemy_ctx.accumulated_time += @floatCast(time.delta_time);
     if (enemy_ctx.accumulated_time >= enemy_ctx.spawn_time) {
@@ -111,7 +111,10 @@ pub fn update(
 
         const distance = nz.distance(transform.position, player_transform.position);
         if (distance >= enemy.sight) continue;
-        if (nz.distance(player_pos_2d, enemy_pos_2d) <= 0.8) gfx_context.should_quit = true;
+        if (nz.distance(player_pos_2d, enemy_pos_2d) <= 0.8) {
+            try game.gameOver(comps, world, allocator, player_transform, false);
+            return;
+        }
 
         var best_dir: ?nz.Vec3(f32) = null;
         var shortest_dist = distance;
