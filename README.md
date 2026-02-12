@@ -1,16 +1,18 @@
 # 🛠️ WallensteinVR
 
+First person shooter.
+enemies, guns,
+![](Display.png)
+
 ## ⚙️ Installation
 
 Great resource [here](https://dochavez.github.io/Documenting-with-Docusaurus-V2.-/docs/monado/)
 
 _NOTE: The <a href="https://vulkan.lunarg.com/sdk/home" target="_blank"><img src="https://vulkan.lunarg.com/img/vulkan/vulkan-red.svg" height="22" style="vertical-align: text-bottom"/> SDK</a> is required._
 
-### 🪟 Windows
+_NOTE: Zig required in order to compile the porject (Used old unstable Zig version, may not compile.)_
 
-```sh
-Idk, use linux tbh
-```
+### 🪟 Windows, NOT supported.
 
 ### 🐧 Linux
 
