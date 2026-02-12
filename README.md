@@ -10,7 +10,7 @@ Great resource [here](https://dochavez.github.io/Documenting-with-Docusaurus-V2.
 
 _NOTE: The <a href="https://vulkan.lunarg.com/sdk/home" target="_blank"><img src="https://vulkan.lunarg.com/img/vulkan/vulkan-red.svg" height="22" style="vertical-align: text-bottom"/> SDK</a> is required._
 
-_NOTE: Zig required in order to compile the porject (Used old unstable Zig version, may not compile.)_
+_NOTE: Zig required in order to compile the project (Used old unstable Zig version, may not compile.)_
 
 ### 🪟 Windows, NOT supported.
 
